@@ -260,6 +260,11 @@ pub struct AppState {
     // Clipboard (internal)
     pub yank_buffer: String,
 
+    // Command Palette
+    pub command_palette_open: bool,
+    pub command_palette_input: String,
+    pub command_palette_selected: usize,
+
     // Overlays
     pub overlay: Option<Overlay>,
     pub env_selector_state: ListState,
@@ -316,6 +321,9 @@ impl AppState {
             pending_key: None,
             autocomplete: None,
             yank_buffer: String::new(),
+            command_palette_open: false,
+            command_palette_input: String::new(),
+            command_palette_selected: 0,
             overlay: None,
             env_selector_state: ListState::default(),
             theme: crate::theme::Theme::default(),

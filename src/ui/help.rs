@@ -94,6 +94,7 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
         (
             "General",
             vec![
+                (":", "Open command palette"),
                 ("?", "Toggle help"),
                 ("qq", "Quit (press q twice)"),
                 ("T", "Cycle theme"),

@@ -4,6 +4,11 @@ use crate::action::Action;
 use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    // 0. Command Palette consumes all input when open
+    if state.command_palette_open {
+        return map_command_palette_key(key);
+    }
+
     // 1. Overlays consume input first
     if state.overlay.is_some() {
         return map_overlay_key(key, state);
@@ -70,6 +75,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char(']') => return Some(Action::NextMethod),
         KeyCode::Char('[') => return Some(Action::PrevMethod),
         KeyCode::Char('T') => return Some(Action::CycleTheme),
+        KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
         _ => {}
     }
 
@@ -79,6 +85,27 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         Panel::Request => map_request_normal_key(key, state),
         Panel::Body => map_body_normal_key(key),
         Panel::Response => map_response_key(key),
+    }
+}
+
+fn map_command_palette_key(key: KeyEvent) -> Option<Action> {
+    // Ctrl shortcuts inside palette
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return match key.code {
+            KeyCode::Char('n') | KeyCode::Char('j') => Some(Action::CommandPaletteDown),
+            KeyCode::Char('p') | KeyCode::Char('k') => Some(Action::CommandPaletteUp),
+            _ => None,
+        };
+    }
+
+    match key.code {
+        KeyCode::Esc => Some(Action::CommandPaletteClose),
+        KeyCode::Enter => Some(Action::CommandPaletteConfirm),
+        KeyCode::Char(c) => Some(Action::CommandPaletteInput(c)),
+        KeyCode::Backspace => Some(Action::CommandPaletteBackspace),
+        KeyCode::Up | KeyCode::BackTab => Some(Action::CommandPaletteUp),
+        KeyCode::Down | KeyCode::Tab => Some(Action::CommandPaletteDown),
+        _ => None,
     }
 }
 

@@ -83,8 +83,18 @@ pub enum Action {
     // Body type cycling
     CycleBodyType,
 
-    // Theme cycling
+    // Theme
     CycleTheme,
+    SetTheme(String),
+
+    // Command Palette
+    OpenCommandPalette,
+    CommandPaletteInput(char),
+    CommandPaletteBackspace,
+    CommandPaletteUp,
+    CommandPaletteDown,
+    CommandPaletteConfirm,
+    CommandPaletteClose,
 
     // Request lifecycle
     ExecuteRequest,

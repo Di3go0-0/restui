@@ -1,5 +1,6 @@
 pub mod body;
 pub mod collections;
+pub mod command_palette;
 pub mod floating;
 pub mod help;
 pub mod layout;

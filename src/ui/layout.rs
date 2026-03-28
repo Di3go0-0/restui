@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout};
 
 use crate::state::AppState;
-use crate::ui::{body, collections, floating, help, request, response, statusbar};
+use crate::ui::{body, collections, command_palette, floating, help, request, response, statusbar};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
@@ -57,8 +57,12 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Status bar
     statusbar::render(frame, state, status_area);
 
+    // Command palette renders on top of everything
+    if state.command_palette_open {
+        command_palette::render(frame, state);
+    }
     // Overlays render on top
-    if let Some(ref overlay) = state.overlay {
+    else if let Some(ref overlay) = state.overlay {
         match overlay {
             crate::state::Overlay::Help => help::render(frame, state),
             _ => floating::render(frame, state, overlay),

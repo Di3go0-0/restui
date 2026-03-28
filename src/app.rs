@@ -605,6 +605,54 @@ impl App {
                     self.state.set_status("Curl command copied");
                 }
             }
+
+            // === Theme (direct set) ===
+            Action::SetTheme(name) => {
+                self.state.theme = crate::theme::load_theme(&name);
+                self.state.set_status(format!("Theme: {}", self.state.theme.name));
+            }
+
+            // === Command Palette ===
+            Action::OpenCommandPalette => {
+                self.state.command_palette_open = true;
+                self.state.command_palette_input.clear();
+                self.state.command_palette_selected = 0;
+            }
+            Action::CommandPaletteClose => {
+                self.state.command_palette_open = false;
+            }
+            Action::CommandPaletteInput(c) => {
+                self.state.command_palette_input.push(c);
+                self.state.command_palette_selected = 0;
+            }
+            Action::CommandPaletteBackspace => {
+                self.state.command_palette_input.pop();
+                self.state.command_palette_selected = 0;
+            }
+            Action::CommandPaletteUp => {
+                self.state.command_palette_selected =
+                    self.state.command_palette_selected.saturating_sub(1);
+            }
+            Action::CommandPaletteDown => {
+                let count = crate::ui::command_palette::filtered_commands(
+                    &self.state.command_palette_input,
+                ).len();
+                if count > 0 {
+                    self.state.command_palette_selected =
+                        (self.state.command_palette_selected + 1).min(count - 1);
+                }
+            }
+            Action::CommandPaletteConfirm => {
+                let matches = crate::ui::command_palette::filtered_commands(
+                    &self.state.command_palette_input,
+                );
+                let selected = self.state.command_palette_selected;
+                self.state.command_palette_open = false;
+                if let Some(cmd) = matches.get(selected) {
+                    let action = cmd.action.clone();
+                    Box::pin(self.update(action)).await?;
+                }
+            }
         }
         Ok(())
     }
