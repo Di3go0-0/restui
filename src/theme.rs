@@ -1,0 +1,211 @@
+use ratatui::style::Color;
+use serde::Deserialize;
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Deserialize)]
+struct ThemeFile {
+    #[serde(default = "d_border_focused")]
+    border_focused: String,
+    #[serde(default = "d_border_unfocused")]
+    border_unfocused: String,
+    #[serde(default = "d_status_ok")]
+    status_ok: String,
+    #[serde(default = "d_status_client_error")]
+    status_client_error: String,
+    #[serde(default = "d_status_server_error")]
+    status_server_error: String,
+    #[serde(default = "d_method_get")]
+    method_get: String,
+    #[serde(default = "d_method_post")]
+    method_post: String,
+    #[serde(default = "d_method_put")]
+    method_put: String,
+    #[serde(default = "d_method_delete")]
+    method_delete: String,
+    #[serde(default = "d_method_patch")]
+    method_patch: String,
+    #[serde(default = "d_method_head")]
+    method_head: String,
+    #[serde(default = "d_method_options")]
+    method_options: String,
+    #[serde(default = "d_bg_highlight")]
+    bg_highlight: String,
+    #[serde(default = "d_gutter")]
+    gutter: String,
+    #[serde(default = "d_gutter_active")]
+    gutter_active: String,
+}
+
+fn d_border_focused() -> String { "#89b4fa".into() }
+fn d_border_unfocused() -> String { "#585b70".into() }
+fn d_status_ok() -> String { "#a6e3a1".into() }
+fn d_status_client_error() -> String { "#f9e2af".into() }
+fn d_status_server_error() -> String { "#f38ba8".into() }
+fn d_method_get() -> String { "#a6e3a1".into() }
+fn d_method_post() -> String { "#89b4fa".into() }
+fn d_method_put() -> String { "#f9e2af".into() }
+fn d_method_delete() -> String { "#f38ba8".into() }
+fn d_method_patch() -> String { "#f9e2af".into() }
+fn d_method_head() -> String { "#cba6f7".into() }
+fn d_method_options() -> String { "#89dceb".into() }
+fn d_bg_highlight() -> String { "#282830".into() }
+fn d_gutter() -> String { "#585b70".into() }
+fn d_gutter_active() -> String { "#f9e2af".into() }
+
+#[derive(Debug, Clone)]
+pub struct Theme {
+    pub name: String,
+    pub border_focused: Color,
+    pub border_unfocused: Color,
+    pub border_insert: Color,
+    pub border_visual: Color,
+    pub status_ok: Color,
+    pub status_client_error: Color,
+    pub status_server_error: Color,
+    pub method_get: Color,
+    pub method_post: Color,
+    pub method_put: Color,
+    pub method_delete: Color,
+    pub method_patch: Color,
+    pub method_head: Color,
+    pub method_options: Color,
+    pub bg_highlight: Color,
+    pub gutter: Color,
+    pub gutter_active: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::load_builtin("default")
+    }
+}
+
+impl Theme {
+    pub fn method_color(&self, method: crate::model::request::HttpMethod) -> Color {
+        use crate::model::request::HttpMethod;
+        match method {
+            HttpMethod::GET => self.method_get,
+            HttpMethod::POST => self.method_post,
+            HttpMethod::PUT => self.method_put,
+            HttpMethod::PATCH => self.method_patch,
+            HttpMethod::DELETE => self.method_delete,
+            HttpMethod::HEAD => self.method_head,
+            HttpMethod::OPTIONS => self.method_options,
+        }
+    }
+
+    pub fn border_for_mode(&self, focused: bool, mode: crate::state::InputMode) -> Color {
+        if !focused {
+            return self.border_unfocused;
+        }
+        match mode {
+            crate::state::InputMode::Insert => self.border_insert,
+            crate::state::InputMode::Visual => self.border_visual,
+            crate::state::InputMode::Normal => self.border_focused,
+        }
+    }
+
+    fn load_builtin(name: &str) -> Self {
+        let path = theme_path(name);
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(file) = toml::from_str::<ThemeFile>(&content) {
+                    return Self::from_file(name, &file);
+                }
+            }
+        }
+        Self::fallback(name)
+    }
+
+    fn from_file(name: &str, f: &ThemeFile) -> Self {
+        Self {
+            name: name.to_string(),
+            border_focused: parse_hex(&f.border_focused),
+            border_unfocused: parse_hex(&f.border_unfocused),
+            border_insert: Color::Green,
+            border_visual: Color::Magenta,
+            status_ok: parse_hex(&f.status_ok),
+            status_client_error: parse_hex(&f.status_client_error),
+            status_server_error: parse_hex(&f.status_server_error),
+            method_get: parse_hex(&f.method_get),
+            method_post: parse_hex(&f.method_post),
+            method_put: parse_hex(&f.method_put),
+            method_delete: parse_hex(&f.method_delete),
+            method_patch: parse_hex(&f.method_patch),
+            method_head: parse_hex(&f.method_head),
+            method_options: parse_hex(&f.method_options),
+            bg_highlight: parse_hex(&f.bg_highlight),
+            gutter: parse_hex(&f.gutter),
+            gutter_active: parse_hex(&f.gutter_active),
+        }
+    }
+
+    fn fallback(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            border_focused: Color::Cyan,
+            border_unfocused: Color::DarkGray,
+            border_insert: Color::Green,
+            border_visual: Color::Magenta,
+            status_ok: Color::Green,
+            status_client_error: Color::Yellow,
+            status_server_error: Color::Red,
+            method_get: Color::Green,
+            method_post: Color::Blue,
+            method_put: Color::Yellow,
+            method_delete: Color::Red,
+            method_patch: Color::Yellow,
+            method_head: Color::Magenta,
+            method_options: Color::Cyan,
+            bg_highlight: Color::Rgb(40, 40, 50),
+            gutter: Color::DarkGray,
+            gutter_active: Color::Yellow,
+        }
+    }
+}
+
+pub const THEME_NAMES: &[&str] = &["default", "catppuccin", "gruvbox", "tokyonight"];
+
+pub fn load_theme(name: &str) -> Theme {
+    Theme::load_builtin(name)
+}
+
+pub fn next_theme_name(current: &str) -> &'static str {
+    let idx = THEME_NAMES.iter().position(|&n| n == current).unwrap_or(0);
+    THEME_NAMES[(idx + 1) % THEME_NAMES.len()]
+}
+
+fn theme_path(name: &str) -> PathBuf {
+    // Check bundled themes dir (relative to binary or CWD)
+    let candidates = [
+        PathBuf::from(format!("themes/{}.toml", name)),
+        crate::config::config_dir().join(format!("themes/{}.toml", name)),
+    ];
+    for p in &candidates {
+        if p.exists() {
+            return p.clone();
+        }
+    }
+    // Also check next to the executable
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join(format!("themes/{}.toml", name));
+            if p.exists() {
+                return p;
+            }
+        }
+    }
+    candidates[0].clone()
+}
+
+fn parse_hex(hex: &str) -> Color {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() == 6 {
+        let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(128);
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(128);
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(128);
+        Color::Rgb(r, g, b)
+    } else {
+        Color::DarkGray
+    }
+}

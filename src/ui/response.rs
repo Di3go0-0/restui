@@ -10,13 +10,8 @@ use crate::state::{AppState, InputMode, Panel};
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Response;
     let is_visual = is_focused && state.mode == InputMode::Visual;
-    let border_color = if is_visual {
-        Color::Magenta
-    } else if is_focused {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let t = &state.theme;
+    let border_color = t.border_for_mode(is_focused, state.mode);
 
     let block = Block::default()
         .title(" Response ")
@@ -176,9 +171,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         };
 
         let gutter_style = if line_idx == cursor_row && is_focused {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(t.gutter)
         };
 
         let gutter_area = Rect::new(body_area.x, y, gutter_width, 1);
@@ -195,7 +190,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             // Highlight current line in normal mode
             Line::from(Span::styled(
                 line_text.to_string(),
-                Style::default().fg(Color::White).bg(Color::Rgb(40, 40, 50)),
+                Style::default().fg(Color::White).bg(t.bg_highlight),
             ))
         } else {
             colorize_response_line(line_text)

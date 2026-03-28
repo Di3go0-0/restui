@@ -9,6 +9,7 @@ mod keybindings;
 mod model;
 mod parser;
 mod state;
+mod theme;
 mod tui;
 mod ui;
 

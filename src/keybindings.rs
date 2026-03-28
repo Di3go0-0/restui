@@ -14,6 +14,8 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         match key.code {
             KeyCode::Char('r') => return Some(Action::ExecuteRequest),
             KeyCode::Char('v') => return Some(Action::PasteFromClipboard),
+            KeyCode::Char('d') => return Some(Action::ScrollHalfDown),
+            KeyCode::Char('u') => return Some(Action::ScrollHalfUp),
             _ => {}
         }
     }
@@ -67,6 +69,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('r') => return Some(Action::ExecuteRequest),
         KeyCode::Char(']') => return Some(Action::NextMethod),
         KeyCode::Char('[') => return Some(Action::PrevMethod),
+        KeyCode::Char('T') => return Some(Action::CycleTheme),
         _ => {}
     }
 

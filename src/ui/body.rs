@@ -11,15 +11,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_insert = is_focused && state.mode == InputMode::Insert;
     let is_visual = is_focused && state.mode == InputMode::Visual;
     let is_normal_focused = is_focused && state.mode == InputMode::Normal;
-    let border_color = if is_insert {
-        Color::Green
-    } else if is_visual {
-        Color::Magenta
-    } else if is_focused {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let t = &state.theme;
+    let border_color = t.border_for_mode(is_focused, state.mode);
 
     let body_type_label = state.body_type.label();
     let title = if let Some(ref err) = state.body_validation_error {
@@ -92,9 +85,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         };
 
         let gutter_style = if line_idx == cursor_row && is_focused {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(t.gutter)
         };
 
         let gutter_span = Span::styled(line_num_str, gutter_style);
@@ -116,7 +109,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             if is_normal_focused && line_idx == cursor_row {
                 Line::from(Span::styled(
                     line_text.to_string(),
-                    Style::default().fg(Color::White).bg(Color::Rgb(40, 40, 50)),
+                    Style::default().fg(Color::White).bg(t.bg_highlight),
                 ))
             } else {
                 colorize_json_line(line_text)

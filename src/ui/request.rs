@@ -11,13 +11,8 @@ use crate::state::{AppState, InputMode, Panel, RequestFocus};
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Request;
     let is_insert = is_focused && state.mode == InputMode::Insert;
-    let border_color = if is_insert {
-        Color::Green
-    } else if is_focused {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let t = &state.theme;
+    let border_color = t.border_for_mode(is_focused, state.mode);
 
     let block = Block::default()
         .title(" Request ")
@@ -42,7 +37,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // Method + URL line
     let req = &state.current_request;
-    let method_color = method_to_color(req.method);
+    let method_color = t.method_color(req.method);
     let is_url_focused = is_focused && state.request_focus == RequestFocus::Url;
     let url_prefix = if is_url_focused { "▸ " } else { "  " };
 

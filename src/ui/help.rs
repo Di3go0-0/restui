@@ -96,8 +96,11 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
             vec![
                 ("?", "Toggle help"),
                 ("qq", "Quit (press q twice)"),
+                ("T", "Cycle theme"),
                 ("Ctrl+R", "Execute request (any panel)"),
                 ("Ctrl+V", "Paste from system clipboard"),
+                ("Ctrl+D", "Scroll half page down"),
+                ("Ctrl+U", "Scroll half page up"),
             ],
         ),
     ];

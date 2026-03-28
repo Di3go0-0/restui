@@ -260,6 +260,9 @@ pub struct AppState {
     pub overlay: Option<Overlay>,
     pub env_selector_state: ListState,
 
+    // Theme
+    pub theme: crate::theme::Theme,
+
     // Config
     pub config: AppConfig,
 
@@ -309,6 +312,7 @@ impl AppState {
             yank_buffer: String::new(),
             overlay: None,
             env_selector_state: ListState::default(),
+            theme: crate::theme::Theme::default(),
             config,
             should_quit: false,
             status_message: None,

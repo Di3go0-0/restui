@@ -8,11 +8,8 @@ use crate::state::{AppState, Panel};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Collections;
-    let border_color = if is_focused {
-        Color::Cyan
-    } else {
-        Color::DarkGray
-    };
+    let t = &state.theme;
+    let border_color = if is_focused { t.border_focused } else { t.border_unfocused };
 
     let coll_count = state.collections.len();
     let title = if coll_count > 0 {

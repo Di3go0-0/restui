@@ -262,6 +262,8 @@ impl App {
             // === Scrolling ===
             Action::ScrollDown => self.scroll_down(),
             Action::ScrollUp => self.scroll_up(),
+            Action::ScrollHalfDown => self.scroll_half_down(),
+            Action::ScrollHalfUp => self.scroll_half_up(),
             Action::ScrollTop => self.scroll_top(),
             Action::ScrollBottom => self.scroll_bottom(),
 
@@ -449,6 +451,13 @@ impl App {
             Action::PrevMethod => {
                 self.state.current_request.method = self.state.current_request.method.prev();
                 self.state.set_status(format!("Method: {}", self.state.current_request.method));
+            }
+
+            // === Theme ===
+            Action::CycleTheme => {
+                let next = crate::theme::next_theme_name(&self.state.theme.name);
+                self.state.theme = crate::theme::load_theme(next);
+                self.state.set_status(format!("Theme: {}", self.state.theme.name));
             }
 
             // === Body Type ===
@@ -1173,6 +1182,39 @@ impl App {
         }
     }
 
+    fn scroll_half_down(&mut self) {
+        let half = 15usize;
+        match self.state.active_panel {
+            Panel::Body => {
+                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let max = body.lines().count().saturating_sub(1);
+                self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
+                self.state.body_scroll.0 = self.state.body_scroll.0.saturating_add(half as u16);
+            }
+            Panel::Response => {
+                let max = self.get_response_lines().len().saturating_sub(1);
+                self.state.resp_cursor_row = (self.state.resp_cursor_row + half).min(max);
+                self.state.response_scroll.0 = self.state.response_scroll.0.saturating_add(half as u16);
+            }
+            _ => {}
+        }
+    }
+
+    fn scroll_half_up(&mut self) {
+        let half = 15usize;
+        match self.state.active_panel {
+            Panel::Body => {
+                self.state.body_cursor_row = self.state.body_cursor_row.saturating_sub(half);
+                self.state.body_scroll.0 = self.state.body_scroll.0.saturating_sub(half as u16);
+            }
+            Panel::Response => {
+                self.state.resp_cursor_row = self.state.resp_cursor_row.saturating_sub(half);
+                self.state.response_scroll.0 = self.state.response_scroll.0.saturating_sub(half as u16);
+            }
+            _ => {}
+        }
+    }
+
     // === Response cursor helpers ===
 
     fn get_response_body_text(&self) -> String {
@@ -1194,9 +1236,12 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        // Auto-scroll to keep cursor visible
-        self.state.response_scroll.0 = self.state.response_scroll.0
-            .max(self.state.resp_cursor_row.saturating_sub(10) as u16);
+        // Keep cursor in viewport (scroll follows cursor)
+        let scroll = self.state.response_scroll.0 as usize;
+        let visible = 20usize; // approximate visible lines
+        if self.state.resp_cursor_row >= scroll + visible {
+            self.state.response_scroll.0 = (self.state.resp_cursor_row - visible + 1) as u16;
+        }
     }
 
     fn resp_cursor_up(&mut self) {
@@ -1206,7 +1251,7 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        // Auto-scroll
+        // Keep cursor in viewport
         if (self.state.resp_cursor_row as u16) < self.state.response_scroll.0 {
             self.state.response_scroll.0 = self.state.resp_cursor_row as u16;
         }

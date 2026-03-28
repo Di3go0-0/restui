@@ -22,6 +22,8 @@ pub enum Action {
     // Scrolling
     ScrollUp,
     ScrollDown,
+    ScrollHalfUp,
+    ScrollHalfDown,
     ScrollTop,
     ScrollBottom,
 
@@ -80,6 +82,9 @@ pub enum Action {
 
     // Body type cycling
     CycleBodyType,
+
+    // Theme cycling
+    CycleTheme,
 
     // Request lifecycle
     ExecuteRequest,
