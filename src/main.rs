@@ -34,15 +34,18 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Panic hook: always restore terminal even on crash
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = tui::restore();
+        default_panic(info);
+    }));
+
     let cli = Cli::parse();
 
-    // Load config
     let config = config::AppConfig::load().unwrap_or_default();
-
-    // Initialize app
     let mut app = app::App::new(config.clone());
 
-    // Determine directories to scan
     let mut dirs = config.general.http_file_dirs.clone();
     if let Some(dir) = cli.dir {
         dirs = vec![dir];
@@ -53,11 +56,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Load data
     app.load_collections(&dirs);
     app.load_environments(cli.env_file.as_deref());
 
-    // If a specific file was provided, try to select it
     if let Some(ref file) = cli.file {
         if let Some(file_stem) = file.file_stem().and_then(|s| s.to_str()) {
             for (i, collection) in app.state.collections.iter().enumerate() {
@@ -72,13 +73,8 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Initialize terminal
     let mut terminal = tui::init()?;
-
-    // Run app
     let result = app.run(&mut terminal).await;
-
-    // Restore terminal
     tui::restore()?;
 
     result

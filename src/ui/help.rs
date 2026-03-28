@@ -75,16 +75,30 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
             ],
         ),
         (
-            "Collections",
+            "Collections (Navigate)",
             vec![
                 ("Enter", "Select request"),
-                ("n", "New collection"),
+                ("j / k", "Move up/down"),
                 ("{ / }", "Switch between collections"),
             ],
         ),
         (
+            "Collections (CRUD)",
+            vec![
+                ("s", "Save — overwrite selected request"),
+                ("S", "Save As — copy current as new request"),
+                ("C", "New Empty — blank request from scratch"),
+                ("n", "New Collection — create .http file"),
+            ],
+        ),
+        (
             "General",
-            vec![("?", "Toggle help"), ("q", "Quit")],
+            vec![
+                ("?", "Toggle help"),
+                ("qq", "Quit (press q twice)"),
+                ("Ctrl+R", "Execute request (any panel)"),
+                ("Ctrl+V", "Paste from system clipboard"),
+            ],
         ),
     ];
 

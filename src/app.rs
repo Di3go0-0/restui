@@ -101,6 +101,7 @@ impl App {
             }
 
             if self.state.should_quit {
+                events.stop();
                 break;
             }
         }
