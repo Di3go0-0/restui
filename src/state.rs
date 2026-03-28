@@ -247,6 +247,10 @@ pub struct AppState {
     pub resp_visual_anchor_row: usize,
     pub resp_visual_anchor_col: usize,
 
+    // Viewport heights (updated each frame by UI)
+    pub body_visible_height: u16,
+    pub resp_visible_height: u16,
+
     // Pending key for dd
     pub pending_key: Option<(char, Instant)>,
 
@@ -307,6 +311,8 @@ impl AppState {
             resp_cursor_col: 0,
             resp_visual_anchor_row: 0,
             resp_visual_anchor_col: 0,
+            body_visible_height: 20,
+            resp_visible_height: 20,
             pending_key: None,
             autocomplete: None,
             yank_buffer: String::new(),

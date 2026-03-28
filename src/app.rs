@@ -75,6 +75,22 @@ impl App {
             if let Ok(size) = terminal.size() {
                 let right_width = (size.width as u32 * 80 / 100) as u16;
                 self.state.is_wide_layout = right_width > 120;
+
+                // Calculate visible heights for scroll-follow
+                let main_h = size.height.saturating_sub(1); // status bar
+                if right_width > 120 {
+                    // Wide: center is 50% of right, body is 60% of center
+                    let center_h = main_h;
+                    self.state.body_visible_height = (center_h as u32 * 60 / 100) as u16;
+                    self.state.resp_visible_height = main_h;
+                } else {
+                    // Narrow: body 35%, response 40%
+                    self.state.body_visible_height = (main_h as u32 * 35 / 100) as u16;
+                    self.state.resp_visible_height = (main_h as u32 * 40 / 100) as u16;
+                }
+                // Account for borders and internal layout (approx 5 lines for response header area)
+                self.state.body_visible_height = self.state.body_visible_height.saturating_sub(2);
+                self.state.resp_visible_height = self.state.resp_visible_height.saturating_sub(5);
             }
 
             terminal.draw(|frame| {
@@ -357,8 +373,14 @@ impl App {
             Action::InlineNewline => self.inline_newline(),
             Action::InlineCursorLeft => self.inline_cursor_left(),
             Action::InlineCursorRight => self.inline_cursor_right(),
-            Action::InlineCursorUp => self.body_cursor_up(),
-            Action::InlineCursorDown => self.body_cursor_down(),
+            Action::InlineCursorUp => match self.state.active_panel {
+                Panel::Response => self.resp_cursor_up(),
+                _ => self.body_cursor_up(),
+            },
+            Action::InlineCursorDown => match self.state.active_panel {
+                Panel::Response => self.resp_cursor_down(),
+                _ => self.body_cursor_down(),
+            },
             Action::InlineCursorHome => self.inline_cursor_home(),
             Action::InlineCursorEnd => self.inline_cursor_end(),
             Action::InlineTab => self.inline_tab(),
@@ -887,6 +909,10 @@ impl App {
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
         }
+        // Scroll follow: keep cursor in viewport
+        if (self.state.body_cursor_row as u16) < self.state.body_scroll.0 {
+            self.state.body_scroll.0 = self.state.body_cursor_row as u16;
+        }
     }
 
     fn body_cursor_down(&mut self) {
@@ -897,6 +923,12 @@ impl App {
             let lines: Vec<&str> = body.lines().collect();
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
+        }
+        // Scroll follow: keep cursor in viewport
+        let visible = self.state.body_visible_height as usize;
+        let scroll = self.state.body_scroll.0 as usize;
+        if visible > 0 && self.state.body_cursor_row >= scroll + visible {
+            self.state.body_scroll.0 = (self.state.body_cursor_row - visible + 1) as u16;
         }
     }
 
@@ -1122,14 +1154,8 @@ impl App {
                 let max = self.state.collection_items.len().saturating_sub(1);
                 self.state.collections_state.select(Some(i.min(max)));
             }
-            Panel::Body => { self.state.body_scroll.0 = self.state.body_scroll.0.saturating_add(1); }
-            Panel::Response => {
-                if self.state.mode == InputMode::Visual {
-                    self.resp_cursor_down();
-                } else {
-                    self.resp_cursor_down();
-                }
-            }
+            Panel::Body => self.body_cursor_down(),
+            Panel::Response => self.resp_cursor_down(),
             _ => {}
         }
     }
@@ -1140,10 +1166,8 @@ impl App {
                 let i = self.state.collections_state.selected().unwrap_or(0).saturating_sub(1);
                 self.state.collections_state.select(Some(i));
             }
-            Panel::Body => { self.state.body_scroll.0 = self.state.body_scroll.0.saturating_sub(1); }
-            Panel::Response => {
-                self.resp_cursor_up();
-            }
+            Panel::Body => self.body_cursor_up(),
+            Panel::Response => self.resp_cursor_up(),
             _ => {}
         }
     }
@@ -1238,8 +1262,8 @@ impl App {
         }
         // Keep cursor in viewport (scroll follows cursor)
         let scroll = self.state.response_scroll.0 as usize;
-        let visible = 20usize; // approximate visible lines
-        if self.state.resp_cursor_row >= scroll + visible {
+        let visible = self.state.resp_visible_height as usize;
+        if visible > 0 && self.state.resp_cursor_row >= scroll + visible {
             self.state.response_scroll.0 = (self.state.resp_cursor_row - visible + 1) as u16;
         }
     }
