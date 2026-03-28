@@ -34,6 +34,24 @@ struct ThemeFile {
     gutter: String,
     #[serde(default = "d_gutter_active")]
     gutter_active: String,
+    #[serde(default = "d_text")]
+    text: String,
+    #[serde(default = "d_text_dim")]
+    text_dim: String,
+    #[serde(default = "d_overlay_bg")]
+    overlay_bg: String,
+    #[serde(default = "d_accent")]
+    accent: String,
+    #[serde(default = "d_key_hint")]
+    key_hint: String,
+    #[serde(default = "d_json_key")]
+    json_key: String,
+    #[serde(default = "d_json_string")]
+    json_string: String,
+    #[serde(default = "d_json_number")]
+    json_number: String,
+    #[serde(default = "d_json_bool")]
+    json_bool: String,
 }
 
 fn d_border_focused() -> String { "#89b4fa".into() }
@@ -51,6 +69,15 @@ fn d_method_options() -> String { "#89dceb".into() }
 fn d_bg_highlight() -> String { "#282830".into() }
 fn d_gutter() -> String { "#585b70".into() }
 fn d_gutter_active() -> String { "#f9e2af".into() }
+fn d_text() -> String { "#cdd6f4".into() }
+fn d_text_dim() -> String { "#6c7086".into() }
+fn d_overlay_bg() -> String { "#1e1e2e".into() }
+fn d_accent() -> String { "#89b4fa".into() }
+fn d_key_hint() -> String { "#89b4fa".into() }
+fn d_json_key() -> String { "#89b4fa".into() }
+fn d_json_string() -> String { "#a6e3a1".into() }
+fn d_json_number() -> String { "#fab387".into() }
+fn d_json_bool() -> String { "#f9e2af".into() }
 
 #[derive(Debug, Clone)]
 pub struct Theme {
@@ -72,6 +99,15 @@ pub struct Theme {
     pub bg_highlight: Color,
     pub gutter: Color,
     pub gutter_active: Color,
+    pub text: Color,
+    pub text_dim: Color,
+    pub overlay_bg: Color,
+    pub accent: Color,
+    pub key_hint: Color,
+    pub json_key: Color,
+    pub json_string: Color,
+    pub json_number: Color,
+    pub json_bool: Color,
 }
 
 impl Default for Theme {
@@ -137,6 +173,15 @@ impl Theme {
             bg_highlight: parse_hex(&f.bg_highlight),
             gutter: parse_hex(&f.gutter),
             gutter_active: parse_hex(&f.gutter_active),
+            text: parse_hex(&f.text),
+            text_dim: parse_hex(&f.text_dim),
+            overlay_bg: parse_hex(&f.overlay_bg),
+            accent: parse_hex(&f.accent),
+            key_hint: parse_hex(&f.key_hint),
+            json_key: parse_hex(&f.json_key),
+            json_string: parse_hex(&f.json_string),
+            json_number: parse_hex(&f.json_number),
+            json_bool: parse_hex(&f.json_bool),
         }
     }
 
@@ -160,6 +205,15 @@ impl Theme {
             bg_highlight: Color::Rgb(40, 40, 50),
             gutter: Color::DarkGray,
             gutter_active: Color::Yellow,
+            text: Color::White,
+            text_dim: Color::DarkGray,
+            overlay_bg: Color::Rgb(30, 30, 46),
+            accent: Color::Cyan,
+            key_hint: Color::Cyan,
+            json_key: Color::Cyan,
+            json_string: Color::Green,
+            json_number: Color::Magenta,
+            json_bool: Color::Yellow,
         }
     }
 }

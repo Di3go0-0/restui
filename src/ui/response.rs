@@ -103,12 +103,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(format!("{} ", resp.elapsed_display()), Style::default().fg(Color::Cyan)),
-        Span::styled(resp.size_display(), Style::default().fg(Color::Magenta)),
+        Span::styled(format!("{} ", resp.elapsed_display()), Style::default().fg(t.accent)),
+        Span::styled(resp.size_display(), Style::default().fg(t.json_number)),
         Span::raw("  "),
         Span::styled(
             resp.content_type.as_deref().unwrap_or(""),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(t.text_dim),
         ),
     ]);
     frame.render_widget(Paragraph::new(status_line), chunks[0]);
@@ -190,10 +190,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             // Highlight current line in normal mode
             Line::from(Span::styled(
                 line_text.to_string(),
-                Style::default().fg(Color::White).bg(t.bg_highlight),
+                Style::default().fg(t.text).bg(t.bg_highlight),
             ))
         } else {
-            colorize_response_line(line_text)
+            colorize_response_line(line_text, t)
         };
 
         let content_area = Rect::new(text_area_x, y, text_area_width, 1);
@@ -245,37 +245,37 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
     ])
 }
 
-fn colorize_response_line(line: &str) -> Line<'_> {
+fn colorize_response_line<'a>(line: &'a str, t: &crate::theme::Theme) -> Line<'a> {
     let trimmed = line.trim();
 
     if trimmed.starts_with('"') && trimmed.contains(':') {
         if let Some(colon_pos) = line.find(':') {
             let (key_part, value_part) = line.split_at(colon_pos);
             return Line::from(vec![
-                Span::styled(key_part.to_string(), Style::default().fg(Color::Cyan)),
-                Span::styled(":", Style::default().fg(Color::White)),
+                Span::styled(key_part.to_string(), Style::default().fg(t.json_key)),
+                Span::styled(":", Style::default().fg(t.text)),
                 Span::styled(
                     value_part[1..].to_string(),
-                    value_style(value_part[1..].trim()),
+                    value_style(value_part[1..].trim(), t),
                 ),
             ]);
         }
     }
 
-    Line::from(Span::styled(line.to_string(), Style::default().fg(Color::White)))
+    Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
 }
 
-fn value_style(val: &str) -> Style {
+fn value_style(val: &str, t: &crate::theme::Theme) -> Style {
     let trimmed = val.trim().trim_end_matches(',');
     if trimmed == "true" || trimmed == "false" {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(t.json_bool)
     } else if trimmed == "null" {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(t.text_dim)
     } else if trimmed.starts_with('"') {
-        Style::default().fg(Color::Green)
+        Style::default().fg(t.json_string)
     } else if trimmed.parse::<f64>().is_ok() {
-        Style::default().fg(Color::Magenta)
+        Style::default().fg(t.json_number)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(t.text)
     }
 }

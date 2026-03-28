@@ -5,7 +5,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use crate::model::request::HttpMethod;
 use crate::state::{AppState, InputMode, Panel, RequestFocus};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
@@ -45,7 +44,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let method_line = Line::from(vec![
         Span::styled(
             url_prefix,
-            Style::default().fg(if is_url_focused { Color::Cyan } else { Color::DarkGray }),
+            Style::default().fg(if is_url_focused { t.accent } else { t.text_dim }),
         ),
         Span::styled(
             &method_str,
@@ -58,9 +57,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(
             &req.url,
             if is_url_focused && is_insert {
-                Style::default().fg(Color::White).add_modifier(Modifier::UNDERLINED)
+                Style::default().fg(t.text).add_modifier(Modifier::UNDERLINED)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(t.text)
             },
         ),
     ]);
@@ -79,7 +78,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // Separator
     let sep = Line::from(Span::styled(
         "─".repeat(inner.width as usize),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(t.text_dim),
     ));
     frame.render_widget(Paragraph::new(sep), chunks[1]);
 
@@ -90,7 +89,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // Title line
     let title_line = Line::from(Span::styled(
         " Headers",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD),
     ));
     if y_offset < headers_area.height {
         frame.render_widget(
@@ -104,7 +103,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         if y_offset < headers_area.height {
             let hint = Line::from(Span::styled(
                 "   (none) 'a' to add, 'A' for autocomplete",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.text_dim),
             ));
             frame.render_widget(
                 Paragraph::new(hint),
@@ -122,9 +121,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             let is_header_focused = is_focused && state.request_focus == RequestFocus::Header(i);
             let prefix = if is_header_focused { "▸" } else { " " };
             let style = if header.enabled {
-                Style::default().fg(Color::White)
+                Style::default().fg(t.text)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(t.text_dim)
             };
             let toggle = if header.enabled { "●" } else { "○" };
 
@@ -134,17 +133,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
             if is_header_focused && is_insert {
                 let name_style = if state.header_edit_field == 0 {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::UNDERLINED)
+                    Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
                 } else {
                     style.add_modifier(Modifier::BOLD)
                 };
                 let value_style = if state.header_edit_field == 1 {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::UNDERLINED)
+                    Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
                 } else {
                     style
                 };
                 let line = Line::from(vec![
-                    Span::styled(&prefix_span, Style::default().fg(Color::Green)),
+                    Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
                     Span::styled(&header.name, name_style),
                     Span::styled(": ", style),
                     Span::styled(&header.value, value_style),
@@ -177,7 +176,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 }
             } else {
                 let prefix_style = Style::default().fg(
-                    if is_header_focused { Color::Cyan } else { Color::DarkGray },
+                    if is_header_focused { t.accent } else { t.text_dim },
                 );
                 let line = Line::from(vec![
                     Span::styled(&prefix_span, prefix_style),
@@ -205,7 +204,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         y_offset += 1; // blank line
         let qp_title = Line::from(Span::styled(
             " Query Params",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD),
         ));
         frame.render_widget(
             Paragraph::new(qp_title),
@@ -218,13 +217,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 break;
             }
             let style = if param.enabled {
-                Style::default().fg(Color::White)
+                Style::default().fg(t.text)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(t.text_dim)
             };
             let toggle = if param.enabled { "●" } else { "○" };
             let line = Line::from(vec![
-                Span::styled(format!("   {} ", toggle), Style::default().fg(Color::Cyan)),
+                Span::styled(format!("   {} ", toggle), Style::default().fg(t.accent)),
                 Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
                 Span::styled(" = ", style),
                 Span::styled(&param.value, style),
@@ -297,14 +296,3 @@ fn render_autocomplete_popup(
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 
-fn method_to_color(method: HttpMethod) -> Color {
-    match method {
-        HttpMethod::GET => Color::Green,
-        HttpMethod::POST => Color::Blue,
-        HttpMethod::PUT => Color::Yellow,
-        HttpMethod::PATCH => Color::Yellow,
-        HttpMethod::DELETE => Color::Red,
-        HttpMethod::HEAD => Color::Magenta,
-        HttpMethod::OPTIONS => Color::Cyan,
-    }
-}

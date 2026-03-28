@@ -38,7 +38,8 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let block = Block::default()
         .title(" Command Palette ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(t.border_focused));
+        .border_style(Style::default().fg(t.border_focused))
+        .style(Style::default().bg(t.overlay_bg));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -59,12 +60,12 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
     // Input line with cursor
     let input_line = Line::from(vec![
-        Span::styled(" > ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(" > ", Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)),
         Span::styled(
             &state.command_palette_input,
-            Style::default().fg(Color::White),
+            Style::default().fg(t.text),
         ),
-        Span::styled("▌", Style::default().fg(Color::Yellow)),
+        Span::styled("▌", Style::default().fg(t.gutter_active)),
     ]);
     frame.render_widget(Paragraph::new(input_line), chunks[0]);
 
@@ -86,18 +87,18 @@ pub fn render(frame: &mut Frame, state: &AppState) {
             let is_selected = i == state.command_palette_selected;
             let name_style = if is_selected {
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(t.gutter_active)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(t.text)
             };
             let desc_style = if is_selected {
-                Style::default().fg(Color::Cyan)
+                Style::default().fg(t.accent)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(t.text_dim)
             };
             let cat_style = Style::default()
-                .fg(if is_selected { t.border_focused } else { Color::DarkGray })
+                .fg(if is_selected { t.border_focused } else { t.text_dim })
                 .add_modifier(Modifier::ITALIC);
 
             ListItem::new(Line::from(vec![

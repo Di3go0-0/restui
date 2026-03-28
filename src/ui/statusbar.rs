@@ -8,31 +8,34 @@ use std::time::Duration;
 use crate::state::{AppState, InputMode, Panel};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
+    let t = &state.theme;
+
     let mode_span = match state.mode {
         InputMode::Normal => Span::styled(
             " NORMAL ",
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::Blue)
+                .bg(t.border_focused)
                 .add_modifier(Modifier::BOLD),
         ),
         InputMode::Insert => Span::styled(
             " INSERT ",
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::Green)
+                .bg(t.border_insert)
                 .add_modifier(Modifier::BOLD),
         ),
         InputMode::Visual => Span::styled(
             " VISUAL ",
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::Magenta)
+                .bg(t.border_visual)
                 .add_modifier(Modifier::BOLD),
         ),
     };
 
     let env_name = state.environments.active_name();
+    let method_color = t.method_color(state.current_request.method);
 
     let mut spans = vec![
         mode_span,
@@ -41,20 +44,20 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             format!(" ENV: {} ", env_name),
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::Cyan)
+                .bg(t.accent)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
         Span::styled(
             format!(" {} ", state.active_panel.title()),
-            Style::default().fg(Color::Black).bg(Color::DarkGray),
+            Style::default().fg(t.text).bg(t.bg_highlight),
         ),
         Span::raw(" "),
         Span::styled(
             format!(" {} ", state.current_request.method),
             Style::default()
                 .fg(Color::Black)
-                .bg(Color::Yellow)
+                .bg(method_color)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
@@ -82,16 +85,16 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     if let Some((ref msg, ref instant)) = state.status_message {
         if instant.elapsed() < Duration::from_secs(5) {
-            spans.push(Span::styled(msg, Style::default().fg(Color::Yellow)));
+            spans.push(Span::styled(msg, Style::default().fg(t.gutter_active)));
         }
     }
 
     let hints = match state.mode {
         InputMode::Normal => match state.active_panel {
-            Panel::Request => " i:edit  a/A:add header  dd:del  [/]:method  Ctrl+R:run ",
-            Panel::Body => " i:insert  v:visual  o:new line  t:body type  Ctrl+V:paste  Ctrl+R:run ",
-            Panel::Collections => " Enter:sel  s:save  S:save-as  C:new-empty  n:new-coll  {/}:switch ",
-            Panel::Response => " j/k:move  v:visual  w/b:word  y:copy  Y:curl  Ctrl+R:run ",
+            Panel::Request => " i:edit  a/A:header  dd:del  [/]:method  ::palette  ?:help ",
+            Panel::Body => " i:insert  v:visual  o:line  t:type  ::palette  ?:help ",
+            Panel::Collections => " Enter:sel  s:save  S:as  C:new  n:coll  ::palette  ?:help ",
+            Panel::Response => " j/k:move  v:visual  y:copy  Y:curl  ::palette  ?:help ",
         },
         InputMode::Insert => match state.active_panel {
             Panel::Request => " Esc:normal  Tab:next field  Enter:confirm ",
@@ -106,7 +109,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let padding = area.width.saturating_sub(left_len + hints_len);
 
     spans.push(Span::raw(" ".repeat(padding as usize)));
-    spans.push(Span::styled(hints, Style::default().fg(Color::DarkGray)));
+    spans.push(Span::styled(hints, Style::default().fg(t.text_dim)));
 
     let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);

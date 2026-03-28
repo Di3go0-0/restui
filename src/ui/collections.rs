@@ -1,6 +1,6 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 
@@ -35,12 +35,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             Line::from(""),
             Line::from(Span::styled(
                 " No .http files found",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(t.text_dim),
             )),
             Line::from(""),
             Line::from(Span::styled(
                 " Press 'n' to create one",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(t.gutter_active),
             )),
         ];
         let p = Paragraph::new(lines);
@@ -60,7 +60,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 ListItem::new(Line::from(vec![Span::styled(
                     item.clone(),
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(t.gutter_active)
                         .add_modifier(Modifier::BOLD),
                 )]))
             } else {
@@ -70,13 +70,14 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                     .split_once(' ')
                     .unwrap_or((trimmed, ""));
                 let method_color = match method {
-                    "GET" => Color::Green,
-                    "POST" => Color::Blue,
-                    "PUT" | "PATCH" => Color::Yellow,
-                    "DELETE" => Color::Red,
-                    "HEAD" => Color::Magenta,
-                    "OPTIONS" => Color::Cyan,
-                    _ => Color::White,
+                    "GET" => t.method_get,
+                    "POST" => t.method_post,
+                    "PUT" => t.method_put,
+                    "PATCH" => t.method_patch,
+                    "DELETE" => t.method_delete,
+                    "HEAD" => t.method_head,
+                    "OPTIONS" => t.method_options,
+                    _ => t.text,
                 };
                 ListItem::new(Line::from(vec![
                     Span::raw("  "),
@@ -87,7 +88,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                     Span::raw(" "),
                     Span::styled(
                         truncate_url(rest, area.width.saturating_sub(16) as usize),
-                        Style::default().fg(Color::White),
+                        Style::default().fg(t.text),
                     ),
                 ]))
             }
@@ -104,7 +105,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let list = List::new(items)
         .highlight_style(
             Style::default()
-                .bg(Color::DarkGray)
+                .bg(t.bg_highlight)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▸ ");
@@ -116,20 +117,20 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     if is_focused {
         let hints = vec![
             Line::from(vec![
-                Span::styled(" s", Style::default().fg(Color::Cyan)),
-                Span::styled(":save ", Style::default().fg(Color::DarkGray)),
-                Span::styled("S", Style::default().fg(Color::Cyan)),
-                Span::styled(":save-as ", Style::default().fg(Color::DarkGray)),
-                Span::styled("C", Style::default().fg(Color::Cyan)),
-                Span::styled(":new", Style::default().fg(Color::DarkGray)),
+                Span::styled(" s", Style::default().fg(t.accent)),
+                Span::styled(":save ", Style::default().fg(t.text_dim)),
+                Span::styled("S", Style::default().fg(t.accent)),
+                Span::styled(":save-as ", Style::default().fg(t.text_dim)),
+                Span::styled("C", Style::default().fg(t.accent)),
+                Span::styled(":new", Style::default().fg(t.text_dim)),
             ]),
             Line::from(vec![
-                Span::styled(" n", Style::default().fg(Color::Cyan)),
-                Span::styled(":coll ", Style::default().fg(Color::DarkGray)),
-                Span::styled("{/}", Style::default().fg(Color::Cyan)),
-                Span::styled(":switch ", Style::default().fg(Color::DarkGray)),
-                Span::styled("qq", Style::default().fg(Color::Cyan)),
-                Span::styled(":quit", Style::default().fg(Color::DarkGray)),
+                Span::styled(" n", Style::default().fg(t.accent)),
+                Span::styled(":coll ", Style::default().fg(t.text_dim)),
+                Span::styled("{/}", Style::default().fg(t.accent)),
+                Span::styled(":switch ", Style::default().fg(t.text_dim)),
+                Span::styled("qq", Style::default().fg(t.accent)),
+                Span::styled(":quit", Style::default().fg(t.text_dim)),
             ]),
         ];
         let hints_p = Paragraph::new(hints);
