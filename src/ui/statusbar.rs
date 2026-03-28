@@ -60,16 +60,19 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::raw(" "),
     ];
 
-    // Cursor position for body panel
-    if state.active_panel == Panel::Body
-        && (state.mode == InputMode::Insert || state.mode == InputMode::Visual)
-    {
+    // Cursor position for body/response panels
+    let show_cursor_pos = match state.active_panel {
+        Panel::Body => state.mode == InputMode::Insert || state.mode == InputMode::Visual,
+        Panel::Response => true, // Always show position in response
+        _ => false,
+    };
+    if show_cursor_pos {
+        let (row, col) = match state.active_panel {
+            Panel::Response => (state.resp_cursor_row, state.resp_cursor_col),
+            _ => (state.body_cursor_row, state.body_cursor_col),
+        };
         spans.push(Span::styled(
-            format!(
-                " {}:{} ",
-                state.body_cursor_row + 1,
-                state.body_cursor_col + 1
-            ),
+            format!(" {}:{} ", row + 1, col + 1),
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::DarkGray),
@@ -88,7 +91,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             Panel::Request => " i:edit  a/A:add header  dd:del  [/]:method  Ctrl+R:run ",
             Panel::Body => " i:insert  v:visual  o:new line  t:body type  Ctrl+V:paste  Ctrl+R:run ",
             Panel::Collections => " Enter:sel  s:save  S:save-as  C:new-empty  n:new-coll  {/}:switch ",
-            Panel::Response => " j/k:scroll  y:copy  Y:curl  Ctrl+R:run ",
+            Panel::Response => " j/k:move  v:visual  w/b:word  y:copy  Y:curl  Ctrl+R:run ",
         },
         InputMode::Insert => match state.active_panel {
             Panel::Request => " Esc:normal  Tab:next field  Enter:confirm ",

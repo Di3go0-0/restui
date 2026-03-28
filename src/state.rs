@@ -237,9 +237,15 @@ pub struct AppState {
     pub body_cursor_row: usize,
     pub body_cursor_col: usize,
 
-    // Visual mode selection
+    // Visual mode selection (body)
     pub visual_anchor_row: usize,
     pub visual_anchor_col: usize,
+
+    // Response cursor (for visual mode in response)
+    pub resp_cursor_row: usize,
+    pub resp_cursor_col: usize,
+    pub resp_visual_anchor_row: usize,
+    pub resp_visual_anchor_col: usize,
 
     // Pending key for dd
     pub pending_key: Option<(char, Instant)>,
@@ -294,6 +300,10 @@ impl AppState {
             body_cursor_col: 0,
             visual_anchor_row: 0,
             visual_anchor_col: 0,
+            resp_cursor_row: 0,
+            resp_cursor_col: 0,
+            resp_visual_anchor_row: 0,
+            resp_visual_anchor_col: 0,
             pending_key: None,
             autocomplete: None,
             yank_buffer: String::new(),

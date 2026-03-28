@@ -204,10 +204,18 @@ impl App {
                 self.state.validate_body();
             }
             Action::EnterVisualMode => {
-                if self.state.active_panel == Panel::Body {
-                    self.state.mode = InputMode::Visual;
-                    self.state.visual_anchor_row = self.state.body_cursor_row;
-                    self.state.visual_anchor_col = self.state.body_cursor_col;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.state.mode = InputMode::Visual;
+                        self.state.visual_anchor_row = self.state.body_cursor_row;
+                        self.state.visual_anchor_col = self.state.body_cursor_col;
+                    }
+                    Panel::Response => {
+                        self.state.mode = InputMode::Visual;
+                        self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
+                        self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
+                    }
+                    _ => {}
                 }
             }
             Action::ExitVisualMode => self.state.mode = InputMode::Normal,
@@ -361,8 +369,12 @@ impl App {
 
             // === Visual Mode ===
             Action::VisualYank => {
-                if self.state.active_panel == Panel::Body {
-                    let text = self.get_visual_selection();
+                let text = match self.state.active_panel {
+                    Panel::Body => Some(self.get_visual_selection()),
+                    Panel::Response => Some(self.get_response_visual_selection()),
+                    _ => None,
+                };
+                if let Some(text) = text {
                     self.state.yank_buffer = text.clone();
                     if let Ok(mut clipboard) = arboard::Clipboard::new() {
                         let _ = clipboard.set_text(&text);
@@ -816,6 +828,9 @@ impl App {
                 RequestFocus::Url => { self.state.url_cursor = self.state.url_cursor.saturating_sub(1); }
                 RequestFocus::Header(_) => { self.state.header_edit_cursor = self.state.header_edit_cursor.saturating_sub(1); }
             },
+            Panel::Response => {
+                self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
+            }
             _ => {}
         }
     }
@@ -844,6 +859,13 @@ impl App {
                     }
                 }
             },
+            Panel::Response => {
+                let lines = self.get_response_lines();
+                let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+                if self.state.resp_cursor_col < line_len {
+                    self.state.resp_cursor_col += 1;
+                }
+            }
             _ => {}
         }
     }
@@ -872,6 +894,7 @@ impl App {
     fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
             Panel::Body => self.state.body_cursor_col = 0,
+            Panel::Response => self.state.resp_cursor_col = 0,
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = 0,
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
@@ -886,6 +909,10 @@ impl App {
                 let body = self.state.current_request.body.as_deref().unwrap_or("");
                 let lines: Vec<&str> = body.lines().collect();
                 self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+            }
+            Panel::Response => {
+                let lines = self.get_response_lines();
+                self.state.resp_cursor_col = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             }
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = self.state.current_request.url.len(),
@@ -932,41 +959,62 @@ impl App {
     }
 
     fn body_word_forward(&mut self) {
-        let body = self.state.current_request.body.as_deref().unwrap_or("");
-        let lines: Vec<&str> = body.lines().collect();
-        if let Some(line) = lines.get(self.state.body_cursor_row) {
-            let bytes = line.as_bytes();
-            let mut col = self.state.body_cursor_col;
-            // Skip current word chars
-            while col < bytes.len() && !bytes[col].is_ascii_whitespace() { col += 1; }
-            // Skip whitespace
-            while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
-            if col >= bytes.len() && self.state.body_cursor_row + 1 < lines.len() {
-                self.state.body_cursor_row += 1;
-                self.state.body_cursor_col = 0;
-            } else {
-                self.state.body_cursor_col = col.min(bytes.len());
+        let (text, cursor_row, cursor_col) = match self.state.active_panel {
+            Panel::Response => {
+                let t = self.get_response_body_text();
+                (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
+            }
+            _ => {
+                let t = self.state.current_request.body.as_deref().unwrap_or("").to_string();
+                (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
+            }
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        // SAFETY: we're just using raw pointers to avoid borrow issues within the same struct
+        unsafe {
+            if let Some(line) = lines.get(*cursor_row) {
+                let bytes = line.as_bytes();
+                let mut col = *cursor_col;
+                while col < bytes.len() && !bytes[col].is_ascii_whitespace() { col += 1; }
+                while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+                if col >= bytes.len() && *cursor_row + 1 < lines.len() {
+                    *cursor_row += 1;
+                    *cursor_col = 0;
+                } else {
+                    *cursor_col = col.min(bytes.len());
+                }
             }
         }
     }
 
     fn body_word_backward(&mut self) {
-        let body = self.state.current_request.body.as_deref().unwrap_or("");
-        let lines: Vec<&str> = body.lines().collect();
-        if let Some(line) = lines.get(self.state.body_cursor_row) {
-            let bytes = line.as_bytes();
-            let mut col = self.state.body_cursor_col;
-            if col == 0 {
-                if self.state.body_cursor_row > 0 {
-                    self.state.body_cursor_row -= 1;
-                    self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                }
-                return;
+        let (text, cursor_row, cursor_col) = match self.state.active_panel {
+            Panel::Response => {
+                let t = self.get_response_body_text();
+                (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
             }
-            col = col.saturating_sub(1);
-            while col > 0 && bytes[col].is_ascii_whitespace() { col -= 1; }
-            while col > 0 && !bytes[col - 1].is_ascii_whitespace() { col -= 1; }
-            self.state.body_cursor_col = col;
+            _ => {
+                let t = self.state.current_request.body.as_deref().unwrap_or("").to_string();
+                (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
+            }
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        unsafe {
+            if let Some(line) = lines.get(*cursor_row) {
+                let bytes = line.as_bytes();
+                let mut col = *cursor_col;
+                if col == 0 {
+                    if *cursor_row > 0 {
+                        *cursor_row -= 1;
+                        *cursor_col = lines.get(*cursor_row).map(|l| l.len()).unwrap_or(0);
+                    }
+                    return;
+                }
+                col = col.saturating_sub(1);
+                while col > 0 && bytes[col].is_ascii_whitespace() { col -= 1; }
+                while col > 0 && !bytes[col - 1].is_ascii_whitespace() { col -= 1; }
+                *cursor_col = col;
+            }
         }
     }
 
@@ -1066,7 +1114,13 @@ impl App {
                 self.state.collections_state.select(Some(i.min(max)));
             }
             Panel::Body => { self.state.body_scroll.0 = self.state.body_scroll.0.saturating_add(1); }
-            Panel::Response => { self.state.response_scroll.0 = self.state.response_scroll.0.saturating_add(1); }
+            Panel::Response => {
+                if self.state.mode == InputMode::Visual {
+                    self.resp_cursor_down();
+                } else {
+                    self.resp_cursor_down();
+                }
+            }
             _ => {}
         }
     }
@@ -1078,7 +1132,9 @@ impl App {
                 self.state.collections_state.select(Some(i));
             }
             Panel::Body => { self.state.body_scroll.0 = self.state.body_scroll.0.saturating_sub(1); }
-            Panel::Response => { self.state.response_scroll.0 = self.state.response_scroll.0.saturating_sub(1); }
+            Panel::Response => {
+                self.resp_cursor_up();
+            }
             _ => {}
         }
     }
@@ -1087,7 +1143,11 @@ impl App {
         match self.state.active_panel {
             Panel::Collections => self.state.collections_state.select(Some(0)),
             Panel::Body => { self.state.body_scroll = (0, 0); self.state.body_cursor_row = 0; self.state.body_cursor_col = 0; }
-            Panel::Response => self.state.response_scroll = (0, 0),
+            Panel::Response => {
+                self.state.resp_cursor_row = 0;
+                self.state.resp_cursor_col = 0;
+                self.state.response_scroll = (0, 0);
+            }
             _ => {}
         }
     }
@@ -1104,8 +1164,66 @@ impl App {
                 self.state.body_cursor_row = lines.len().saturating_sub(1);
                 self.state.body_cursor_col = lines.last().map(|l| l.len()).unwrap_or(0);
             }
+            Panel::Response => {
+                let lines = self.get_response_lines();
+                self.state.resp_cursor_row = lines.len().saturating_sub(1);
+                self.state.resp_cursor_col = 0;
+            }
             _ => {}
         }
+    }
+
+    // === Response cursor helpers ===
+
+    fn get_response_body_text(&self) -> String {
+        if let Some(ref resp) = self.state.current_response {
+            resp.formatted_body()
+        } else {
+            String::new()
+        }
+    }
+
+    fn get_response_lines(&self) -> Vec<String> {
+        self.get_response_body_text().lines().map(|l| l.to_string()).collect()
+    }
+
+    fn resp_cursor_down(&mut self) {
+        let lines = self.get_response_lines();
+        if self.state.resp_cursor_row + 1 < lines.len() {
+            self.state.resp_cursor_row += 1;
+            let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
+        }
+        // Auto-scroll to keep cursor visible
+        self.state.response_scroll.0 = self.state.response_scroll.0
+            .max(self.state.resp_cursor_row.saturating_sub(10) as u16);
+    }
+
+    fn resp_cursor_up(&mut self) {
+        if self.state.resp_cursor_row > 0 {
+            self.state.resp_cursor_row -= 1;
+            let lines = self.get_response_lines();
+            let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
+        }
+        // Auto-scroll
+        if (self.state.resp_cursor_row as u16) < self.state.response_scroll.0 {
+            self.state.response_scroll.0 = self.state.resp_cursor_row as u16;
+        }
+    }
+
+    fn get_response_visual_selection(&self) -> String {
+        let body = self.get_response_body_text();
+        let (sr, sc, er, ec) = self.resp_visual_range();
+        let start = row_col_to_offset(&body, sr, sc);
+        let end = row_col_to_offset(&body, er, ec).min(body.len());
+        if start <= end { body[start..end].to_string() } else { String::new() }
+    }
+
+    fn resp_visual_range(&self) -> (usize, usize, usize, usize) {
+        let (ar, ac) = (self.state.resp_visual_anchor_row, self.state.resp_visual_anchor_col);
+        let (cr, cc) = (self.state.resp_cursor_row, self.state.resp_cursor_col);
+        if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) }
     }
 
     fn select_request_by_flat_index(&mut self, flat_idx: usize) {
