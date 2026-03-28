@@ -1,0 +1,37 @@
+### Get all posts
+# @name GetPosts
+GET https://jsonplaceholder.typicode.com/posts?_limit=5
+Accept: application/json
+
+### Get single post
+# @name GetPost
+GET https://jsonplaceholder.typicode.com/posts/1
+Accept: application/json
+
+### Create a post
+# @name CreatePost
+POST https://jsonplaceholder.typicode.com/posts
+Content-Type: application/json
+Accept: application/json
+
+{
+  "title": "restui test",
+  "body": "Testing from restui TUI client",
+  "userId": 1
+}
+
+### Update a post
+# @name UpdatePost
+PUT https://jsonplaceholder.typicode.com/posts/1
+Content-Type: application/json
+
+{
+  "id": 1,
+  "title": "updated title",
+  "body": "updated body",
+  "userId": 1
+}
+
+### Delete a post
+# @name DeletePost
+DELETE https://jsonplaceholder.typicode.com/posts/1
