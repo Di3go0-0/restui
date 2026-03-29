@@ -104,6 +104,7 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
                 ("Ctrl+V", "Paste from system clipboard"),
                 ("Ctrl+D", "Scroll half page down"),
                 ("Ctrl+U", "Scroll half page up"),
+                ("Ctrl+S", "Toggle SSL insecure mode"),
                 ("Ctrl+N / Ctrl+P", "Navigate menus/overlays (cmp-style)"),
             ],
         ),

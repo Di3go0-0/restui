@@ -117,6 +117,9 @@ pub enum Action {
     OverlayInput(char),
     OverlayBackspace,
 
+    // SSL
+    ToggleInsecureMode,
+
     // Clipboard
     CopyResponseBody,
     CopyAsCurl,

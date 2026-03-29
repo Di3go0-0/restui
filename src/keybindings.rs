@@ -21,6 +21,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Char('v') => return Some(Action::PasteFromClipboard),
             KeyCode::Char('d') => return Some(Action::ScrollHalfDown),
             KeyCode::Char('u') => return Some(Action::ScrollHalfUp),
+            KeyCode::Char('s') => return Some(Action::ToggleInsecureMode),
             _ => {}
         }
     }

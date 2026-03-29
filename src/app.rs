@@ -612,6 +612,16 @@ impl App {
                 self.state.set_status(format!("Error: {}", err));
             }
 
+            // === SSL ===
+            Action::ToggleInsecureMode => {
+                self.state.config.general.verify_ssl = !self.state.config.general.verify_ssl;
+                if self.state.config.general.verify_ssl {
+                    self.state.set_status("SSL: Strict (certificates verified)");
+                } else {
+                    self.state.set_status("SSL: Insecure (certificates NOT verified)");
+                }
+            }
+
             // === Overlays ===
             Action::OpenOverlay(overlay) => {
                 if matches!(overlay, Overlay::EnvironmentSelector) {

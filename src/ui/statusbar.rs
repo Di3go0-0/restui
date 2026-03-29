@@ -63,6 +63,18 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::raw(" "),
     ];
 
+    // SSL indicator
+    if !state.config.general.verify_ssl {
+        spans.push(Span::styled(
+            " INSECURE ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+    }
+
     // Cursor position for body/response panels
     let show_cursor_pos = match state.active_panel {
         Panel::Body => state.mode == InputMode::Insert || state.mode == InputMode::Visual,
