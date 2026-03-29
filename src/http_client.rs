@@ -14,7 +14,8 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         })
         .danger_accept_invalid_certs(!config.verify_ssl)
         .timeout(Duration::from_secs(config.timeout_secs))
-        .build()?;
+        .build()
+        .map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
 
     let start = Instant::now();
 
@@ -58,7 +59,7 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         builder = builder.body(body.clone());
     }
 
-    let resp = builder.send().await?;
+    let resp = builder.send().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
     let elapsed = start.elapsed();
 
     let status = resp.status().as_u16();
@@ -77,7 +78,7 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
-    let body_bytes = resp.bytes().await?;
+    let body_bytes = resp.bytes().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
     let size_bytes = body_bytes.len();
     let body = String::from_utf8_lossy(&body_bytes).to_string();
 
@@ -90,6 +91,48 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         elapsed,
         size_bytes,
     })
+}
+
+/// Classify a reqwest error into a human-readable diagnostic message.
+fn classify_error(err: &reqwest::Error) -> String {
+    let raw = err.to_string();
+
+    if err.is_builder() {
+        if raw.contains("invalid URL") || raw.contains("URL scheme") {
+            return format!("Invalid URL: check the URL format\n\n{}", raw);
+        }
+        return format!("Request builder error: {}", raw);
+    }
+
+    if err.is_connect() {
+        let msg = std::error::Error::source(err).map(|s| s.to_string()).unwrap_or_default();
+        if msg.contains("dns") || msg.contains("resolve") || msg.contains("Name or service not known") || raw.contains("dns") {
+            return format!("DNS Error: could not resolve host\n\n{}", raw);
+        }
+        if msg.contains("ssl") || msg.contains("tls") || msg.contains("certificate")
+            || msg.contains("SSL") || msg.contains("TLS") || msg.contains("Certificate")
+            || raw.contains("certificate") || raw.contains("SSL") {
+            return format!("SSL/TLS Error: certificate verification failed\nTip: toggle insecure mode with Ctrl+S\n\n{}", raw);
+        }
+        if msg.contains("refused") || raw.contains("refused") {
+            return format!("Connection Refused: server is not listening on that port\n\n{}", raw);
+        }
+        return format!("Connection Error: could not reach host\n\n{}", raw);
+    }
+
+    if err.is_timeout() {
+        return format!("Timeout: server did not respond in time\n\n{}", raw);
+    }
+
+    if err.is_decode() {
+        return format!("Decode Error: could not read response body\n\n{}", raw);
+    }
+
+    if err.is_redirect() {
+        return format!("Too Many Redirects: exceeded redirect limit\n\n{}", raw);
+    }
+
+    format!("Request Error: {}", raw)
 }
 
 pub fn to_curl(request: &Request) -> String {
