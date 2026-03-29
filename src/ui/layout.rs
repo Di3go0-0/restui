@@ -31,9 +31,8 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Render collections panel
     collections::render(frame, state, left_area);
 
-    // Responsive layout for right area
-    if right_area.width > 120 {
-        // Wide: [center (req + body) | response] side by side
+    // Responsive layout for right area — compute areas for all panels
+    let (request_area, body_area) = if right_area.width > 120 {
         let right_h = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -41,8 +40,14 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
         render_center_panels(frame, state, right_h[0]);
         response::render(frame, state, right_h[1]);
+
+        // In wide layout, center column is split 40/60
+        let center_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(right_h[0]);
+        (center_chunks[0], center_chunks[1])
     } else {
-        // Narrow: stacked vertically
         let right_v = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -55,14 +60,15 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         request::render(frame, state, right_v[0]);
         body::render(frame, state, right_v[1]);
         response::render(frame, state, right_v[2]);
-    }
+        (right_v[0], right_v[1])
+    };
 
     // Status bar
     statusbar::render(frame, state, status_area);
 
     // Chain autocomplete popup (renders on top of panels but below overlays)
     if state.chain_autocomplete.is_some() {
-        let cursor_screen = estimate_cursor_screen_pos(state, right_area);
+        let cursor_screen = compute_cursor_screen_pos(state, request_area, body_area);
         render_chain_autocomplete(frame, state, frame.area(), cursor_screen);
     }
 
@@ -89,44 +95,33 @@ fn render_center_panels(frame: &mut Frame, state: &AppState, area: Rect) {
     body::render(frame, state, chunks[1]);
 }
 
-/// Estimate the screen position (x, y) of the text cursor in the active panel.
-fn estimate_cursor_screen_pos(state: &AppState, right_area: Rect) -> (u16, u16) {
-    let gutter = 4u16; // line number gutter width
+/// Compute the screen position (x, y) of the cursor using real panel areas.
+fn compute_cursor_screen_pos(state: &AppState, request_area: Rect, body_area: Rect) -> (u16, u16) {
+    let gutter = 4u16;
     let border = 1u16;
     match state.active_panel {
         Panel::Body => {
-            // Body panel is in the lower part of right_area
-            // Approximate: body starts after request panel (~40% in wide, ~35% in narrow)
-            let body_y_offset = if right_area.width > 120 {
-                // Wide layout: body is ~60% of center column which is left half
-                (right_area.height as u32 * 40 / 100) as u16
-            } else {
-                // Narrow layout: body starts at ~25%
-                (right_area.height as u32 * 25 / 100) as u16
-            };
             let cursor_row_on_screen = (state.body_buf.cursor_row as u16).saturating_sub(state.body_buf.scroll.0);
             let cursor_col_on_screen = (state.body_buf.cursor_col as u16).saturating_sub(state.body_buf.scroll.1);
-            let x = right_area.x + border + gutter + cursor_col_on_screen;
-            let y = right_area.y + body_y_offset + border + 1 + cursor_row_on_screen; // +1 for body tab bar
-            (x.min(right_area.right()), y.min(right_area.bottom()))
+            let x = body_area.x + border + gutter + cursor_col_on_screen;
+            let y = body_area.y + border + 1 + cursor_row_on_screen; // +1 for tab bar
+            (x.min(body_area.right()), y.min(body_area.bottom()))
         }
         Panel::Request => {
-            // Request panel: URL field is at top, headers below
-            let url_label_width = 12u16; // "GET https://" etc
-            let cursor = state.url_cursor as u16;
             let field_row = match state.request_focus {
-                crate::state::RequestFocus::Url => 0,
-                crate::state::RequestFocus::Header(i) => 2 + i as u16,
-                crate::state::RequestFocus::Param(i) => 2 + i as u16,
-                crate::state::RequestFocus::Cookie(i) => 2 + i as u16,
-                crate::state::RequestFocus::PathParam(i) => 2 + i as u16,
+                crate::state::RequestFocus::Url => 1, // URL row after method
+                crate::state::RequestFocus::Header(i) => 3 + i as u16, // tab bar + headers
+                crate::state::RequestFocus::Param(i) => 3 + i as u16,
+                crate::state::RequestFocus::Cookie(i) => 3 + i as u16,
+                crate::state::RequestFocus::PathParam(i) => 3 + i as u16,
             };
-            let x = right_area.x + border + url_label_width + cursor;
-            let y = right_area.y + border + field_row;
-            (x.min(right_area.right()), y.min(right_area.bottom()))
+            let cursor = state.url_cursor as u16;
+            let x = request_area.x + border + 10 + cursor; // label offset
+            let y = request_area.y + field_row;
+            (x.min(request_area.right()), y.min(request_area.bottom()))
         }
         _ => {
-            (right_area.x + 2, right_area.y + 2)
+            (body_area.x + 2, body_area.y + 2)
         }
     }
 }
