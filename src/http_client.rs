@@ -4,11 +4,12 @@ use std::time::{Duration, Instant};
 use crate::config::GeneralConfig;
 use crate::model::request::{PathParam, Request};
 use crate::model::response::Response;
+use crate::state::MAX_REDIRECTS;
 
 pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Response> {
     let client = reqwest::Client::builder()
         .redirect(if config.follow_redirects {
-            reqwest::redirect::Policy::limited(10)
+            reqwest::redirect::Policy::limited(MAX_REDIRECTS)
         } else {
             reqwest::redirect::Policy::none()
         })

@@ -3,9 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use std::time::Duration;
-
-use crate::state::{AppState, InputMode, Panel};
+use crate::state::{AppState, InputMode, Panel, STATUS_MESSAGE_TTL};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
@@ -103,7 +101,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     }
 
     if let Some((ref msg, ref instant)) = state.status_message {
-        if instant.elapsed() < Duration::from_secs(5) {
+        if instant.elapsed() < STATUS_MESSAGE_TTL {
             spans.push(Span::styled(msg, Style::default().fg(t.gutter_active)));
         }
     }

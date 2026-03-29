@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::Action;
-use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab};
+use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, PENDING_KEY_TIMEOUT};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 0. Command Palette consumes all input when open
@@ -65,7 +65,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 
     // 5. Check pending key (for dd, yy)
     if let Some((pending, instant)) = state.pending_key {
-        if instant.elapsed() < std::time::Duration::from_millis(500) {
+        if instant.elapsed() < PENDING_KEY_TIMEOUT {
             return map_pending_key(pending, key, state);
         }
     }
@@ -88,7 +88,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 
     // qq to quit (pending key)
     if let Some((pending, instant)) = state.pending_key {
-        if pending == 'q' && instant.elapsed() < std::time::Duration::from_millis(500) {
+        if pending == 'q' && instant.elapsed() < PENDING_KEY_TIMEOUT {
             if key.code == KeyCode::Char('q') {
                 return Some(Action::Quit);
             }

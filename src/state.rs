@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
@@ -8,6 +8,15 @@ use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::request::Request;
 use crate::model::response::Response;
+
+// ── Application-wide constants ──────────────────────────────────────────────
+pub const RESPONSE_CACHE_MAX: usize = 50;
+pub const UNDO_STACK_MAX: usize = 100;
+pub const WIDE_LAYOUT_THRESHOLD: u16 = 120;
+pub const STATUS_MESSAGE_TTL: Duration = Duration::from_secs(5);
+pub const PENDING_KEY_TIMEOUT: Duration = Duration::from_millis(500);
+pub const EVENT_TICK_RATE: Duration = Duration::from_millis(250);
+pub const MAX_REDIRECTS: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {

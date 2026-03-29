@@ -10,7 +10,7 @@ use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, BodyType, ChainAutocomplete, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS};
+use crate::state::{AppState, BodyType, ChainAutocomplete, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, RESPONSE_CACHE_MAX, UNDO_STACK_MAX, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
 use crate::tui::Tui;
 use crate::ui;
 use crossterm::cursor::SetCursorStyle;
@@ -159,17 +159,17 @@ impl App {
     }
 
     pub async fn run(&mut self, terminal: &mut Tui) -> Result<()> {
-        let tick_rate = std::time::Duration::from_millis(250);
+        let tick_rate = EVENT_TICK_RATE;
         let mut events = EventHandler::new(tick_rate);
 
         loop {
             if let Ok(size) = terminal.size() {
                 let right_width = (size.width as u32 * 80 / 100) as u16;
-                self.state.is_wide_layout = right_width > 120;
+                self.state.is_wide_layout = right_width > WIDE_LAYOUT_THRESHOLD;
 
                 // Calculate visible heights for scroll-follow
                 let main_h = size.height.saturating_sub(1); // status bar
-                if right_width > 120 {
+                if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center is 50% of right, body is 60% of center
                     let center_h = main_h;
                     self.state.body_visible_height = (center_h as u32 * 60 / 100) as u16;
@@ -185,7 +185,7 @@ impl App {
 
                 // Calculate visible widths for horizontal scroll-follow
                 // Body and response panels share the right side; subtract gutter (4) + border (2)
-                if right_width > 120 {
+                if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center panel is ~40% of right
                     self.state.body_visible_width = (right_width as u32 * 40 / 100) as u16;
                     self.state.resp_visible_width = (right_width as u32 * 50 / 100) as u16;
@@ -250,12 +250,12 @@ impl App {
             Action::Quit => self.state.should_quit = true,
             Action::Tick => {
                 if let Some((_, instant)) = &self.state.status_message {
-                    if instant.elapsed() > std::time::Duration::from_secs(5) {
+                    if instant.elapsed() > STATUS_MESSAGE_TTL {
                         self.state.status_message = None;
                     }
                 }
                 if let Some((_, instant)) = self.state.pending_key {
-                    if instant.elapsed() > std::time::Duration::from_millis(500) {
+                    if instant.elapsed() > PENDING_KEY_TIMEOUT {
                         self.state.pending_key = None;
                     }
                 }
@@ -1650,7 +1650,7 @@ impl App {
                     let key = format!("{}/{}", collection_name, name);
                     self.state.response_cache.insert(key, ((*response).clone(), std::time::Instant::now()));
                     // Cap response cache at 50 entries, evicting oldest first
-                    while self.state.response_cache.len() > 50 {
+                    while self.state.response_cache.len() > RESPONSE_CACHE_MAX {
                         if let Some(oldest_key) = self.state.response_cache.iter()
                             .min_by_key(|(_, (_, ts))| *ts)
                             .map(|(k, _)| k.clone())
@@ -2546,7 +2546,7 @@ impl App {
         self.state.body_undo_stack.push((body, self.state.body_cursor_row, self.state.body_cursor_col));
         self.state.body_redo_stack.clear(); // new edit clears redo history
         // Cap undo history at 100 entries
-        if self.state.body_undo_stack.len() > 100 {
+        if self.state.body_undo_stack.len() > UNDO_STACK_MAX {
             self.state.body_undo_stack.remove(0);
         }
     }
@@ -2565,7 +2565,7 @@ impl App {
         let cursor = self.get_request_cursor();
         self.state.request_undo_stack.push((focus, edit_field, text, cursor));
         self.state.request_redo_stack.clear();
-        if self.state.request_undo_stack.len() > 100 {
+        if self.state.request_undo_stack.len() > UNDO_STACK_MAX {
             self.state.request_undo_stack.remove(0);
         }
     }
@@ -4194,7 +4194,7 @@ impl App {
                 if resp.status >= 200 && resp.status < 300 {
                     self.state.response_cache.insert(cache_key.clone(), (resp, std::time::Instant::now()));
                     // Cap response cache at 50 entries, evicting oldest first
-                    while self.state.response_cache.len() > 50 {
+                    while self.state.response_cache.len() > RESPONSE_CACHE_MAX {
                         if let Some(oldest_key) = self.state.response_cache.iter()
                             .min_by_key(|(_, (_, ts))| *ts)
                             .map(|(k, _)| k.clone())
