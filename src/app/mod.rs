@@ -3151,9 +3151,10 @@ impl App {
                     if let crate::model::response_type::JsonType::Object(fields) = inner.as_ref() {
                         items.push(("\u{2500}\u{2500} after [index]: \u{2500}\u{2500}".to_string(), String::new()));
                         for (key, val_type) in fields {
+                            let suffix = &key[prefix_len.min(key.len())..];
                             items.push((
                                 format!("  {}: {}", key, val_type.label()),
-                                key.clone(),
+                                suffix.to_string(),
                             ));
                         }
                     }
