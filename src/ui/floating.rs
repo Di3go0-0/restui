@@ -10,7 +10,7 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
     match overlay {
         Overlay::EnvironmentSelector => render_env_selector(frame, state),
         Overlay::HeaderAutocomplete { suggestions, selected } => {
-            render_header_autocomplete(frame, suggestions, *selected);
+            render_header_autocomplete(frame, state, suggestions, *selected);
         }
         Overlay::NewCollection { name } => render_new_collection(frame, name),
         Overlay::RenameRequest { name } => render_rename_request(frame, name),
@@ -92,10 +92,28 @@ fn render_env_selector(frame: &mut Frame, state: &AppState) {
 
 fn render_header_autocomplete(
     frame: &mut Frame,
+    state: &AppState,
     suggestions: &[(String, String)],
     selected: usize,
 ) {
-    let area = centered_rect(55, 55, frame.area());
+    let full = frame.area();
+
+    // Position near the request panel header being edited
+    let right_x = (full.width as u32 * 20 / 100) as u16; // collections panel = 20%
+    let header_row = match state.request_focus {
+        crate::state::RequestFocus::Header(i) => 3 + i as u16, // border + URL + tab bar + header index
+        _ => 3,
+    };
+    let popup_width = 50u16.min(full.width.saturating_sub(right_x + 2));
+    let popup_height = (suggestions.len() as u16 + 2).min(15).min(full.height.saturating_sub(header_row + 2));
+    let popup_x = right_x + 2;
+    let popup_y = if header_row + 1 + popup_height <= full.height {
+        header_row + 1 // below the header row
+    } else {
+        header_row.saturating_sub(popup_height) // above if no room below
+    };
+
+    let area = Rect::new(popup_x, popup_y, popup_width, popup_height);
     frame.render_widget(Clear, area);
 
     let block = Block::default()
