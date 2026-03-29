@@ -51,13 +51,13 @@ impl App {
                     }
                 }
                 Panel::Body => {
-                    self.state.body_cursor_row = row;
-                    self.state.body_cursor_col = col;
-                    let visible = self.state.body_visible_height as usize;
-                    if row < self.state.body_scroll.0 as usize {
-                        self.state.body_scroll.0 = row as u16;
-                    } else if row >= self.state.body_scroll.0 as usize + visible {
-                        self.state.body_scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    self.state.body_buf.cursor_row = row;
+                    self.state.body_buf.cursor_col = col;
+                    let visible = self.state.body_buf.visible_height as usize;
+                    if row < self.state.body_buf.scroll.0 as usize {
+                        self.state.body_buf.scroll.0 = row as u16;
+                    } else if row >= self.state.body_buf.scroll.0 as usize + visible {
+                        self.state.body_buf.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
                     }
                 }
                 _ => {}

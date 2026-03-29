@@ -374,7 +374,6 @@ pub struct AppState {
 
     // Panel state
     pub collections_state: ListState,
-    pub body_scroll: (u16, u16),
     pub response_scroll: (u16, u16),
 
     // Request panel tabs & inline editing
@@ -392,13 +391,8 @@ pub struct AppState {
     pub request_field_editing: bool,   // true = vim normal mode inside a field
     pub request_visual_anchor: usize,  // visual selection anchor for request fields
 
-    // Body inline editing
-    pub body_cursor_row: usize,
-    pub body_cursor_col: usize,
-
-    // Visual mode selection (body)
-    pub visual_anchor_row: usize,
-    pub visual_anchor_col: usize,
+    // Body vim buffer
+    pub body_buf: VimBuffer,
 
     // Response cursor (for visual mode in response)
     pub resp_cursor_row: usize,
@@ -406,10 +400,8 @@ pub struct AppState {
     pub resp_visual_anchor_row: usize,
     pub resp_visual_anchor_col: usize,
 
-    // Viewport heights/widths (updated each frame by UI)
-    pub body_visible_height: u16,
+    // Viewport heights/widths (updated each frame by UI — response only, body uses body_buf)
     pub resp_visible_height: u16,
-    pub body_visible_width: u16,
     pub resp_visible_width: u16,
 
     // Pending key for dd
@@ -424,10 +416,6 @@ pub struct AppState {
     // Clipboard (internal)
     pub yank_buffer: String,
     pub yanked_request: Option<Request>,
-
-    // Undo/Redo history for body editing
-    pub body_undo_stack: Vec<(String, usize, usize)>, // (body_snapshot, cursor_row, cursor_col)
-    pub body_redo_stack: Vec<(String, usize, usize)>,
 
     // Undo/Redo history for request field editing
     // (focus, edit_field, field_text, cursor_pos)
@@ -508,7 +496,6 @@ impl AppState {
             body_type: BodyType::Json,
             body_validation_error: None,
             collections_state,
-            body_scroll: (0, 0),
             response_scroll: (0, 0),
             request_tab: RequestTab::Headers,
             request_focus: RequestFocus::Url,
@@ -523,25 +510,18 @@ impl AppState {
             path_param_edit_field: 0,
             request_field_editing: false,
             request_visual_anchor: 0,
-            body_cursor_row: 0,
-            body_cursor_col: 0,
-            visual_anchor_row: 0,
-            visual_anchor_col: 0,
+            body_buf: VimBuffer::default(),
             resp_cursor_row: 0,
             resp_cursor_col: 0,
             resp_visual_anchor_row: 0,
             resp_visual_anchor_col: 0,
-            body_visible_height: 20,
             resp_visible_height: 20,
-            body_visible_width: 80,
             resp_visible_width: 80,
             pending_key: None,
             autocomplete: None,
             chain_autocomplete: None,
             yank_buffer: String::new(),
             yanked_request: None,
-            body_undo_stack: Vec::new(),
-            body_redo_stack: Vec::new(),
             request_undo_stack: Vec::new(),
             request_redo_stack: Vec::new(),
             response_cache: HashMap::new(),

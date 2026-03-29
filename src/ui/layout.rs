@@ -104,8 +104,8 @@ fn estimate_cursor_screen_pos(state: &AppState, right_area: Rect) -> (u16, u16) 
                 // Narrow layout: body starts at ~25%
                 (right_area.height as u32 * 25 / 100) as u16
             };
-            let cursor_row_on_screen = (state.body_cursor_row as u16).saturating_sub(state.body_scroll.0);
-            let cursor_col_on_screen = (state.body_cursor_col as u16).saturating_sub(state.body_scroll.1);
+            let cursor_row_on_screen = (state.body_buf.cursor_row as u16).saturating_sub(state.body_buf.scroll.0);
+            let cursor_col_on_screen = (state.body_buf.cursor_col as u16).saturating_sub(state.body_buf.scroll.1);
             let x = right_area.x + border + gutter + cursor_col_on_screen;
             let y = right_area.y + body_y_offset + border + 1 + cursor_row_on_screen; // +1 for body tab bar
             (x.min(right_area.right()), y.min(right_area.bottom()))

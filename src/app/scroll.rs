@@ -43,7 +43,7 @@ impl App {
     pub(super) fn scroll_top(&mut self) {
         match self.state.active_panel {
             Panel::Collections => self.state.collections_state.select(Some(0)),
-            Panel::Body => { self.state.body_scroll = (0, 0); self.state.body_cursor_row = 0; self.state.body_cursor_col = 0; }
+            Panel::Body => { self.state.body_buf.scroll = (0, 0); self.state.body_buf.cursor_row = 0; self.state.body_buf.cursor_col = 0; }
             Panel::Response => {
                 self.state.resp_cursor_row = 0;
                 self.state.resp_cursor_col = 0;
@@ -62,8 +62,8 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                self.state.body_cursor_row = lines.len().saturating_sub(1);
-                self.state.body_cursor_col = 0;
+                self.state.body_buf.cursor_row = lines.len().saturating_sub(1);
+                self.state.body_buf.cursor_col = 0;
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
@@ -77,26 +77,26 @@ impl App {
     }
 
     pub(super) fn sync_body_scroll(&mut self) {
-        let visible = self.state.body_visible_height as usize;
+        let visible = self.state.body_buf.visible_height as usize;
         if visible == 0 { return; }
-        let scroll = self.state.body_scroll.0 as usize;
-        let row = self.state.body_cursor_row;
+        let scroll = self.state.body_buf.scroll.0 as usize;
+        let row = self.state.body_buf.cursor_row;
         if row < scroll {
-            self.state.body_scroll.0 = row as u16;
+            self.state.body_buf.scroll.0 = row as u16;
         } else if row >= scroll + visible {
-            self.state.body_scroll.0 = (row - visible + 1) as u16;
+            self.state.body_buf.scroll.0 = (row - visible + 1) as u16;
         }
     }
 
     pub(super) fn sync_body_hscroll(&mut self) {
-        let col = self.state.body_cursor_col;
-        let hscroll = self.state.body_scroll.1 as usize;
-        let visible_w = self.state.body_visible_width as usize;
+        let col = self.state.body_buf.cursor_col;
+        let hscroll = self.state.body_buf.scroll.1 as usize;
+        let visible_w = self.state.body_buf.visible_width as usize;
         if visible_w == 0 { return; }
         if col < hscroll {
-            self.state.body_scroll.1 = col as u16;
+            self.state.body_buf.scroll.1 = col as u16;
         } else if col >= hscroll + visible_w {
-            self.state.body_scroll.1 = (col - visible_w + 1) as u16;
+            self.state.body_buf.scroll.1 = (col - visible_w + 1) as u16;
         }
     }
 
@@ -130,7 +130,7 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let max = body.lines().count().saturating_sub(1);
-                self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
+                self.state.body_buf.cursor_row = (self.state.body_buf.cursor_row + half).min(max);
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
@@ -146,7 +146,7 @@ impl App {
         let half = 15usize;
         match self.state.active_panel {
             Panel::Body => {
-                self.state.body_cursor_row = self.state.body_cursor_row.saturating_sub(half);
+                self.state.body_buf.cursor_row = self.state.body_buf.cursor_row.saturating_sub(half);
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {

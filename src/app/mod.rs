@@ -164,29 +164,29 @@ impl App {
                 if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center is 50% of right, body is 60% of center
                     let center_h = main_h;
-                    self.state.body_visible_height = (center_h as u32 * 60 / 100) as u16;
+                    self.state.body_buf.visible_height = (center_h as u32 * 60 / 100) as u16;
                     self.state.resp_visible_height = main_h;
                 } else {
                     // Narrow: body 35%, response 40%
-                    self.state.body_visible_height = (main_h as u32 * 35 / 100) as u16;
+                    self.state.body_buf.visible_height = (main_h as u32 * 35 / 100) as u16;
                     self.state.resp_visible_height = (main_h as u32 * 40 / 100) as u16;
                 }
                 // Account for borders and internal layout (approx 5 lines for response header area)
-                self.state.body_visible_height = self.state.body_visible_height.saturating_sub(2);
+                self.state.body_buf.visible_height = self.state.body_buf.visible_height.saturating_sub(2);
                 self.state.resp_visible_height = self.state.resp_visible_height.saturating_sub(5);
 
                 // Calculate visible widths for horizontal scroll-follow
                 // Body and response panels share the right side; subtract gutter (4) + border (2)
                 if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center panel is ~40% of right
-                    self.state.body_visible_width = (right_width as u32 * 40 / 100) as u16;
+                    self.state.body_buf.visible_width = (right_width as u32 * 40 / 100) as u16;
                     self.state.resp_visible_width = (right_width as u32 * 50 / 100) as u16;
                 } else {
                     // Narrow: body/response take full right width
-                    self.state.body_visible_width = right_width;
+                    self.state.body_buf.visible_width = right_width;
                     self.state.resp_visible_width = right_width;
                 }
-                self.state.body_visible_width = self.state.body_visible_width.saturating_sub(6); // gutter(4) + borders(2)
+                self.state.body_buf.visible_width = self.state.body_buf.visible_width.saturating_sub(6); // gutter(4) + borders(2)
                 self.state.resp_visible_width = self.state.resp_visible_width.saturating_sub(6);
             }
 
@@ -311,7 +311,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        self.state.body_cursor_col = 0;
+                        self.state.body_buf.cursor_col = 0;
                     }
                     Panel::Request => {
                         self.push_request_undo();
@@ -334,8 +334,8 @@ impl App {
                         self.state.mode = InputMode::Insert;
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                        self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
+                        let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_buf.cursor_col = (self.state.body_buf.cursor_col + 1).min(line_len);
                     }
                     Panel::Request => {
                         self.push_request_undo();
@@ -361,8 +361,8 @@ impl App {
                         self.state.mode = InputMode::Insert;
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                        self.state.body_cursor_col = line_len;
+                        let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_buf.cursor_col = line_len;
                     }
                     Panel::Request => {
                         self.push_request_undo();
@@ -391,11 +391,11 @@ impl App {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
-                    let line_end_offset = if self.state.body_cursor_row < lines.len() {
+                    let line_end_offset = if self.state.body_buf.cursor_row < lines.len() {
                         let mut off = 0;
                         for (i, line) in lines.iter().enumerate() {
                             off += line.len();
-                            if i == self.state.body_cursor_row { break; }
+                            if i == self.state.body_buf.cursor_row { break; }
                             off += 1;
                         }
                         off
@@ -403,8 +403,8 @@ impl App {
                         body.len()
                     };
                     body.insert(line_end_offset, '\n');
-                    self.state.body_cursor_row += 1;
-                    self.state.body_cursor_col = 0;
+                    self.state.body_buf.cursor_row += 1;
+                    self.state.body_buf.cursor_col = 0;
                     self.state.mode = InputMode::Insert;
                 }
             }
@@ -418,9 +418,9 @@ impl App {
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                    let line_start = row_col_to_offset(body, self.state.body_cursor_row, 0);
+                    let line_start = row_col_to_offset(body, self.state.body_buf.cursor_row, 0);
                     body.insert(line_start, '\n');
-                    self.state.body_cursor_col = 0;
+                    self.state.body_buf.cursor_col = 0;
                     self.state.mode = InputMode::Insert;
                 }
             }
@@ -438,9 +438,9 @@ impl App {
                     Panel::Body => {
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                         if line_len > 0 {
-                            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len - 1);
+                            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(line_len - 1);
                         }
                     }
                     Panel::Request => {
@@ -481,8 +481,8 @@ impl App {
                 match self.state.active_panel {
                     Panel::Body => {
                         self.state.mode = InputMode::Visual;
-                        self.state.visual_anchor_row = self.state.body_cursor_row;
-                        self.state.visual_anchor_col = self.state.body_cursor_col;
+                        self.state.body_buf.visual_anchor_row = self.state.body_buf.cursor_row;
+                        self.state.body_buf.visual_anchor_col = self.state.body_buf.cursor_col;
                     }
                     Panel::Response if self.state.response_tab == ResponseTab::Type => {
                         self.state.mode = InputMode::Visual;
@@ -504,8 +504,8 @@ impl App {
                 match self.state.active_panel {
                     Panel::Body => {
                         self.state.mode = InputMode::VisualBlock;
-                        self.state.visual_anchor_row = self.state.body_cursor_row;
-                        self.state.visual_anchor_col = self.state.body_cursor_col;
+                        self.state.body_buf.visual_anchor_row = self.state.body_buf.cursor_row;
+                        self.state.body_buf.visual_anchor_col = self.state.body_buf.cursor_col;
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::VisualBlock;
@@ -837,8 +837,8 @@ impl App {
                 self.state.current_request = Request::default();
                 self.state.current_response = None;
                 self.state.last_error = None;
-                self.state.body_cursor_row = 0;
-                self.state.body_cursor_col = 0;
+                self.state.body_buf.cursor_row = 0;
+                self.state.body_buf.cursor_col = 0;
                 self.state.request_focus = RequestFocus::Url;
                 self.state.set_status("New empty request");
             }
@@ -964,7 +964,7 @@ impl App {
                 } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
                     self.state.type_buf.home();
                 } else {
-                    self.state.body_cursor_col = 0;
+                    self.state.body_buf.cursor_col = 0;
                 }
             }
             Action::BodyLineEnd => self.inline_cursor_end(),
@@ -1040,8 +1040,8 @@ impl App {
                         // If body is empty, replace entirely
                         if self.active_body().is_empty() {
                             self.set_active_body(Some(text.clone()));
-                            self.state.body_cursor_row = 0;
-                            self.state.body_cursor_col = 0;
+                            self.state.body_buf.cursor_row = 0;
+                            self.state.body_buf.cursor_col = 0;
                         } else {
                             self.paste_text_at_cursor(&text);
                         }
@@ -1062,7 +1062,7 @@ impl App {
                     Panel::Body => {
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let row = self.state.body_cursor_row;
+                        let row = self.state.body_buf.cursor_row;
                         let end_row = (row + count).min(lines.len());
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
@@ -1096,7 +1096,7 @@ impl App {
                 if self.state.active_panel == Panel::Body {
                     let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     let end_row = (row + count).min(lines.len());
                     if row < lines.len() {
                         let yanked: String = lines[row..end_row].join("\n");
@@ -1104,7 +1104,7 @@ impl App {
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.push_body_undo();
                         for _ in 0..(end_row - row) {
-                            self.delete_body_line(self.state.body_cursor_row);
+                            self.delete_body_line(self.state.body_buf.cursor_row);
                         }
                         if count > 1 {
                             self.state.set_status(format!("Deleted {} lines", end_row - row));
@@ -1139,15 +1139,15 @@ impl App {
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                     if pos < body.len() {
                         let ch = body.as_bytes()[pos];
                         if ch != b'\n' {
                             body.remove(pos);
                             // Clamp cursor if at end of line now
                             let lines: Vec<&str> = body.lines().collect();
-                            let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len.saturating_sub(1).max(0));
+                            let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(line_len.saturating_sub(1).max(0));
                         }
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
@@ -1164,7 +1164,7 @@ impl App {
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                     if pos < body.len() && body.as_bytes()[pos] != b'\n' {
                         body.remove(pos);
                         body.insert(pos, c);
@@ -1191,7 +1191,7 @@ impl App {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if row < lines.len() {
                         let line_text = lines[row].to_string();
                         self.state.yank_buffer = line_text.clone();
@@ -1201,7 +1201,7 @@ impl App {
                         let end = offset + lines[row].len();
                         body.drain(offset..end);
                     }
-                    self.state.body_cursor_col = 0;
+                    self.state.body_buf.cursor_col = 0;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.push_request_undo();
@@ -1219,10 +1219,10 @@ impl App {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut end_col = col;
                         if end_col < bytes.len() {
                             if is_word_char(bytes[end_col]) {
@@ -1269,10 +1269,10 @@ impl App {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut start_col = col;
                         if start_col > 0 {
                             start_col -= 1;
@@ -1290,7 +1290,7 @@ impl App {
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
                         body.drain(start..end);
-                        self.state.body_cursor_col = start_col;
+                        self.state.body_buf.cursor_col = start_col;
                     }
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
@@ -1320,8 +1320,8 @@ impl App {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
-                    let row = self.state.body_cursor_row;
-                    let col = self.state.body_cursor_col;
+                    let row = self.state.body_buf.cursor_row;
+                    let col = self.state.body_buf.cursor_col;
                     if let Some(line) = lines.get(row) {
                         if col < line.len() {
                             let deleted = &line[col..];
@@ -1350,7 +1350,7 @@ impl App {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                     if pos < body.len() && body.as_bytes()[pos] != b'\n' {
                         let ch = body.remove(pos);
                         self.state.yank_buffer = ch.to_string();
@@ -1374,10 +1374,10 @@ impl App {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut end_col = col;
                         if end_col < bytes.len() {
                             if is_word_char(bytes[end_col]) {
@@ -1396,7 +1396,7 @@ impl App {
                         // Clamp cursor
                         let lines2: Vec<&str> = body.lines().collect();
                         let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
-                        self.state.body_cursor_col = col.min(line_len.saturating_sub(1).max(0));
+                        self.state.body_buf.cursor_col = col.min(line_len.saturating_sub(1).max(0));
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.push_request_undo();
@@ -1425,10 +1425,10 @@ impl App {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut end_col = col;
                         if end_col < bytes.len() {
                             // de: delete to end of word (inclusive of last word char)
@@ -1454,7 +1454,7 @@ impl App {
                         body.drain(start..end);
                         let lines2: Vec<&str> = body.lines().collect();
                         let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
-                        self.state.body_cursor_col = col.min(line_len.saturating_sub(1).max(0));
+                        self.state.body_buf.cursor_col = col.min(line_len.saturating_sub(1).max(0));
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.push_request_undo();
@@ -1489,10 +1489,10 @@ impl App {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut start_col = col;
                         if start_col > 0 {
                             start_col -= 1;
@@ -1509,7 +1509,7 @@ impl App {
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
                         body.drain(start..end);
-                        self.state.body_cursor_col = start_col;
+                        self.state.body_buf.cursor_col = start_col;
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.push_request_undo();
@@ -1537,10 +1537,10 @@ impl App {
                 if self.state.active_panel == Panel::Body {
                     let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
-                    let row = self.state.body_cursor_row;
+                    let row = self.state.body_buf.cursor_row;
                     if let Some(line) = lines.get(row) {
                         let bytes = line.as_bytes();
-                        let col = self.state.body_cursor_col;
+                        let col = self.state.body_buf.cursor_col;
                         let mut end_col = col;
                         if end_col < bytes.len() {
                             if is_word_char(bytes[end_col]) {
@@ -1581,12 +1581,12 @@ impl App {
                         self.state.set_status("Already at oldest change");
                     }
                 } else if self.state.active_panel == Panel::Body {
-                    if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
+                    if let Some((snapshot, row, col)) = self.state.body_buf.undo_stack.pop() {
                         let current_body = self.active_body().to_string();
-                        self.state.body_redo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
+                        self.state.body_buf.redo_stack.push((current_body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col));
                         self.set_active_body(if snapshot.is_empty() { None } else { Some(snapshot) });
-                        self.state.body_cursor_row = row;
-                        self.state.body_cursor_col = col;
+                        self.state.body_buf.cursor_row = row;
+                        self.state.body_buf.cursor_col = col;
                         self.state.set_status("Undo");
                     } else {
                         self.state.set_status("Already at oldest change");
@@ -1623,12 +1623,12 @@ impl App {
                         self.state.set_status("Already at newest change");
                     }
                 } else if self.state.active_panel == Panel::Body {
-                    if let Some((snapshot, row, col)) = self.state.body_redo_stack.pop() {
+                    if let Some((snapshot, row, col)) = self.state.body_buf.redo_stack.pop() {
                         let current_body = self.active_body().to_string();
-                        self.state.body_undo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
+                        self.state.body_buf.undo_stack.push((current_body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col));
                         self.set_active_body(if snapshot.is_empty() { None } else { Some(snapshot) });
-                        self.state.body_cursor_row = row;
-                        self.state.body_cursor_col = col;
+                        self.state.body_buf.cursor_row = row;
+                        self.state.body_buf.cursor_col = col;
                         self.state.set_status("Redo");
                     } else {
                         self.state.set_status("Already at newest change");
@@ -1681,18 +1681,18 @@ impl App {
             }
             Action::BodyNextTab => {
                 self.state.body_type = self.state.body_type.next();
-                self.state.body_cursor_row = 0;
-                self.state.body_cursor_col = 0;
-                self.state.body_undo_stack.clear();
-                self.state.body_redo_stack.clear();
+                self.state.body_buf.cursor_row = 0;
+                self.state.body_buf.cursor_col = 0;
+                self.state.body_buf.undo_stack.clear();
+                self.state.body_buf.redo_stack.clear();
                 self.state.validate_body();
             }
             Action::BodyPrevTab => {
                 self.state.body_type = self.state.body_type.prev();
-                self.state.body_cursor_row = 0;
-                self.state.body_cursor_col = 0;
-                self.state.body_undo_stack.clear();
-                self.state.body_redo_stack.clear();
+                self.state.body_buf.cursor_row = 0;
+                self.state.body_buf.cursor_col = 0;
+                self.state.body_buf.undo_stack.clear();
+                self.state.body_buf.redo_stack.clear();
                 self.state.validate_body();
             }
 
@@ -2332,8 +2332,8 @@ impl App {
                     Panel::Body => {
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let row = self.state.body_cursor_row;
-                        let col = self.state.body_cursor_col;
+                        let row = self.state.body_buf.cursor_row;
+                        let col = self.state.body_buf.cursor_col;
                         if let Some(line) = lines.get(row) {
                             if col < line.len() {
                                 let yanked = &line[col..];
@@ -2361,8 +2361,8 @@ impl App {
                     Panel::Body => {
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let row = self.state.body_cursor_row;
-                        let col = self.state.body_cursor_col;
+                        let row = self.state.body_buf.cursor_row;
+                        let col = self.state.body_buf.cursor_col;
                         if let Some(line) = lines.get(row) {
                             if col > 0 {
                                 let yanked = &line[..col];
@@ -2390,7 +2390,7 @@ impl App {
                     Panel::Body => {
                         let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
-                        let row = self.state.body_cursor_row;
+                        let row = self.state.body_buf.cursor_row;
                         if row < lines.len() {
                             let yanked: String = lines[row..].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
@@ -2418,8 +2418,8 @@ impl App {
                         self.push_body_undo();
                         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let lines: Vec<&str> = body.lines().collect();
-                        let row = self.state.body_cursor_row;
-                        let col = self.state.body_cursor_col;
+                        let row = self.state.body_buf.cursor_row;
+                        let col = self.state.body_buf.cursor_col;
                         if let Some(line) = lines.get(row) {
                             if col < line.len() {
                                 let deleted = &line[col..];
@@ -2431,7 +2431,7 @@ impl App {
                                 // Clamp cursor
                                 let lines2: Vec<&str> = body.lines().collect();
                                 let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
-                                self.state.body_cursor_col = if line_len > 0 { col.min(line_len - 1) } else { 0 };
+                                self.state.body_buf.cursor_col = if line_len > 0 { col.min(line_len - 1) } else { 0 };
                             }
                         }
                     }
@@ -2461,8 +2461,8 @@ impl App {
                         self.push_body_undo();
                         let body_text = self.active_body().to_string();
                         let lines: Vec<&str> = body_text.lines().collect();
-                        let row = self.state.body_cursor_row;
-                        let col = self.state.body_cursor_col;
+                        let row = self.state.body_buf.cursor_row;
+                        let col = self.state.body_buf.cursor_col;
                         if col > 0 {
                             if let Some(line) = lines.get(row) {
                                 let deleted = &line[..col];
@@ -2472,7 +2472,7 @@ impl App {
                                 let start = row_col_to_offset(body, row, 0);
                                 let end = row_col_to_offset(body, row, col);
                                 body.drain(start..end);
-                                self.state.body_cursor_col = 0;
+                                self.state.body_buf.cursor_col = 0;
                             }
                         }
                     }
@@ -2497,7 +2497,7 @@ impl App {
                         self.push_body_undo();
                         let body_text = self.active_body().to_string();
                         let lines: Vec<&str> = body_text.lines().collect();
-                        let row = self.state.body_cursor_row;
+                        let row = self.state.body_buf.cursor_row;
                         if row < lines.len() {
                             let yanked: String = lines[row..].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
@@ -2510,9 +2510,9 @@ impl App {
                             body.drain(drain_start..body.len());
                             // Clamp cursor
                             let max_row = body.lines().count().saturating_sub(1);
-                            self.state.body_cursor_row = self.state.body_cursor_row.min(max_row);
-                            let cur_line_len = body.lines().nth(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                            self.state.body_cursor_col = self.state.body_cursor_col.min(cur_line_len.saturating_sub(1));
+                            self.state.body_buf.cursor_row = self.state.body_buf.cursor_row.min(max_row);
+                            let cur_line_len = body.lines().nth(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(cur_line_len.saturating_sub(1));
                             self.state.set_status("Deleted to end of file");
                         }
                     }
@@ -2543,8 +2543,8 @@ impl App {
                         self.push_body_undo();
                         let body_text = self.active_body().to_string();
                         let lines: Vec<&str> = body_text.lines().collect();
-                        let row = self.state.body_cursor_row;
-                        let col = self.state.body_cursor_col;
+                        let row = self.state.body_buf.cursor_row;
+                        let col = self.state.body_buf.cursor_col;
                         if col > 0 {
                             if let Some(line) = lines.get(row) {
                                 let deleted = &line[..col];
@@ -2554,7 +2554,7 @@ impl App {
                                 let start = row_col_to_offset(body, row, 0);
                                 let end = row_col_to_offset(body, row, col);
                                 body.drain(start..end);
-                                self.state.body_cursor_col = 0;
+                                self.state.body_buf.cursor_col = 0;
                             }
                         }
                         self.state.mode = InputMode::Insert;
@@ -2603,11 +2603,11 @@ impl App {
     /// Save a snapshot of the body for undo. Call before any body mutation.
     fn push_body_undo(&mut self) {
         let body = self.active_body().to_string();
-        self.state.body_undo_stack.push((body, self.state.body_cursor_row, self.state.body_cursor_col));
-        self.state.body_redo_stack.clear(); // new edit clears redo history
+        self.state.body_buf.undo_stack.push((body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col));
+        self.state.body_buf.redo_stack.clear(); // new edit clears redo history
         // Cap undo history at 100 entries
-        if self.state.body_undo_stack.len() > UNDO_STACK_MAX {
-            self.state.body_undo_stack.remove(0);
+        if self.state.body_buf.undo_stack.len() > UNDO_STACK_MAX {
+            self.state.body_buf.undo_stack.remove(0);
         }
     }
 
@@ -2662,11 +2662,11 @@ impl App {
         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let lines: Vec<&str> = body.lines().collect();
         if lines.is_empty() {
-            self.state.body_cursor_row = 0;
-            self.state.body_cursor_col = 0;
+            self.state.body_buf.cursor_row = 0;
+            self.state.body_buf.cursor_col = 0;
         } else {
-            self.state.body_cursor_row = lines.len() - 1;
-            self.state.body_cursor_col = lines.last().map(|l| l.len()).unwrap_or(0);
+            self.state.body_buf.cursor_row = lines.len() - 1;
+            self.state.body_buf.cursor_col = lines.last().map(|l| l.len()).unwrap_or(0);
         }
     }
 
@@ -2681,16 +2681,16 @@ impl App {
     fn paste_text_at_cursor(&mut self, text: &str) {
         if text.is_empty() { return; }
         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-        let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+        let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
         body.insert_str(pos, text);
         // Move cursor to end of pasted text
         let new_lines: usize = text.chars().filter(|c| *c == '\n').count();
         if new_lines > 0 {
-            self.state.body_cursor_row += new_lines;
+            self.state.body_buf.cursor_row += new_lines;
             let last_line = text.rsplit('\n').next().unwrap_or("");
-            self.state.body_cursor_col = last_line.len();
+            self.state.body_buf.cursor_col = last_line.len();
         } else {
-            self.state.body_cursor_col += text.len();
+            self.state.body_buf.cursor_col += text.len();
         }
     }
 
@@ -2784,9 +2784,9 @@ impl App {
         match self.state.active_panel {
             Panel::Body => {
                 let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                 body.insert(pos, c);
-                self.state.body_cursor_col += 1;
+                self.state.body_buf.cursor_col += 1;
             }
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => {
@@ -2872,8 +2872,8 @@ impl App {
             Panel::Body => {
                 let body = self.active_body().to_string();
                 let lines: Vec<&str> = body.lines().collect();
-                let line = lines.get(self.state.body_cursor_row).copied().unwrap_or("");
-                (line.to_string(), self.state.body_cursor_col)
+                let line = lines.get(self.state.body_buf.cursor_row).copied().unwrap_or("");
+                (line.to_string(), self.state.body_buf.cursor_col)
             }
             _ => {
                 self.state.chain_autocomplete = None;
@@ -3099,18 +3099,18 @@ impl App {
         match self.state.active_panel {
             Panel::Body => {
                 let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                 if pos > 0 {
                     let ch = body.as_bytes()[pos - 1];
                     body.remove(pos - 1);
                     if ch == b'\n' {
-                        if self.state.body_cursor_row > 0 {
-                            self.state.body_cursor_row -= 1;
+                        if self.state.body_buf.cursor_row > 0 {
+                            self.state.body_buf.cursor_row -= 1;
                             let lines: Vec<&str> = body.lines().collect();
-                            self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.body_buf.cursor_col = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                         }
                     } else {
-                        self.state.body_cursor_col = self.state.body_cursor_col.saturating_sub(1);
+                        self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.saturating_sub(1);
                     }
                 }
             }
@@ -3203,7 +3203,7 @@ impl App {
         match self.state.active_panel {
             Panel::Body => {
                 let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                 if pos < body.len() { body.remove(pos); }
             }
             Panel::Request => match self.state.request_focus {
@@ -3273,11 +3273,11 @@ impl App {
         }
         if self.state.active_panel == Panel::Body {
             let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-            let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+            let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
 
             // Determine indent: copy leading whitespace from current line
             let lines: Vec<&str> = body.lines().collect();
-            let current_line = lines.get(self.state.body_cursor_row).copied().unwrap_or("");
+            let current_line = lines.get(self.state.body_buf.cursor_row).copied().unwrap_or("");
             let leading_ws: String = current_line.chars().take_while(|c| c.is_whitespace()).collect();
 
             // Check if char before cursor is { or [ for extra indent
@@ -3289,21 +3289,21 @@ impl App {
 
             let indent = format!("\n{}{}", leading_ws, extra_indent);
             body.insert_str(pos, &indent);
-            self.state.body_cursor_row += 1;
-            self.state.body_cursor_col = leading_ws.len() + extra_indent.len();
+            self.state.body_buf.cursor_row += 1;
+            self.state.body_buf.cursor_col = leading_ws.len() + extra_indent.len();
         }
     }
 
     fn inline_cursor_left(&mut self) {
         match self.state.active_panel {
             Panel::Body => {
-                if self.state.body_cursor_col > 0 {
-                    self.state.body_cursor_col -= 1;
-                } else if self.state.body_cursor_row > 0 {
-                    self.state.body_cursor_row -= 1;
+                if self.state.body_buf.cursor_col > 0 {
+                    self.state.body_buf.cursor_col -= 1;
+                } else if self.state.body_buf.cursor_row > 0 {
+                    self.state.body_buf.cursor_row -= 1;
                     let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
-                    self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                    self.state.body_buf.cursor_col = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 }
             }
             Panel::Request => match self.state.request_focus {
@@ -3341,14 +3341,14 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 // In normal mode, cursor stays on last char (max = len-1)
                 let max = if is_insert { line_len } else { line_len.saturating_sub(1) };
-                if self.state.body_cursor_col < max {
-                    self.state.body_cursor_col += 1;
-                } else if is_insert && self.state.body_cursor_row + 1 < lines.len() {
-                    self.state.body_cursor_row += 1;
-                    self.state.body_cursor_col = 0;
+                if self.state.body_buf.cursor_col < max {
+                    self.state.body_buf.cursor_col += 1;
+                } else if is_insert && self.state.body_buf.cursor_row + 1 < lines.len() {
+                    self.state.body_buf.cursor_row += 1;
+                    self.state.body_buf.cursor_col = 0;
                 }
             }
             Panel::Request => {
@@ -3388,13 +3388,13 @@ impl App {
     }
 
     fn body_cursor_up(&mut self) {
-        if self.state.body_cursor_row > 0 {
-            self.state.body_cursor_row -= 1;
+        if self.state.body_buf.cursor_row > 0 {
+            self.state.body_buf.cursor_row -= 1;
             let body = self.state.current_request.get_body(self.state.body_type);
             let lines: Vec<&str> = body.lines().collect();
-            let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+            let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
-            self.state.body_cursor_col = self.state.body_cursor_col.min(max);
+            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(max);
         }
         self.sync_body_scroll(); self.sync_body_hscroll();
     }
@@ -3402,20 +3402,20 @@ impl App {
     fn body_cursor_down(&mut self) {
         let body = self.state.current_request.get_body(self.state.body_type);
         let line_count = body.lines().count().max(1);
-        if self.state.body_cursor_row + 1 < line_count {
-            self.state.body_cursor_row += 1;
+        if self.state.body_buf.cursor_row + 1 < line_count {
+            self.state.body_buf.cursor_row += 1;
             let lines: Vec<&str> = body.lines().collect();
-            let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+            let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
             // In normal mode, clamp to last char; in insert mode, allow end position
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
-            self.state.body_cursor_col = self.state.body_cursor_col.min(max);
+            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(max);
         }
         self.sync_body_scroll(); self.sync_body_hscroll();
     }
 
     fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
-            Panel::Body => { self.state.body_cursor_col = 0; self.sync_body_hscroll(); },
+            Panel::Body => { self.state.body_buf.cursor_col = 0; self.sync_body_hscroll(); },
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
                 self.state.type_buf.cursor_col = 0;
             },
@@ -3437,8 +3437,8 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
+                let line_len = lines.get(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.body_buf.cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
                 self.sync_body_hscroll();
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
@@ -3489,9 +3489,9 @@ impl App {
             }
             Panel::Body => {
                 let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
-                let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
                 body.insert_str(pos, "  ");
-                self.state.body_cursor_col += 2;
+                self.state.body_buf.cursor_col += 2;
             }
             _ => {}
         }
@@ -3505,7 +3505,7 @@ impl App {
             }
             _ => {
                 let t = self.active_body().to_string();
-                (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
+                (t, &mut self.state.body_buf.cursor_row as *mut usize, &mut self.state.body_buf.cursor_col as *mut usize)
             }
         }
     }
@@ -3933,13 +3933,13 @@ impl App {
         let start = row_col_to_offset(body, sr, sc);
         let end = row_col_to_offset(body, er, ec).min(body.len());
         if start < end { body.drain(start..end); }
-        self.state.body_cursor_row = sr;
-        self.state.body_cursor_col = sc;
+        self.state.body_buf.cursor_row = sr;
+        self.state.body_buf.cursor_col = sc;
     }
 
     fn visual_range(&self) -> (usize, usize, usize, usize) {
-        let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
-        let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
+        let (ar, ac) = (self.state.body_buf.visual_anchor_row, self.state.body_buf.visual_anchor_col);
+        let (cr, cc) = (self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
         if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) }
     }
 
@@ -3947,8 +3947,8 @@ impl App {
     fn get_block_selection(&self) -> String {
         let body = self.state.current_request.get_body(self.state.body_type);
         let lines: Vec<&str> = body.lines().collect();
-        let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
-        let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
+        let (ar, ac) = (self.state.body_buf.visual_anchor_row, self.state.body_buf.visual_anchor_col);
+        let (cr, cc) = (self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
         let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
         let mut result = Vec::new();
         for row in min_row..=max_row {
@@ -3963,8 +3963,8 @@ impl App {
 
     /// Delete the block (rectangle) selection from body.
     fn delete_block_selection(&mut self) {
-        let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
-        let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
+        let (ar, ac) = (self.state.body_buf.visual_anchor_row, self.state.body_buf.visual_anchor_col);
+        let (cr, cc) = (self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
         let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
 
         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
@@ -3977,8 +3977,8 @@ impl App {
             }
         }
         *body = lines.join("\n");
-        self.state.body_cursor_row = min_row;
-        self.state.body_cursor_col = min_col;
+        self.state.body_buf.cursor_row = min_row;
+        self.state.body_buf.cursor_col = min_col;
     }
 
     /// Get block selection from response (read-only, for yank).
@@ -4006,9 +4006,9 @@ impl App {
             lines.remove(row);
             *body = lines.join("\n");
             let max_row = body.lines().count().saturating_sub(1);
-            self.state.body_cursor_row = self.state.body_cursor_row.min(max_row);
-            let cur_line_len = body.lines().nth(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.body_cursor_col = self.state.body_cursor_col.min(cur_line_len);
+            self.state.body_buf.cursor_row = self.state.body_buf.cursor_row.min(max_row);
+            let cur_line_len = body.lines().nth(self.state.body_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.body_buf.cursor_col = self.state.body_buf.cursor_col.min(cur_line_len);
         }
     }
 
@@ -4078,12 +4078,12 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                if let Some(line) = lines.get(self.state.body_cursor_row) {
+                if let Some(line) = lines.get(self.state.body_buf.cursor_row) {
                     let bytes = line.as_bytes();
-                    let start = self.state.body_cursor_col + 1;
+                    let start = self.state.body_buf.cursor_col + 1;
                     for i in start..bytes.len() {
                         if bytes[i] == target as u8 {
-                            self.state.body_cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
+                            self.state.body_buf.cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
                             break;
                         }
                     }
@@ -4130,13 +4130,13 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                if let Some(line) = lines.get(self.state.body_cursor_row) {
+                if let Some(line) = lines.get(self.state.body_buf.cursor_row) {
                     let bytes = line.as_bytes();
-                    let col = self.state.body_cursor_col;
+                    let col = self.state.body_buf.cursor_col;
                     if col > 0 {
                         for i in (0..col).rev() {
                             if bytes[i] == target as u8 {
-                                self.state.body_cursor_col = if after { (i + 1).min(col) } else { i };
+                                self.state.body_buf.cursor_col = if after { (i + 1).min(col) } else { i };
                                 break;
                             }
                         }
