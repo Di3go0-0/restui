@@ -284,7 +284,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        self.position_body_cursor_at_end();
+                        // i inserts at current cursor position (don't move to end)
                     }
                     Panel::Request => {
                         self.push_request_undo();
@@ -294,6 +294,9 @@ impl App {
                             self.position_request_cursor_at_end();
                         }
                         self.state.request_field_editing = true;
+                    }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.mode = InputMode::Insert;
                     }
                     _ => {}
                 }
@@ -412,6 +415,16 @@ impl App {
                             let cursor = self.get_request_cursor();
                             self.set_request_cursor(cursor.min(len - 1));
                         }
+                    }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        // Clamp cursor for type editor
+                        let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                        let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        if line_len > 0 {
+                            self.state.type_cursor_col = self.state.type_cursor_col.min(line_len - 1);
+                        }
+                        // Validate after editing
+                        self.validate_response_type();
                     }
                     _ => {}
                 }
@@ -833,10 +846,12 @@ impl App {
             Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
             Action::InlineCursorRight => { for _ in 0..count { self.inline_cursor_right(); } }
             Action::InlineCursorUp => match self.state.active_panel {
+                Panel::Response if self.state.response_tab == ResponseTab::Type => self.type_cursor_up(),
                 Panel::Response => self.resp_cursor_up(),
                 _ => self.body_cursor_up(),
             },
             Action::InlineCursorDown => match self.state.active_panel {
+                Panel::Response if self.state.response_tab == ResponseTab::Type => self.type_cursor_down(),
                 Panel::Response => self.resp_cursor_down(),
                 _ => self.body_cursor_down(),
             },
@@ -974,21 +989,29 @@ impl App {
                     Panel::Body => {
                         let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                         let lines: Vec<&str> = body.lines().collect();
-                        if let Some(line) = lines.get(self.state.body_cursor_row) {
-                            let line_text = line.to_string();
-                            self.state.yank_buffer = format!("{}\n", line_text);
-                            let _ = crate::clipboard::copy_to_clipboard(&line_text);
-                            self.state.set_status("Yanked line");
+                        let row = self.state.body_cursor_row;
+                        let end_row = (row + count).min(lines.len());
+                        if row < lines.len() {
+                            let yanked: String = lines[row..end_row].join("\n");
+                            self.state.yank_buffer = format!("{}\n", yanked);
+                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            if count > 1 {
+                                self.state.set_status(format!("Yanked {} lines", end_row - row));
+                            } else {
+                                self.state.set_status("Yanked line");
+                            }
                         }
                     }
                     Panel::Response => {
-                        // yy on response: copy the current line
+                        // yy on response: copy the current line(s)
                         let text = self.get_response_body_text();
                         let lines: Vec<&str> = text.lines().collect();
-                        if let Some(line) = lines.get(self.state.resp_cursor_row) {
-                            let line_text = line.to_string();
-                            self.state.yank_buffer = format!("{}\n", line_text);
-                            let _ = crate::clipboard::copy_to_clipboard(&line_text);
+                        let row = self.state.resp_cursor_row;
+                        let end_row = (row + count).min(lines.len());
+                        if row < lines.len() {
+                            let yanked: String = lines[row..end_row].join("\n");
+                            self.state.yank_buffer = format!("{}\n", yanked);
+                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
                             self.state.set_status("Yanked line");
                         }
                     }
@@ -1000,12 +1023,21 @@ impl App {
                 if self.state.active_panel == Panel::Body {
                     let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                     let lines: Vec<&str> = body.lines().collect();
-                    if let Some(line) = lines.get(self.state.body_cursor_row) {
-                        self.state.yank_buffer = format!("{}\n", line);
+                    let row = self.state.body_cursor_row;
+                    let end_row = (row + count).min(lines.len());
+                    if row < lines.len() {
+                        let yanked: String = lines[row..end_row].join("\n");
+                        self.state.yank_buffer = format!("{}\n", yanked);
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.push_body_undo();
-                        self.delete_body_line(self.state.body_cursor_row);
-                        self.state.set_status("Line deleted");
+                        for _ in 0..(end_row - row) {
+                            self.delete_body_line(self.state.body_cursor_row);
+                        }
+                        if count > 1 {
+                            self.state.set_status(format!("Deleted {} lines", end_row - row));
+                        } else {
+                            self.state.set_status("Line deleted");
+                        }
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     // dd in request field edit: clear the field
@@ -1047,6 +1079,13 @@ impl App {
                     if pos < body.len() && body.as_bytes()[pos] != b'\n' {
                         body.remove(pos);
                         body.insert(pos, c);
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let cursor = self.get_request_cursor();
+                    let len = self.get_request_field_len();
+                    if cursor < len {
+                        self.replace_request_char_at(cursor, c);
                     }
                 }
             }
@@ -1554,6 +1593,20 @@ impl App {
             Action::ResponsePrevTab => {
                 self.state.response_tab = self.state.response_tab.prev();
             }
+            Action::RegenerateType => {
+                self.state.response_type_locked = false;
+                if let Some(ref resp) = self.state.current_response {
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                        let rt = crate::model::response_type::JsonType::infer(&json_val);
+                        self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                        self.state.response_type = Some(rt);
+                    }
+                }
+                self.state.type_validation_errors.clear();
+                self.state.type_cursor_row = 0;
+                self.state.type_cursor_col = 0;
+                self.state.set_status("Type regenerated from response");
+            }
 
             // === Request Execution ===
             Action::ExecuteRequest => {
@@ -1598,6 +1651,18 @@ impl App {
                     }
                 }
                 self.state.type_scroll = 0;
+
+                // Auto-generate type text (unless user has locked it)
+                if !self.state.response_type_locked {
+                    if let Some(ref rt) = self.state.response_type {
+                        self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                    } else {
+                        self.state.response_type_text.clear();
+                    }
+                    self.state.type_validation_errors.clear();
+                } else {
+                    self.validate_response_type();
+                }
 
                 self.state.set_status(format!("{} - {}", status, elapsed));
             }
@@ -2116,6 +2181,256 @@ impl App {
                 self.state.count_prefix = Some(self.state.count_prefix.unwrap_or(0) * 10 + digit);
             }
 
+            // === Yank/Delete/Change with direction ===
+            Action::YankToEnd => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let lines: Vec<&str> = body.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        let col = self.state.body_cursor_col;
+                        if let Some(line) = lines.get(row) {
+                            if col < line.len() {
+                                let yanked = &line[col..];
+                                self.state.yank_buffer = yanked.to_string();
+                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                self.state.set_status("Yanked to end of line");
+                            }
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col < text.len() {
+                            self.state.yank_buffer = text[col..].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.state.set_status("Yanked to end");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::YankToStart => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let lines: Vec<&str> = body.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        let col = self.state.body_cursor_col;
+                        if let Some(line) = lines.get(row) {
+                            if col > 0 {
+                                let yanked = &line[..col];
+                                self.state.yank_buffer = yanked.to_string();
+                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                self.state.set_status("Yanked to start of line");
+                            }
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col > 0 {
+                            self.state.yank_buffer = text[..col].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.state.set_status("Yanked to start");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::YankToBottom => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let lines: Vec<&str> = body.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        if row < lines.len() {
+                            let yanked: String = lines[row..].join("\n");
+                            self.state.yank_buffer = format!("{}\n", yanked);
+                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            self.state.set_status("Yanked to end of file");
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        // Single-line field: same as yank to end
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col < text.len() {
+                            self.state.yank_buffer = text[col..].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.state.set_status("Yanked to end");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::DeleteToEnd => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
+                        let lines: Vec<&str> = body.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        let col = self.state.body_cursor_col;
+                        if let Some(line) = lines.get(row) {
+                            if col < line.len() {
+                                let deleted = &line[col..];
+                                self.state.yank_buffer = deleted.to_string();
+                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let start = row_col_to_offset(body, row, col);
+                                let end = row_col_to_offset(body, row, line.len());
+                                body.drain(start..end);
+                                // Clamp cursor
+                                let lines2: Vec<&str> = body.lines().collect();
+                                let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
+                                self.state.body_cursor_col = if line_len > 0 { col.min(line_len - 1) } else { 0 };
+                            }
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        self.push_request_undo();
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col < text.len() {
+                            self.state.yank_buffer = text[col..].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.drain_request_field(col, text.len());
+                            let len = self.get_request_field_len();
+                            if len > 0 {
+                                self.set_request_cursor(col.min(len - 1));
+                            } else {
+                                self.set_request_cursor(0);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::DeleteToStart => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        let body_text = self.active_body().to_string();
+                        let lines: Vec<&str> = body_text.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        let col = self.state.body_cursor_col;
+                        if col > 0 {
+                            if let Some(line) = lines.get(row) {
+                                let deleted = &line[..col];
+                                self.state.yank_buffer = deleted.to_string();
+                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
+                                let start = row_col_to_offset(body, row, 0);
+                                let end = row_col_to_offset(body, row, col);
+                                body.drain(start..end);
+                                self.state.body_cursor_col = 0;
+                            }
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        self.push_request_undo();
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col > 0 {
+                            self.state.yank_buffer = text[..col].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.drain_request_field(0, col);
+                            self.set_request_cursor(0);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::DeleteToBottom => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        let body_text = self.active_body().to_string();
+                        let lines: Vec<&str> = body_text.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        if row < lines.len() {
+                            let yanked: String = lines[row..].join("\n");
+                            self.state.yank_buffer = format!("{}\n", yanked);
+                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
+                            // Delete from start of current row to end of body
+                            let start = row_col_to_offset(body, row, 0);
+                            // Also remove the preceding newline if not at row 0
+                            let drain_start = if row > 0 && start > 0 { start - 1 } else { start };
+                            body.drain(drain_start..body.len());
+                            // Clamp cursor
+                            let max_row = body.lines().count().saturating_sub(1);
+                            self.state.body_cursor_row = self.state.body_cursor_row.min(max_row);
+                            let cur_line_len = body.lines().nth(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.body_cursor_col = self.state.body_cursor_col.min(cur_line_len.saturating_sub(1));
+                            self.state.set_status("Deleted to end of file");
+                        }
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        // Single-line: same as delete to end
+                        self.push_request_undo();
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col < text.len() {
+                            self.state.yank_buffer = text[col..].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.drain_request_field(col, text.len());
+                            let len = self.get_request_field_len();
+                            if len > 0 {
+                                self.set_request_cursor(col.min(len - 1));
+                            } else {
+                                self.set_request_cursor(0);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::ChangeToStart => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        let body_text = self.active_body().to_string();
+                        let lines: Vec<&str> = body_text.lines().collect();
+                        let row = self.state.body_cursor_row;
+                        let col = self.state.body_cursor_col;
+                        if col > 0 {
+                            if let Some(line) = lines.get(row) {
+                                let deleted = &line[..col];
+                                self.state.yank_buffer = deleted.to_string();
+                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
+                                let start = row_col_to_offset(body, row, 0);
+                                let end = row_col_to_offset(body, row, col);
+                                body.drain(start..end);
+                                self.state.body_cursor_col = 0;
+                            }
+                        }
+                        self.state.mode = InputMode::Insert;
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        self.push_request_undo();
+                        let text = self.get_request_field_text();
+                        let col = self.get_request_cursor();
+                        if col > 0 {
+                            self.state.yank_buffer = text[..col].to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            self.drain_request_field(0, col);
+                        }
+                        self.set_request_cursor(0);
+                        self.state.mode = InputMode::Insert;
+                    }
+                    _ => {}
+                }
+            }
+
             // === Find char motions ===
             Action::FindCharForward(c) => {
                 self.state.pending_key = None;
@@ -2259,6 +2574,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     fn position_body_cursor_at_end(&mut self) {
         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let lines: Vec<&str> = body.lines().collect();
@@ -2438,6 +2754,13 @@ impl App {
                     }
                 }
             },
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let text = &mut self.state.response_type_text;
+                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                text.insert(pos, c);
+                self.state.type_cursor_col += 1;
+                self.state.response_type_locked = true;
+            }
             _ => {}
         }
     }
@@ -2537,6 +2860,24 @@ impl App {
                     }
                 }
             },
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let text = &mut self.state.response_type_text;
+                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                if pos > 0 {
+                    let ch = text.as_bytes()[pos - 1];
+                    text.remove(pos - 1);
+                    if ch == b'\n' {
+                        if self.state.type_cursor_row > 0 {
+                            self.state.type_cursor_row -= 1;
+                            let lines: Vec<&str> = text.lines().collect();
+                            self.state.type_cursor_col = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        }
+                    } else {
+                        self.state.type_cursor_col = self.state.type_cursor_col.saturating_sub(1);
+                    }
+                    self.state.response_type_locked = true;
+                }
+            }
             _ => {}
         }
     }
@@ -2579,11 +2920,40 @@ impl App {
                     }
                 }
             },
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let text = &mut self.state.response_type_text;
+                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                if pos < text.len() {
+                    text.remove(pos);
+                    self.state.response_type_locked = true;
+                }
+            }
             _ => {}
         }
     }
 
     fn inline_newline(&mut self) {
+        if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+            let text = &mut self.state.response_type_text;
+            let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+
+            let lines: Vec<&str> = text.lines().collect();
+            let current_line = lines.get(self.state.type_cursor_row).copied().unwrap_or("");
+            let leading_ws: String = current_line.chars().take_while(|c| c.is_whitespace()).collect();
+
+            let char_before = if pos > 0 { text.as_bytes().get(pos - 1).copied() } else { None };
+            let extra_indent = match char_before {
+                Some(b'{') | Some(b'[') => "  ",
+                _ => "",
+            };
+
+            let indent = format!("\n{}{}", leading_ws, extra_indent);
+            text.insert_str(pos, &indent);
+            self.state.type_cursor_row += 1;
+            self.state.type_cursor_col = leading_ws.len() + extra_indent.len();
+            self.state.response_type_locked = true;
+            return;
+        }
         if self.state.active_panel == Panel::Body {
             let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
             let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
@@ -2626,6 +2996,15 @@ impl App {
                 RequestFocus::Cookie(_) => { self.state.cookie_edit_cursor = self.state.cookie_edit_cursor.saturating_sub(1); }
                 RequestFocus::PathParam(_) => { self.state.path_param_edit_cursor = self.state.path_param_edit_cursor.saturating_sub(1); }
             },
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
+                if self.state.type_cursor_col > 0 {
+                    self.state.type_cursor_col -= 1;
+                } else if self.state.type_cursor_row > 0 {
+                    self.state.type_cursor_row -= 1;
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    self.state.type_cursor_col = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                }
+            }
             Panel::Response => {
                 self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
             }
@@ -2661,6 +3040,16 @@ impl App {
                 let cursor = self.get_request_cursor();
                 if cursor < max {
                     self.set_request_cursor(cursor + 1);
+                }
+            }
+            Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
+                let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                if self.state.type_cursor_col < line_len {
+                    self.state.type_cursor_col += 1;
+                } else if self.state.type_cursor_row + 1 < lines.len() {
+                    self.state.type_cursor_row += 1;
+                    self.state.type_cursor_col = 0;
                 }
             }
             Panel::Response => {
@@ -2710,6 +3099,9 @@ impl App {
     fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
             Panel::Body => { self.state.body_cursor_col = 0; self.sync_body_hscroll(); },
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
+                self.state.type_cursor_col = 0;
+            },
             Panel::Response => { self.state.resp_cursor_col = 0; self.sync_resp_hscroll(); },
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = 0,
@@ -2731,6 +3123,11 @@ impl App {
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
                 self.sync_body_hscroll();
+            }
+            Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
+                let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.type_cursor_col = line_len;
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
@@ -3084,6 +3481,41 @@ impl App {
         let new_len = self.get_request_field_len();
         if cursor >= new_len && new_len > 0 {
             self.set_request_cursor(new_len - 1);
+        }
+    }
+
+    fn replace_request_char_at(&mut self, pos: usize, c: char) {
+        match self.state.request_focus {
+            RequestFocus::Url => {
+                if pos < self.state.current_request.url.len() {
+                    self.state.current_request.url.remove(pos);
+                    self.state.current_request.url.insert(pos, c);
+                }
+            }
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
+                    if pos < field.len() { field.remove(pos); field.insert(pos, c); }
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    if pos < field.len() { field.remove(pos); field.insert(pos, c); }
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(ck) = self.state.current_request.cookies.get_mut(idx) {
+                    let field = if self.state.cookie_edit_field == 0 { &mut ck.name } else { &mut ck.value };
+                    if pos < field.len() { field.remove(pos); field.insert(pos, c); }
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    if pos < field.len() { field.remove(pos); field.insert(pos, c); }
+                }
+            }
         }
     }
 
@@ -3778,6 +4210,68 @@ impl App {
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
         self.sync_resp_scroll(); self.sync_resp_hscroll();
+    }
+
+    fn type_cursor_up(&mut self) {
+        if self.state.type_cursor_row > 0 {
+            self.state.type_cursor_row -= 1;
+            let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+            let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            self.state.type_cursor_col = self.state.type_cursor_col.min(max);
+        }
+        // Sync type_scroll
+        if self.state.type_cursor_row < self.state.type_scroll {
+            self.state.type_scroll = self.state.type_cursor_row;
+        }
+    }
+
+    fn type_cursor_down(&mut self) {
+        let line_count = self.state.response_type_text.lines().count().max(1);
+        if self.state.type_cursor_row + 1 < line_count {
+            self.state.type_cursor_row += 1;
+            let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+            let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            self.state.type_cursor_col = self.state.type_cursor_col.min(max);
+        }
+        // Sync type_scroll
+        let visible = self.state.resp_visible_height as usize;
+        if visible > 0 && self.state.type_cursor_row >= self.state.type_scroll + visible {
+            self.state.type_scroll = self.state.type_cursor_row.saturating_sub(visible - 1);
+        }
+    }
+
+    fn validate_response_type(&mut self) {
+        self.state.type_validation_errors.clear();
+
+        let resp = match &self.state.current_response {
+            Some(r) => r,
+            None => return,
+        };
+
+        let json_val = match serde_json::from_str::<serde_json::Value>(&resp.body) {
+            Ok(v) => v,
+            Err(_) => {
+                self.state.type_validation_errors.push("Response body is not valid JSON".to_string());
+                return;
+            }
+        };
+
+        let user_type = match crate::model::response_type::parse_type_text(&self.state.response_type_text) {
+            Ok(t) => t,
+            Err(e) => {
+                self.state.type_validation_errors.push(format!("Type parse error: {}", e));
+                return;
+            }
+        };
+
+        let mismatches = user_type.validate(&json_val);
+        for m in mismatches {
+            self.state.type_validation_errors.push(
+                format!("{}: expected {}, got {}", m.path, m.expected, m.actual)
+            );
+        }
     }
 
     fn get_response_visual_selection(&self) -> String {

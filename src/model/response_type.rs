@@ -8,6 +8,7 @@ pub enum JsonType {
     String,
     Array(Box<JsonType>),
     Object(Vec<(std::string::String, JsonType)>),
+    Enum(Vec<std::string::String>),
 }
 
 impl JsonType {
@@ -44,6 +45,7 @@ impl JsonType {
             JsonType::String => "string",
             JsonType::Array(_) => "array",
             JsonType::Object(_) => "object",
+            JsonType::Enum(_) => "enum",
         }
     }
 
@@ -55,6 +57,13 @@ impl JsonType {
             JsonType::Bool => vec![format!("{}boolean", pad)],
             JsonType::Number => vec![format!("{}number", pad)],
             JsonType::String => vec![format!("{}string", pad)],
+            JsonType::Enum(values) => {
+                let enum_str = values.iter()
+                    .map(|v| format!("\"{}\"", v))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                vec![format!("{}{}", pad, enum_str)]
+            }
             JsonType::Array(inner) => {
                 match inner.as_ref() {
                     JsonType::Object(fields) => {
@@ -94,6 +103,13 @@ impl JsonType {
                             if let Some(last) = lines.last_mut() {
                                 last.push_str(comma);
                             }
+                        }
+                        JsonType::Enum(values) => {
+                            let enum_str = values.iter()
+                                .map(|v| format!("\"{}\"", v))
+                                .collect::<Vec<_>>()
+                                .join(" | ");
+                            lines.push(format!("{}  {}: {}{}", pad, key, enum_str, comma));
                         }
                         _ => {
                             lines.push(format!("{}  {}: {}{}", pad, key, val.label(), comma));
@@ -143,6 +159,31 @@ impl JsonType {
             (JsonType::Bool, serde_json::Value::Bool(_)) => {}
             (JsonType::Number, serde_json::Value::Number(_)) => {}
             (JsonType::String, serde_json::Value::String(_)) => {}
+            (JsonType::Enum(allowed), serde_json::Value::String(s)) => {
+                if !allowed.iter().any(|v| v == s) {
+                    mismatches.push(TypeMismatch {
+                        path: path.to_string(),
+                        expected: format!("one of {:?}", allowed),
+                        actual: format!("\"{}\"", s),
+                    });
+                }
+            }
+            (JsonType::Enum(allowed), _) => {
+                // Enum expects a string value
+                let actual_str = match value {
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Null => "null".to_string(),
+                    _ => JsonType::infer(value).label().to_string(),
+                };
+                if !allowed.iter().any(|v| v == &actual_str) {
+                    mismatches.push(TypeMismatch {
+                        path: path.to_string(),
+                        expected: format!("one of {:?}", allowed),
+                        actual: actual_str,
+                    });
+                }
+            }
             (JsonType::Array(expected_inner), serde_json::Value::Array(arr)) => {
                 if let Some(first) = arr.first() {
                     let child_path = format!("{}[0]", path);
@@ -191,4 +232,212 @@ pub struct TypeMismatch {
     pub path: String,
     pub expected: String,
     pub actual: String,
+}
+
+/// Parse a TypeScript-like type text back into a JsonType.
+///
+/// Supports:
+/// - `string`, `number`, `boolean`, `null` — primitives
+/// - `type[]` — arrays
+/// - `{ field: type, ... }` — objects (multi-line)
+/// - `"val1" | "val2" | ...` — enums
+pub fn parse_type_text(text: &str) -> Result<JsonType, std::string::String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Ok(JsonType::Null);
+    }
+
+    let mut parser = TypeParser::new(trimmed);
+    parser.parse_type()
+}
+
+struct TypeParser<'a> {
+    input: &'a str,
+    pos: usize,
+}
+
+impl<'a> TypeParser<'a> {
+    fn new(input: &'a str) -> Self {
+        Self { input, pos: 0 }
+    }
+
+    fn remaining(&self) -> &'a str {
+        &self.input[self.pos..]
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.pos < self.input.len() {
+            let ch = self.input.as_bytes()[self.pos];
+            if ch == b' ' || ch == b'\t' || ch == b'\n' || ch == b'\r' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.input.as_bytes().get(self.pos).copied()
+    }
+
+    fn parse_type(&mut self) -> Result<JsonType, std::string::String> {
+        self.skip_whitespace();
+
+        if self.pos >= self.input.len() {
+            return Ok(JsonType::Null);
+        }
+
+        match self.peek() {
+            Some(b'{') => self.parse_object(),
+            Some(b'"') => self.parse_enum_or_string_literal(),
+            _ => self.parse_primitive_or_array(),
+        }
+    }
+
+    fn parse_primitive_or_array(&mut self) -> Result<JsonType, std::string::String> {
+        self.skip_whitespace();
+        // Read a keyword
+        let start = self.pos;
+        while self.pos < self.input.len() {
+            let ch = self.input.as_bytes()[self.pos];
+            if ch.is_ascii_alphanumeric() || ch == b'_' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        let keyword = &self.input[start..self.pos];
+
+        // Check for [] suffix
+        self.skip_whitespace();
+        let is_array = if self.remaining().starts_with("[]") {
+            self.pos += 2;
+            true
+        } else {
+            false
+        };
+
+        let base = match keyword {
+            "string" => JsonType::String,
+            "number" => JsonType::Number,
+            "boolean" => JsonType::Bool,
+            "null" => JsonType::Null,
+            "" => return Err("Expected type keyword".to_string()),
+            other => return Err(format!("Unknown type: {}", other)),
+        };
+
+        if is_array {
+            Ok(JsonType::Array(Box::new(base)))
+        } else {
+            Ok(base)
+        }
+    }
+
+    fn parse_enum_or_string_literal(&mut self) -> Result<JsonType, std::string::String> {
+        // Parse "value1" | "value2" | ...
+        let mut values = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+            if self.peek() != Some(b'"') {
+                break;
+            }
+            self.pos += 1; // skip opening "
+            let start = self.pos;
+            while self.pos < self.input.len() && self.input.as_bytes()[self.pos] != b'"' {
+                self.pos += 1;
+            }
+            if self.pos >= self.input.len() {
+                return Err("Unterminated string literal in enum".to_string());
+            }
+            values.push(self.input[start..self.pos].to_string());
+            self.pos += 1; // skip closing "
+
+            self.skip_whitespace();
+            if self.remaining().starts_with('|') {
+                self.pos += 1; // skip |
+            } else {
+                break;
+            }
+        }
+
+        if values.is_empty() {
+            return Err("Empty enum".to_string());
+        }
+
+        Ok(JsonType::Enum(values))
+    }
+
+    fn parse_object(&mut self) -> Result<JsonType, std::string::String> {
+        self.skip_whitespace();
+        if self.peek() != Some(b'{') {
+            return Err("Expected '{'".to_string());
+        }
+        self.pos += 1; // skip {
+
+        let mut fields: Vec<(std::string::String, JsonType)> = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+
+            // Check for closing brace
+            if self.peek() == Some(b'}') {
+                self.pos += 1;
+                break;
+            }
+
+            if self.pos >= self.input.len() {
+                return Err("Unterminated object: expected '}'".to_string());
+            }
+
+            // Parse field name
+            let name = self.parse_field_name()?;
+
+            // Expect colon
+            self.skip_whitespace();
+            if self.peek() != Some(b':') {
+                return Err(format!("Expected ':' after field name '{}'", name));
+            }
+            self.pos += 1; // skip :
+
+            // Parse field type
+            self.skip_whitespace();
+            let field_type = self.parse_type()?;
+
+            fields.push((name, field_type));
+
+            // Skip optional comma
+            self.skip_whitespace();
+            if self.peek() == Some(b',') {
+                self.pos += 1;
+            }
+        }
+
+        // Check for [] suffix (array of objects)
+        self.skip_whitespace();
+        if self.remaining().starts_with("[]") {
+            self.pos += 2;
+            Ok(JsonType::Array(Box::new(JsonType::Object(fields))))
+        } else {
+            Ok(JsonType::Object(fields))
+        }
+    }
+
+    fn parse_field_name(&mut self) -> Result<std::string::String, std::string::String> {
+        self.skip_whitespace();
+        let start = self.pos;
+        while self.pos < self.input.len() {
+            let ch = self.input.as_bytes()[self.pos];
+            if ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-' || ch == b'.' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        let name = &self.input[start..self.pos];
+        if name.is_empty() {
+            return Err("Expected field name".to_string());
+        }
+        Ok(name.to_string())
+    }
 }

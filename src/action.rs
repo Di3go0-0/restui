@@ -105,6 +105,13 @@ pub enum Action {
     DeleteWordEnd,            // de — delete to end of word (stay normal)
     DeleteWordBack,           // db — delete word backward (stay normal)
     YankWord,                 // yw — yank from cursor to next word start
+    YankToEnd,                // y$ — yank from cursor to end of line
+    YankToStart,              // y0 — yank from cursor to start of line
+    YankToBottom,             // yG — yank from cursor to end of file
+    DeleteToEnd,              // d$ / D — delete from cursor to end of line
+    DeleteToStart,            // d0 — delete from cursor to start of line
+    DeleteToBottom,           // dG — delete from cursor to end of file
+    ChangeToStart,            // c0 — delete to start of line + enter insert
     Undo,                     // u — undo last body edit
     Redo,                     // Ctrl+r — redo last undone edit
 
@@ -158,6 +165,7 @@ pub enum Action {
     // Response tabs
     ResponseNextTab,
     ResponsePrevTab,
+    RegenerateType,
 
     // SSL
     ToggleInsecureMode,

@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::Action;
-use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab};
+use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 0. Command Palette consumes all input when open
@@ -125,7 +125,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         Panel::Collections => map_collections_key(key),
         Panel::Request => map_request_normal_key(key, state),
         Panel::Body => map_body_normal_key(key),
-        Panel::Response => map_response_key(key),
+        Panel::Response => map_response_key(key, state),
     }
 }
 
@@ -246,10 +246,12 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Up => match state.active_panel {
             Panel::Body => Some(Action::InlineCursorUp),
+            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineCursorUp),
             _ => None,
         },
         KeyCode::Down => match state.active_panel {
             Panel::Body => Some(Action::InlineCursorDown),
+            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineCursorDown),
             _ => None,
         },
         KeyCode::Home => Some(Action::InlineCursorHome),
@@ -257,6 +259,7 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Tab => Some(Action::InlineTab),
         KeyCode::Enter => match state.active_panel {
             Panel::Body => Some(Action::InlineNewline),
+            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineNewline),
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) if state.header_edit_field == 0 => {
                     Some(Action::InlineTab)
@@ -330,18 +333,27 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
         ('d', KeyCode::Char('w')) => Some(Action::DeleteWord),
         ('d', KeyCode::Char('e')) => Some(Action::DeleteWordEnd),
         ('d', KeyCode::Char('b')) => Some(Action::DeleteWordBack),
+        ('d', KeyCode::Char('$')) => Some(Action::DeleteToEnd),
+        ('d', KeyCode::Char('0')) => Some(Action::DeleteToStart),
+        ('d', KeyCode::Char('G')) => Some(Action::DeleteToBottom),
         ('c', KeyCode::Char('c')) => Some(Action::ChangeLine),
         ('c', KeyCode::Char('w')) | ('c', KeyCode::Char('e')) => Some(Action::ChangeWord),
         ('c', KeyCode::Char('b')) => Some(Action::ChangeWordBack),
+        ('c', KeyCode::Char('$')) => Some(Action::ChangeToEnd),
+        ('c', KeyCode::Char('0')) => Some(Action::ChangeToStart),
         ('y', KeyCode::Char('y')) => match state.active_panel {
             Panel::Collections => Some(Action::YankRequest),
             _ => Some(Action::YankLine),
         },
         ('y', KeyCode::Char('w')) => Some(Action::YankWord),
+        ('y', KeyCode::Char('$')) => Some(Action::YankToEnd),
+        ('y', KeyCode::Char('0')) => Some(Action::YankToStart),
+        ('y', KeyCode::Char('G')) => Some(Action::YankToBottom),
         ('r', KeyCode::Char(c)) => {
             // r + char: replace character under cursor
             match state.active_panel {
                 Panel::Body => Some(Action::ReplaceChar(c)),
+                Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
                 _ => None,
             }
         },
@@ -445,8 +457,10 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
         KeyCode::Char('s') => Some(Action::Substitute),
         KeyCode::Char('C') => Some(Action::ChangeToEnd),
+        KeyCode::Char('D') => Some(Action::DeleteToEnd),
         KeyCode::Char('c') => Some(Action::PendingKey('c')),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
+        KeyCode::Char('r') => Some(Action::PendingKey('r')),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
         KeyCode::Char('u') => Some(Action::Undo),
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
@@ -491,6 +505,7 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('s') => Some(Action::Substitute),
         KeyCode::Char('S') => Some(Action::ChangeLine),
         KeyCode::Char('C') => Some(Action::ChangeToEnd),
+        KeyCode::Char('D') => Some(Action::DeleteToEnd),
         KeyCode::Char('c') => Some(Action::PendingKey('c')),
         KeyCode::Char('r') => Some(Action::PendingKey('r')),
         KeyCode::Char('u') => Some(Action::Undo),
@@ -510,7 +525,21 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
-fn map_response_key(key: KeyEvent) -> Option<Action> {
+fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    if state.response_tab == ResponseTab::Type {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
+            KeyCode::Char('g') => Some(Action::ScrollTop),
+            KeyCode::Char('G') => Some(Action::ScrollBottom),
+            KeyCode::Char('i') => Some(Action::EnterInsertMode),
+            KeyCode::Char('R') => Some(Action::RegenerateType),
+            KeyCode::Char('}') => Some(Action::ResponseNextTab),
+            KeyCode::Char('{') => Some(Action::ResponsePrevTab),
+            _ => None,
+        };
+    }
+
     match key.code {
         KeyCode::Char('}') => Some(Action::ResponseNextTab),
         KeyCode::Char('{') => Some(Action::ResponsePrevTab),

@@ -365,15 +365,19 @@ fn render_type_tab(
     let status_line = build_status_line(resp, &state.theme);
     let tab_bar = render_response_tab_bar(state, is_focused);
 
+    let errors = &state.type_validation_errors;
+    let validation_height: u16 = if errors.is_empty() { 0 } else { (errors.len() as u16 + 1).min(5) };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),        // Status line
-            Constraint::Length(1),        // Tab bar
-            Constraint::Length(1),        // Separator
-            Constraint::Percentage(50),   // Type schema
-            Constraint::Length(1),        // Separator
-            Constraint::Min(1),           // Response body preview
+            Constraint::Length(1),                    // Status line
+            Constraint::Length(1),                    // Tab bar
+            Constraint::Length(1),                    // Separator
+            Constraint::Percentage(50),               // Type editor
+            Constraint::Length(validation_height),    // Validation warnings
+            Constraint::Length(1),                    // Separator
+            Constraint::Min(1),                       // Response body preview
         ])
         .split(inner);
 
@@ -388,67 +392,122 @@ fn render_type_tab(
     ));
     frame.render_widget(Paragraph::new(sep1), chunks[2]);
 
-    // Type schema area
-    render_type_schema(frame, state, chunks[3]);
+    // Type editor area
+    render_type_editor(frame, state, chunks[3], is_focused);
+
+    // Validation warnings
+    if !errors.is_empty() {
+        let val_area = chunks[4];
+        let mut val_lines: Vec<Line<'static>> = Vec::new();
+        val_lines.push(Line::from(Span::styled(
+            format!(" Validation ({} issues):", errors.len()),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )));
+        for err in errors.iter().take(4) {
+            val_lines.push(Line::from(Span::styled(
+                format!("  * {}", err),
+                Style::default().fg(Color::Red),
+            )));
+        }
+        let val_paragraph = Paragraph::new(val_lines);
+        frame.render_widget(val_paragraph, val_area);
+    }
 
     // Separator
     let sep2 = Line::from(Span::styled(
         sep_str,
         Style::default().fg(Color::DarkGray),
     ));
-    frame.render_widget(Paragraph::new(sep2), chunks[4]);
+    frame.render_widget(Paragraph::new(sep2), chunks[5]);
 
     // Response body preview (read-only, using same rendering as body tab but in half height)
-    let preview_area = chunks[5];
+    let preview_area = chunks[6];
     render_response_body(frame, state, resp, preview_area, inner, is_focused, false, false);
 }
 
-fn render_type_schema(
+fn render_type_editor(
     frame: &mut Frame,
     state: &AppState,
     type_area: Rect,
+    is_focused: bool,
 ) {
     let t = &state.theme;
+    let is_insert = is_focused && state.mode == InputMode::Insert && state.response_tab == ResponseTab::Type;
+    let text = &state.response_type_text;
 
-    if let Some(ref response_type) = state.response_type {
-        let is_root_array = matches!(response_type, crate::model::response_type::JsonType::Array(_));
-        let display_lines = response_type.to_display_lines(0);
-
-        let mut type_ui_lines: Vec<Line<'static>> = Vec::new();
-
-        if is_root_array {
-            type_ui_lines.push(Line::from(Span::styled(
-                " ⚠ Response is an array. Use [index] to access elements.".to_string(),
-                Style::default().fg(Color::Yellow),
-            )));
-        }
-
-        for dl in &display_lines {
-            type_ui_lines.push(colorize_type_line(dl, t));
-        }
-
-        let total_type_lines = type_ui_lines.len();
-        let visible_height = type_area.height as usize;
-        let scroll = state.type_scroll.min(total_type_lines.saturating_sub(visible_height));
-
-        let visible_lines: Vec<Line<'static>> = type_ui_lines
-            .into_iter()
-            .skip(scroll)
-            .take(visible_height)
-            .collect();
-
-        let type_paragraph = Paragraph::new(visible_lines);
-        frame.render_widget(type_paragraph, type_area);
-
-        if total_type_lines > visible_height {
-            render_scrollbar(frame, type_area, scroll, total_type_lines, visible_height, t.text_dim);
-        }
-    } else {
+    if text.is_empty() && state.response_type.is_none() {
         let placeholder = Paragraph::new(Line::from(Span::styled(
             " (no type - execute a request to see the response type)".to_string(),
             Style::default().fg(Color::DarkGray),
         )));
         frame.render_widget(placeholder, type_area);
+        return;
+    }
+
+    let text_lines: Vec<&str> = if text.is_empty() { vec![""] } else { text.lines().collect() };
+    let total_lines = text_lines.len();
+    let visible_height = type_area.height as usize;
+    let scroll = state.type_scroll.min(total_lines.saturating_sub(visible_height));
+
+    let gutter_width: u16 = 4;
+    let text_area_x = type_area.x + gutter_width;
+    let text_area_width = type_area.width.saturating_sub(gutter_width);
+
+    let locked_indicator = if state.response_type_locked { " [locked]" } else { "" };
+    let _ = locked_indicator; // used below in hint line if needed
+
+    for vi in 0..visible_height {
+        let line_idx = scroll + vi;
+        if line_idx >= total_lines { break; }
+
+        let y = type_area.y + vi as u16;
+
+        // Gutter (line number)
+        let is_cursor_line = is_focused && line_idx == state.type_cursor_row;
+        let gutter_style = if is_cursor_line {
+            Style::default().fg(t.gutter_active)
+        } else {
+            Style::default().fg(t.gutter)
+        };
+        let line_num = format!("{:>3} ", line_idx + 1);
+        let gutter_area = Rect::new(type_area.x, y, gutter_width, 1);
+        frame.render_widget(Paragraph::new(Span::styled(line_num, gutter_style)), gutter_area);
+
+        // Text content
+        let line_text = text_lines.get(line_idx).copied().unwrap_or("");
+        let line_area = Rect::new(text_area_x, y, text_area_width, 1);
+
+        // Colorize the line
+        let colored_line = colorize_type_line(line_text, t);
+        frame.render_widget(Paragraph::new(colored_line), line_area);
+
+        // Cursor rendering
+        if is_focused && line_idx == state.type_cursor_row {
+            let col = state.type_cursor_col;
+            if col < text_area_width as usize {
+                let cursor_x = text_area_x + col as u16;
+                if is_insert {
+                    // Insert mode: thin bar cursor via terminal
+                    frame.set_cursor_position(Position::new(cursor_x, y));
+                } else {
+                    // Normal mode: block cursor highlight
+                    let ch = line_text.chars().nth(col).unwrap_or(' ');
+                    let cursor_area = Rect::new(cursor_x, y, 1, 1);
+                    frame.render_widget(
+                        Paragraph::new(Span::styled(
+                            ch.to_string(),
+                            Style::default().fg(Color::Black).bg(t.text),
+                        )),
+                        cursor_area,
+                    );
+                }
+            }
+        }
+    }
+
+    // Scrollbar
+    if total_lines > visible_height {
+        render_scrollbar(frame, type_area, scroll, total_lines, visible_height, t.text_dim);
     }
 }
 
@@ -480,12 +539,32 @@ fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
         // Type value
         let type_no_comma = type_part.trim_end_matches(',');
         let has_comma = type_part.ends_with(',');
-        let type_color = type_keyword_color(type_no_comma, t);
-        spans.push(Span::styled(type_no_comma.to_string(), Style::default().fg(type_color)));
+
+        // Check if it's an enum: "val1" | "val2" | ...
+        if type_no_comma.contains('|') && type_no_comma.contains('"') {
+            colorize_enum_spans(type_no_comma, t, &mut spans);
+        } else {
+            let type_color = type_keyword_color(type_no_comma, t);
+            spans.push(Span::styled(type_no_comma.to_string(), Style::default().fg(type_color)));
+        }
         if has_comma {
             spans.push(Span::styled(",", Style::default().fg(t.text_dim)));
         }
 
+        return Line::from(spans);
+    }
+
+    // Check for standalone enum line: "val1" | "val2" | ...
+    if trimmed.contains('|') && trimmed.contains('"') {
+        let leading_ws = &line[..line.len() - line.trim_start().len()];
+        if !leading_ws.is_empty() {
+            spans.push(Span::raw(leading_ws.to_string()));
+        }
+        let no_comma = trimmed.trim_end_matches(',');
+        colorize_enum_spans(no_comma, t, &mut spans);
+        if trimmed.ends_with(',') {
+            spans.push(Span::styled(",", Style::default().fg(t.text_dim)));
+        }
         return Line::from(spans);
     }
 
@@ -519,6 +598,20 @@ fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
 
     // Fallback
     Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
+}
+
+fn colorize_enum_spans(enum_text: &str, t: &crate::theme::Theme, spans: &mut Vec<Span<'static>>) {
+    let parts: Vec<&str> = enum_text.split('|').collect();
+    for (i, part) in parts.iter().enumerate() {
+        let trimmed_part = part.trim();
+        spans.push(Span::styled(
+            trimmed_part.to_string(),
+            Style::default().fg(t.json_string),
+        ));
+        if i < parts.len() - 1 {
+            spans.push(Span::styled(" | ", Style::default().fg(t.text_dim)));
+        }
+    }
 }
 
 fn type_keyword_color(kw: &str, t: &crate::theme::Theme) -> Color {
