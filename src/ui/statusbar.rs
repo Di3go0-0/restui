@@ -32,6 +32,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 .bg(t.border_visual)
                 .add_modifier(Modifier::BOLD),
         ),
+        InputMode::VisualBlock => Span::styled(
+            " V-BLOCK ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(t.border_visual)
+                .add_modifier(Modifier::BOLD),
+        ),
     };
 
     let env_name = state.environments.active_name();
@@ -77,7 +84,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // Cursor position for body/response panels
     let show_cursor_pos = match state.active_panel {
-        Panel::Body => state.mode == InputMode::Insert || state.mode == InputMode::Visual,
+        Panel::Body => state.mode == InputMode::Insert || state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock,
         Panel::Response => true, // Always show position in response
         _ => false,
     };
@@ -114,6 +121,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             _ => " Esc:normal ",
         },
         InputMode::Visual => " y:yank  d:delete  Esc:cancel  hjkl:select ",
+        InputMode::VisualBlock => " y:yank  d:delete  Esc:cancel  hjkl:block select ",
     };
 
     let hints_len = hints.len() as u16;

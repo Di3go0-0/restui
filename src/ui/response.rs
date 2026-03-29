@@ -10,6 +10,7 @@ use crate::state::{AppState, InputMode, Panel};
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Response;
     let is_visual = is_focused && state.mode == InputMode::Visual;
+    let is_visual_block = is_focused && state.mode == InputMode::VisualBlock;
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
@@ -148,6 +149,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         (0, 0, 0, 0)
     };
 
+    // Visual block range
+    let (vb_min_row, vb_min_col, vb_max_row, vb_max_col) = if is_visual_block {
+        resp_visual_block_range(state)
+    } else {
+        (0, 0, 0, 0)
+    };
+
     for vi in 0..visible_height {
         let line_idx = scroll_y + vi;
         if line_idx >= total_lines {
@@ -186,7 +194,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let line_text = body_lines.get(line_idx).copied().unwrap_or("");
         let content_line = if is_visual && line_idx >= vsr && line_idx <= ver {
             highlight_visual_line(line_text, line_idx, vsr, vsc, ver, vec_)
-        } else if is_focused && line_idx == cursor_row && !is_visual {
+        } else if is_visual_block && line_idx >= vb_min_row && line_idx <= vb_max_row {
+            highlight_block_line(line_text, vb_min_col, vb_max_col)
+        } else if is_focused && line_idx == cursor_row && !is_visual && !is_visual_block {
             // Highlight current line in normal mode
             Line::from(Span::styled(
                 line_text.to_string(),
@@ -201,7 +211,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     }
 
     // Cursor in visual mode
-    if is_visual {
+    if is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < body_area.height {
             let cursor_x = text_area_x + state.resp_cursor_col as u16;
@@ -211,6 +221,32 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             }
         }
     }
+}
+
+fn resp_visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
+    let (ar, ac) = (state.resp_visual_anchor_row, state.resp_visual_anchor_col);
+    let (cr, cc) = (state.resp_cursor_row, state.resp_cursor_col);
+    (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
+}
+
+fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'_> {
+    let start = min_col.min(line.len());
+    let end = max_col.min(line.len());
+
+    let before = &line[..start];
+    let selected = &line[start..end];
+    let after = &line[end..];
+
+    let sel_style = Style::default()
+        .bg(Color::Cyan)
+        .fg(Color::Black)
+        .add_modifier(Modifier::BOLD);
+
+    Line::from(vec![
+        Span::styled(before.to_string(), Style::default().fg(Color::White)),
+        Span::styled(selected.to_string(), sel_style),
+        Span::styled(after.to_string(), Style::default().fg(Color::White)),
+    ])
 }
 
 fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {

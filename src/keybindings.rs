@@ -17,8 +17,20 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 2. Ctrl shortcuts (work in all modes)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('r') => return Some(Action::ExecuteRequest),
-            KeyCode::Char('v') => return Some(Action::PasteFromClipboard),
+            KeyCode::Char('r') => {
+                // Ctrl+R: Redo in normal mode on Body panel, otherwise execute request
+                if state.mode == InputMode::Normal && state.active_panel == Panel::Body {
+                    return Some(Action::Redo);
+                }
+                return Some(Action::ExecuteRequest);
+            }
+            KeyCode::Char('v') => {
+                // Ctrl+V: Visual Block in normal mode on Body/Response, paste in insert mode
+                if state.mode == InputMode::Insert {
+                    return Some(Action::PasteFromClipboard);
+                }
+                return Some(Action::EnterVisualBlockMode);
+            }
             KeyCode::Char('d') => return Some(Action::ScrollHalfDown),
             KeyCode::Char('u') => return Some(Action::ScrollHalfUp),
             KeyCode::Char('s') => return Some(Action::ToggleInsecureMode),
@@ -26,8 +38,8 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         }
     }
 
-    // 3. Visual mode
-    if state.mode == InputMode::Visual {
+    // 3. Visual mode (both Visual and VisualBlock)
+    if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
         return map_visual_mode_key(key);
     }
 
@@ -251,13 +263,20 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
                 _ => None,
             },
-            Panel::Body => Some(Action::YankLine),
+            Panel::Body => Some(Action::DeleteLine),
             Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
         ('y', KeyCode::Char('y')) => match state.active_panel {
             Panel::Collections => Some(Action::YankRequest),
             _ => Some(Action::YankLine),
+        },
+        ('r', KeyCode::Char(c)) => {
+            // r + char: replace character under cursor
+            match state.active_panel {
+                Panel::Body => Some(Action::ReplaceChar(c)),
+                _ => None,
+            }
         },
         _ => map_normal_mode_key(key, state),
     }
@@ -332,11 +351,14 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('i') => Some(Action::EnterInsertMode),
         KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
         KeyCode::Char('a') => Some(Action::EnterAppendMode),
-        KeyCode::Char('A') => Some(Action::EnterInsertModeStart), // A = end of line + insert
+        KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
         KeyCode::Char('o') => Some(Action::OpenLineBelow),
         KeyCode::Char('O') => Some(Action::OpenLineAbove),
         KeyCode::Char('v') => Some(Action::EnterVisualMode),
         // Edit
+        KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
+        KeyCode::Char('r') => Some(Action::PendingKey('r')),
+        KeyCode::Char('u') => Some(Action::Undo),
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),

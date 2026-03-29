@@ -9,10 +9,12 @@ pub enum Action {
 
     // Vim mode transitions
     EnterInsertMode,
-    EnterInsertModeStart, // I — insert at beginning of line
-    EnterAppendMode,      // A — append at end of line
+    EnterInsertModeStart,  // I — insert at beginning of line
+    EnterAppendMode,       // a — append after cursor
+    EnterAppendModeEnd,    // A — append at end of line
     ExitInsertMode,
     EnterVisualMode,
+    EnterVisualBlockMode,  // Ctrl+V — block selection
     ExitVisualMode,
 
     // New line (vim o/O)
@@ -81,6 +83,13 @@ pub enum Action {
     Paste,
     PasteFromClipboard,
 
+    // Vim edit commands
+    ReplaceChar(char),        // r + char — replace character under cursor
+    DeleteCharUnderCursor,    // x — delete char under cursor in normal mode
+    DeleteLine,               // dd — delete line (yank + remove)
+    Undo,                     // u — undo last body edit
+    Redo,                     // Ctrl+r — redo last undone edit
+
     // Inline autocomplete (Ctrl+n, Ctrl+p, Ctrl+y)
     AutocompleteNext,
     AutocompletePrev,
@@ -130,6 +139,9 @@ pub enum Action {
     CopyResponseBody,
     CopyAsCurl,
     YankLine,
+
+    // Chain cache
+    SetChainCacheTTL(u64),
 
     // App
     Quit,

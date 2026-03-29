@@ -1,11 +1,14 @@
+use std::collections::HashMap;
+use std::time::Instant;
+
+use ratatui::widgets::ListState;
+
 use crate::config::AppConfig;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::history::HistoryEntry;
 use crate::model::request::Request;
 use crate::model::response::Response;
-use ratatui::widgets::ListState;
-use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -70,6 +73,7 @@ pub enum InputMode {
     Normal,
     Insert,
     Visual,
+    VisualBlock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +316,16 @@ pub struct AppState {
     pub yank_buffer: String,
     pub yanked_request: Option<Request>,
 
+    // Undo/Redo history for body editing
+    pub body_undo_stack: Vec<(String, usize, usize)>, // (body_snapshot, cursor_row, cursor_col)
+    pub body_redo_stack: Vec<(String, usize, usize)>,
+
+    // Pending replace mode (r + next char)
+    pub pending_replace: bool,
+
+    // Response cache for request chaining: key = "collection/request_name", value = (Response, cached_at)
+    pub response_cache: HashMap<String, (Response, Instant)>,
+
     // Collections expand/collapse
     pub expanded_collections: std::collections::HashSet<usize>,
 
@@ -382,6 +396,10 @@ impl AppState {
             autocomplete: None,
             yank_buffer: String::new(),
             yanked_request: None,
+            body_undo_stack: Vec::new(),
+            body_redo_stack: Vec::new(),
+            pending_replace: false,
+            response_cache: HashMap::new(),
             expanded_collections: {
                 let mut s = std::collections::HashSet::new();
                 s.insert(0); // expand first collection by default

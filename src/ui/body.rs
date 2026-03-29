@@ -10,6 +10,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Body;
     let is_insert = is_focused && state.mode == InputMode::Insert;
     let is_visual = is_focused && state.mode == InputMode::Visual;
+    let is_visual_block = is_focused && state.mode == InputMode::VisualBlock;
     let is_normal_focused = is_focused && state.mode == InputMode::Normal;
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
@@ -104,13 +105,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 colorize_json_line(line_text, t)
             }
+        } else if is_visual_block {
+            let (min_row, min_col, max_row, max_col) = visual_block_range(state);
+            if line_idx >= min_row && line_idx <= max_row {
+                highlight_block_line(line_text, min_col, max_col)
+            } else {
+                colorize_json_line(line_text, t)
+            }
         } else {
-            // Highlight current line background in normal mode
+            // Highlight current line background in normal mode + block cursor
             if is_normal_focused && line_idx == cursor_row {
-                Line::from(Span::styled(
-                    line_text.to_string(),
-                    Style::default().fg(t.text).bg(t.bg_highlight),
-                ))
+                render_normal_cursor_line(line_text, state.body_cursor_col, t)
             } else {
                 colorize_json_line(line_text, t)
             }
@@ -121,7 +126,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     }
 
     // Cursor position
-    if is_insert || is_visual {
+    if is_insert || is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < inner.height {
             let cursor_x = text_area_x + state.body_cursor_col as u16;
@@ -143,6 +148,34 @@ fn visual_range(state: &AppState) -> (usize, usize, usize, usize) {
     }
 }
 
+/// Calculate the rectangle for Visual Block selection: (min_row, min_col, max_row, max_col)
+fn visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
+    let (ar, ac) = (state.visual_anchor_row, state.visual_anchor_col);
+    let (cr, cc) = (state.body_cursor_row, state.body_cursor_col);
+    (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
+}
+
+/// Highlight a rectangular column range within a line for Visual Block mode.
+fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'_> {
+    let start = min_col.min(line.len());
+    let end = max_col.min(line.len());
+
+    let before = &line[..start];
+    let selected = &line[start..end];
+    let after = &line[end..];
+
+    let sel_style = Style::default()
+        .bg(Color::Cyan)
+        .fg(Color::Black)
+        .add_modifier(Modifier::BOLD);
+
+    Line::from(vec![
+        Span::styled(before.to_string(), Style::default().fg(Color::White)),
+        Span::styled(selected.to_string(), sel_style),
+        Span::styled(after.to_string(), Style::default().fg(Color::White)),
+    ])
+}
+
 fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize, ec: usize) -> Line<'_> {
     let start_col = if row == sr { sc } else { 0 };
     let end_col = if row == er { ec } else { line.len() };
@@ -162,6 +195,40 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
         Span::styled(before.to_string(), Style::default().fg(Color::White)),
         Span::styled(selected.to_string(), sel_style),
         Span::styled(after.to_string(), Style::default().fg(Color::White)),
+    ])
+}
+
+/// Render a line with block cursor (inverted char) at cursor_col, with highlighted background.
+fn render_normal_cursor_line<'a>(line: &'a str, cursor_col: usize, t: &crate::theme::Theme) -> Line<'a> {
+    let line_style = Style::default().fg(t.text).bg(t.bg_highlight);
+    let cursor_style = Style::default().fg(Color::Black).bg(t.text); // inverted block cursor
+
+    if line.is_empty() {
+        // Show a block cursor on empty line
+        return Line::from(vec![
+            Span::styled(" ", cursor_style),
+        ]);
+    }
+
+    let col = cursor_col.min(line.len());
+    let before = &line[..col];
+
+    if col >= line.len() {
+        // Cursor is at end of line — show block cursor as space after text
+        return Line::from(vec![
+            Span::styled(before.to_string(), line_style),
+            Span::styled(" ", cursor_style),
+        ]);
+    }
+
+    // Get the char at cursor position
+    let cursor_char = &line[col..col + 1]; // safe for ASCII; for multi-byte we'd need char_indices
+    let after = &line[col + 1..];
+
+    Line::from(vec![
+        Span::styled(before.to_string(), line_style),
+        Span::styled(cursor_char.to_string(), cursor_style),
+        Span::styled(after.to_string(), line_style),
     ])
 }
 

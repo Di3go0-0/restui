@@ -136,7 +136,7 @@ impl Theme {
         }
         match mode {
             crate::state::InputMode::Insert => self.border_insert,
-            crate::state::InputMode::Visual => self.border_visual,
+            crate::state::InputMode::Visual | crate::state::InputMode::VisualBlock => self.border_visual,
             crate::state::InputMode::Normal => self.border_focused,
         }
     }
