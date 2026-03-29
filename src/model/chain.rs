@@ -69,16 +69,29 @@ pub fn parse_chain_ref(raw: &str) -> Option<ChainRef> {
         (None, raw)
     };
 
-    // Split request_name from json_path at first '.'
-    let (request_name, json_path) = if let Some(dot_pos) = remainder.find('.') {
-        let name = &remainder[..dot_pos];
-        let path = &remainder[dot_pos + 1..];
+    // Split request_name from json_path
+    // Support: auth.token, auth[0].token, auth.[0].token
+    let (request_name, json_path) = if let Some(bracket_pos) = remainder.find('[') {
+        // auth[0].token → name="auth", path="[0].token"
+        let name = &remainder[..bracket_pos];
+        let path = &remainder[bracket_pos..];
         if name.is_empty() || path.is_empty() {
             return None;
         }
         (name.to_string(), path.to_string())
+    } else if let Some(dot_pos) = remainder.find('.') {
+        let name = &remainder[..dot_pos];
+        let path = &remainder[dot_pos + 1..];
+        if name.is_empty() {
+            return None;
+        }
+        // Allow path starting with '[' after dot: auth.[0].token
+        if path.is_empty() {
+            return None;
+        }
+        (name.to_string(), path.to_string())
     } else {
-        return None; // Must have at least request_name.field
+        return None; // Must have at least request_name.field or request_name[index]
     };
 
     Some(ChainRef {
