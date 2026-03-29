@@ -119,7 +119,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             Line::from(vec![
                 Span::styled(" s", Style::default().fg(t.accent)),
                 Span::styled(":save ", Style::default().fg(t.text_dim)),
-                Span::styled("R", Style::default().fg(t.accent)),
+                Span::styled("r", Style::default().fg(t.accent)),
                 Span::styled(":rename ", Style::default().fg(t.text_dim)),
                 Span::styled("dd", Style::default().fg(t.accent)),
                 Span::styled(":del ", Style::default().fg(t.text_dim)),

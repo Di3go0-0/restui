@@ -713,7 +713,6 @@ impl App {
                 let status = response.status;
                 let elapsed = response.elapsed_display();
                 self.state.current_response = Some(*response);
-                self.state.active_panel = Panel::Response;
                 self.state.response_scroll = (0, 0);
                 self.state.set_status(format!("{} - {}", status, elapsed));
             }
@@ -721,7 +720,6 @@ impl App {
                 self.state.request_in_flight = false;
                 self.state.last_error = Some(err.clone());
                 self.state.current_response = None;
-                self.state.active_panel = Panel::Response;
                 self.state.set_status(format!("Error: {}", err));
             }
 

@@ -72,9 +72,13 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
-        KeyCode::Char('r') => return Some(Action::ExecuteRequest),
         KeyCode::Char('T') => return Some(Action::CycleTheme),
         KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
+        // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response
+        KeyCode::Char('1') => return Some(Action::FocusPanel(Panel::Collections)),
+        KeyCode::Char('2') => return Some(Action::FocusPanel(Panel::Request)),
+        KeyCode::Char('3') => return Some(Action::FocusPanel(Panel::Body)),
+        KeyCode::Char('4') => return Some(Action::FocusPanel(Panel::Response)),
         _ => {}
     }
 
@@ -271,7 +275,7 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('s') => Some(Action::SaveRequest),
         KeyCode::Char('S') => Some(Action::SaveRequestAs),
         KeyCode::Char('C') => Some(Action::NewEmptyRequest),
-        KeyCode::Char('R') => Some(Action::RenameRequest),
+        KeyCode::Char('r') => Some(Action::RenameRequest),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('m') => Some(Action::MoveRequest),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),

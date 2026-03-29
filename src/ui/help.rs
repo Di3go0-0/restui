@@ -70,10 +70,9 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
         (
             "Actions",
             vec![
-                ("r / Ctrl+R", "Run request (global)"),
+                ("Ctrl+R", "Run request (global)"),
                 ("y", "Copy response body"),
                 ("Y", "Copy as curl command"),
-                ("p", "Select environment"),
             ],
         ),
         (
@@ -91,14 +90,18 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
                 ("S", "Save As — copy current as new request in collection"),
                 ("C", "New Empty — clear all fields, blank request"),
                 ("n", "New Collection — create a new .http file"),
-                ("R", "Rename — rename request or collection"),
-                ("D", "Delete — delete request or collection (with confirm)"),
+                ("r", "Rename — rename request or collection"),
+                ("dd", "Delete — delete request or collection (with confirm)"),
+                ("yy", "Yank — copy request to clipboard"),
+                ("p", "Paste — paste yanked request into collection"),
                 ("m", "Move — move request to another collection"),
+                ("Space", "Toggle expand/collapse collection"),
             ],
         ),
         (
             "General",
             vec![
+                ("1/2/3/4", "Focus panel (Coll/Req/Body/Resp)"),
                 (":", "Open command palette"),
                 ("?", "Toggle help"),
                 ("qq", "Quit (press q twice)"),

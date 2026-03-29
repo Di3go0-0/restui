@@ -103,10 +103,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let hints = match state.mode {
         InputMode::Normal => match state.active_panel {
-            Panel::Request => " i:edit  a/A:header  dd:del  [/]:method  ::palette  ?:help ",
-            Panel::Body => " i:insert  v:visual  o:line  t:type  ::palette  ?:help ",
-            Panel::Collections => " Enter:sel  s:save  S:as  C:new  n:coll  ::palette  ?:help ",
-            Panel::Response => " j/k:move  v:visual  y:copy  Y:curl  ::palette  ?:help ",
+            Panel::Request => " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help ",
+            Panel::Body => " i:insert  v:visual  o:line  t:type  Ctrl+R:run  ?:help ",
+            Panel::Collections => " r:rename  dd:del  yy:copy  p:paste  Sp:fold  ?:help ",
+            Panel::Response => " j/k:move  v:visual  y:copy  Y:curl  ?:help ",
         },
         InputMode::Insert => match state.active_panel {
             Panel::Request => " Esc:normal  Tab:next field  Enter:confirm ",
