@@ -62,11 +62,8 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
     // Chain autocomplete popup (renders on top of panels but below overlays)
     if state.chain_autocomplete.is_some() {
-        let popup_area = match state.active_panel {
-            Panel::Request | Panel::Body => right_area,
-            _ => main_area,
-        };
-        render_chain_autocomplete(frame, state, popup_area);
+        let cursor_screen = estimate_cursor_screen_pos(state, right_area);
+        render_chain_autocomplete(frame, state, frame.area(), cursor_screen);
     }
 
     // Command palette renders on top of everything
@@ -92,7 +89,40 @@ fn render_center_panels(frame: &mut Frame, state: &AppState, area: Rect) {
     body::render(frame, state, chunks[1]);
 }
 
-fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect) {
+/// Estimate the screen position (x, y) of the text cursor in the active panel.
+fn estimate_cursor_screen_pos(state: &AppState, right_area: Rect) -> (u16, u16) {
+    let gutter = 4u16; // line number gutter width
+    let border = 1u16;
+    match state.active_panel {
+        Panel::Body => {
+            // Body panel is in the lower part of right_area
+            // Approximate: body starts after request panel (~40% in wide, ~35% in narrow)
+            let body_y_offset = if right_area.width > 120 {
+                // Wide layout: body is ~60% of center column which is left half
+                (right_area.height as u32 * 40 / 100) as u16
+            } else {
+                // Narrow layout: body starts at ~25%
+                (right_area.height as u32 * 25 / 100) as u16
+            };
+            let cursor_row_on_screen = (state.body_cursor_row as u16).saturating_sub(state.body_scroll.0);
+            let cursor_col_on_screen = (state.body_cursor_col as u16).saturating_sub(state.body_scroll.1);
+            let x = right_area.x + border + gutter + cursor_col_on_screen;
+            let y = right_area.y + body_y_offset + border + 1 + cursor_row_on_screen; // +1 for body tab bar
+            (x.min(right_area.right()), y.min(right_area.bottom()))
+        }
+        Panel::Request => {
+            // Request panel is at the top of right_area
+            let x = right_area.x + border + 10; // rough offset for field label
+            let y = right_area.y + border + 2; // header area
+            (x, y)
+        }
+        _ => {
+            (right_area.x + 2, right_area.y + 2)
+        }
+    }
+}
+
+fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect, cursor_pos: (u16, u16)) {
     let Some(ref ac) = state.chain_autocomplete else { return; };
     if ac.items.is_empty() { return; }
 
@@ -104,8 +134,14 @@ fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect) {
 
     if popup_width < 10 || popup_height < 3 { return; }
 
-    let popup_x = area.x + 2;
-    let popup_y = area.bottom().saturating_sub(popup_height + 1);
+    // Position below and to the right of the cursor
+    let (cx, cy) = cursor_pos;
+    let popup_x = cx.min(area.right().saturating_sub(popup_width));
+    let popup_y = if cy + 1 + popup_height <= area.bottom() {
+        cy + 1 // below cursor
+    } else {
+        cy.saturating_sub(popup_height) // above cursor if no room below
+    };
 
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
     frame.render_widget(Clear, popup_area);
