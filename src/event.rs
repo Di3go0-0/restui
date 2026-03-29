@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum AppEvent {
     Key(KeyEvent),

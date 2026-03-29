@@ -3,6 +3,7 @@ use ratatui::text::{Line, Span};
 
 /// Simple JSON syntax highlighting without external dependencies.
 /// For a future version, this can be replaced with syntect for richer highlighting.
+#[allow(dead_code)]
 pub fn highlight_json(text: &str) -> Vec<Line<'static>> {
     text.lines()
         .map(|line| {
@@ -38,6 +39,7 @@ pub fn highlight_json(text: &str) -> Vec<Line<'static>> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn value_style(val: &str) -> Style {
     let trimmed = val.trim().trim_end_matches(',');
     if trimmed == "true" || trimmed == "false" {

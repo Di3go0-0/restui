@@ -53,7 +53,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .collection_items
         .iter()
         .enumerate()
-        .map(|(i, item)| {
+        .map(|(_i, item)| {
             let is_collection_header = !item.starts_with("  ");
             if is_collection_header {
                 // Collection header line: "● name" or "○ name"

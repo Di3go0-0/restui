@@ -76,13 +76,29 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
 
+    // Calculate headers area height
+    let headers_height: u16 = if state.response_headers_expanded {
+        // Show all headers, capped at half the available space
+        let max_h = (inner.height.saturating_sub(4)) / 2;
+        let h = resp.headers.len() as u16;
+        h.min(max_h).max(1)
+    } else {
+        1 // Just the "N response headers" line
+    };
+
+    // Reserve 1 line for search bar when search is active or has matches
+    let has_search_bar = state.search_active
+        || (is_focused && !state.search_query.is_empty() && !state.search_matches.is_empty());
+    let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Status line
-            Constraint::Length(1), // Headers + content-type
-            Constraint::Length(1), // Separator
-            Constraint::Min(1),   // Body with line numbers
+            Constraint::Length(1),              // Status line
+            Constraint::Length(headers_height),  // Headers (expanded or count)
+            Constraint::Length(1),              // Separator
+            Constraint::Min(1),                // Body with line numbers
+            Constraint::Length(search_bar_height), // Search bar
         ])
         .split(inner);
 
@@ -114,12 +130,36 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     ]);
     frame.render_widget(Paragraph::new(status_line), chunks[0]);
 
-    // Headers count
-    let headers_info = Line::from(Span::styled(
-        format!(" {} response headers", resp.headers.len()),
-        Style::default().fg(Color::DarkGray),
-    ));
-    frame.render_widget(Paragraph::new(headers_info), chunks[1]);
+    // Headers area
+    if state.response_headers_expanded {
+        let header_scroll = state.response_headers_scroll;
+        let visible = headers_height as usize;
+        for vi in 0..visible {
+            let idx = header_scroll + vi;
+            if idx >= resp.headers.len() {
+                break;
+            }
+            let (name, value) = &resp.headers[idx];
+            let y = chunks[1].y + vi as u16;
+            let header_line = Line::from(vec![
+                Span::styled(
+                    format!("  {}", name),
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(": ", Style::default().fg(t.text_dim)),
+                Span::styled(value.to_string(), Style::default().fg(t.text)),
+            ]);
+            let line_area = Rect::new(chunks[1].x, y, chunks[1].width, 1);
+            frame.render_widget(Paragraph::new(header_line), line_area);
+        }
+    } else {
+        let toggle_hint = if is_focused { " (H to expand)" } else { "" };
+        let headers_info = Line::from(Span::styled(
+            format!(" {} response headers{}", resp.headers.len(), toggle_hint),
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(Paragraph::new(headers_info), chunks[1]);
+    }
 
     // Separator
     let sep = Line::from(Span::styled(
@@ -155,6 +195,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     } else {
         (0, 0, 0, 0)
     };
+
+    // Prepare search info for highlighting
+    let search_query_lower = state.search_query.to_lowercase();
+    let has_search = !search_query_lower.is_empty() && !state.search_matches.is_empty()
+        && state.active_panel == Panel::Response;
 
     for vi in 0..visible_height {
         let line_idx = scroll_y + vi;
@@ -196,6 +241,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             highlight_visual_line(line_text, line_idx, vsr, vsc, ver, vec_)
         } else if is_visual_block && line_idx >= vb_min_row && line_idx <= vb_max_row {
             highlight_block_line(line_text, vb_min_col, vb_max_col)
+        } else if has_search {
+            highlight_search_line(line_text, line_idx, state, &search_query_lower, t,
+                is_focused && line_idx == cursor_row)
         } else if is_focused && line_idx == cursor_row && !is_visual && !is_visual_block {
             // Highlight current line in normal mode
             Line::from(Span::styled(
@@ -221,6 +269,96 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             }
         }
     }
+
+    // Search bar
+    if has_search_bar {
+        let search_area = chunks[4];
+        let match_info = if state.search_matches.is_empty() {
+            "No matches".to_string()
+        } else {
+            format!("{}/{}", state.search_match_idx + 1, state.search_matches.len())
+        };
+        let search_line = Line::from(vec![
+            Span::styled("/", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(state.search_query.clone(), Style::default().fg(t.text)),
+            if state.search_active {
+                Span::styled("█", Style::default().fg(t.accent))
+            } else {
+                Span::raw("")
+            },
+            Span::styled(format!("  {}", match_info), Style::default().fg(t.text_dim)),
+        ]);
+        frame.render_widget(Paragraph::new(search_line), search_area);
+    }
+}
+
+fn highlight_search_line<'a>(
+    line: &'a str,
+    line_idx: usize,
+    state: &AppState,
+    query_lower: &str,
+    t: &crate::theme::Theme,
+    is_cursor_line: bool,
+) -> Line<'a> {
+    if query_lower.is_empty() {
+        if is_cursor_line {
+            return Line::from(Span::styled(
+                line.to_string(),
+                Style::default().fg(t.text).bg(t.bg_highlight),
+            ));
+        }
+        return colorize_response_line(line, t);
+    }
+
+    let line_lower = line.to_lowercase();
+    let query_len = query_lower.len();
+    let mut spans: Vec<Span<'a>> = Vec::new();
+    let mut pos = 0;
+
+    // Find current match position
+    let current_match = state.search_matches.get(state.search_match_idx).copied();
+
+    let match_bg = Color::Yellow;
+    let current_match_bg = Color::Rgb(255, 165, 0); // orange
+    let match_fg = Color::Black;
+    let base_style = if is_cursor_line {
+        Style::default().fg(t.text).bg(t.bg_highlight)
+    } else {
+        Style::default().fg(t.text)
+    };
+
+    while pos < line.len() {
+        if let Some(found) = line_lower[pos..].find(query_lower) {
+            let match_start = pos + found;
+            let match_end = (match_start + query_len).min(line.len());
+
+            // Text before match
+            if match_start > pos {
+                spans.push(Span::styled(line[pos..match_start].to_string(), base_style));
+            }
+
+            // Determine if this is the current match
+            let is_current = current_match == Some((line_idx, match_start));
+            let bg = if is_current { current_match_bg } else { match_bg };
+
+            spans.push(Span::styled(
+                line[match_start..match_end].to_string(),
+                Style::default().fg(match_fg).bg(bg).add_modifier(Modifier::BOLD),
+            ));
+
+            pos = match_end;
+        } else {
+            // No more matches, rest of line
+            spans.push(Span::styled(line[pos..].to_string(), base_style));
+            pos = line.len();
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(String::new(), base_style));
+    }
+
+    Line::from(spans)
 }
 
 fn resp_visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {

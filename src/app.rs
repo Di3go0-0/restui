@@ -920,6 +920,393 @@ impl App {
                     }
                 }
             }
+            Action::ChangeLine => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let lines: Vec<&str> = body.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if row < lines.len() {
+                        let line_text = lines[row].to_string();
+                        self.state.yank_buffer = line_text.clone();
+                        let _ = crate::clipboard::copy_to_clipboard(&line_text);
+                        // Replace line content with empty
+                        let offset = row_col_to_offset(body, row, 0);
+                        let end = offset + lines[row].len();
+                        body.drain(offset..end);
+                    }
+                    self.state.body_cursor_col = 0;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    self.state.yank_buffer = text.clone();
+                    let _ = crate::clipboard::copy_to_clipboard(&text);
+                    self.clear_request_field();
+                    self.set_request_cursor(0);
+                    self.state.mode = InputMode::Insert;
+                }
+            }
+            Action::ChangeWord => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let lines: Vec<&str> = body_text.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut end_col = col;
+                        if end_col < bytes.len() {
+                            if is_word_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                            } else if is_punct_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                            }
+                            // Skip trailing whitespace
+                            while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                        }
+                        let deleted = &line[col..end_col];
+                        self.state.yank_buffer = deleted.to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let start = row_col_to_offset(body, row, col);
+                        let end = row_col_to_offset(body, row, end_col);
+                        body.drain(start..end);
+                    }
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut end_col = col;
+                    if end_col < bytes.len() {
+                        if is_word_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                        } else if is_punct_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                        }
+                        while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                    }
+                    self.state.yank_buffer = text[col..end_col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.drain_request_field(col, end_col);
+                    self.set_request_cursor(col);
+                    self.state.mode = InputMode::Insert;
+                }
+            }
+            Action::ChangeWordBack => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let lines: Vec<&str> = body_text.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut start_col = col;
+                        if start_col > 0 {
+                            start_col -= 1;
+                            while start_col > 0 && bytes[start_col].is_ascii_whitespace() { start_col -= 1; }
+                            if is_word_char(bytes[start_col]) {
+                                while start_col > 0 && is_word_char(bytes[start_col - 1]) { start_col -= 1; }
+                            } else if is_punct_char(bytes[start_col]) {
+                                while start_col > 0 && is_punct_char(bytes[start_col - 1]) { start_col -= 1; }
+                            }
+                        }
+                        let deleted = &line[start_col..col];
+                        self.state.yank_buffer = deleted.to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let start = row_col_to_offset(body, row, start_col);
+                        let end = row_col_to_offset(body, row, col);
+                        body.drain(start..end);
+                        self.state.body_cursor_col = start_col;
+                    }
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut start_col = col;
+                    if start_col > 0 {
+                        start_col -= 1;
+                        while start_col > 0 && bytes[start_col].is_ascii_whitespace() { start_col -= 1; }
+                        if is_word_char(bytes[start_col]) {
+                            while start_col > 0 && is_word_char(bytes[start_col - 1]) { start_col -= 1; }
+                        } else if is_punct_char(bytes[start_col]) {
+                            while start_col > 0 && is_punct_char(bytes[start_col - 1]) { start_col -= 1; }
+                        }
+                    }
+                    self.state.yank_buffer = text[start_col..col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.drain_request_field(start_col, col);
+                    self.set_request_cursor(start_col);
+                    self.state.mode = InputMode::Insert;
+                }
+            }
+            Action::ChangeToEnd => {
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let lines: Vec<&str> = body.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    let col = self.state.body_cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        if col < line.len() {
+                            let deleted = &line[col..];
+                            self.state.yank_buffer = deleted.to_string();
+                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let start = row_col_to_offset(body, row, col);
+                            let end = row_col_to_offset(body, row, line.len());
+                            body.drain(start..end);
+                        }
+                    }
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let col = self.get_request_cursor();
+                    if col < text.len() {
+                        self.state.yank_buffer = text[col..].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.drain_request_field(col, text.len());
+                        self.set_request_cursor(col);
+                    }
+                    self.state.mode = InputMode::Insert;
+                }
+            }
+            Action::Substitute => {
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    if pos < body.len() && body.as_bytes()[pos] != b'\n' {
+                        let ch = body.remove(pos);
+                        self.state.yank_buffer = ch.to_string();
+                    }
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let cursor = self.get_request_cursor();
+                    let len = self.get_request_field_len();
+                    if cursor < len {
+                        let text = self.get_request_field_text();
+                        self.state.yank_buffer = text[cursor..cursor+1].to_string();
+                        self.delete_request_char_under_cursor();
+                    }
+                    self.state.mode = InputMode::Insert;
+                }
+            }
+            Action::DeleteWord => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let lines: Vec<&str> = body_text.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut end_col = col;
+                        if end_col < bytes.len() {
+                            if is_word_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                            } else if is_punct_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                            }
+                            while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                        }
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let start = row_col_to_offset(body, row, col);
+                        let end = row_col_to_offset(body, row, end_col);
+                        body.drain(start..end);
+                        // Clamp cursor
+                        let lines2: Vec<&str> = body.lines().collect();
+                        let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_cursor_col = col.min(line_len.saturating_sub(1).max(0));
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut end_col = col;
+                    if end_col < bytes.len() {
+                        if is_word_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                        } else if is_punct_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                        }
+                        while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                    }
+                    self.state.yank_buffer = text[col..end_col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.drain_request_field(col, end_col);
+                    let new_len = self.get_request_field_len();
+                    self.set_request_cursor(col.min(new_len.saturating_sub(1).max(0)));
+                }
+            }
+            Action::DeleteWordEnd => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let lines: Vec<&str> = body_text.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut end_col = col;
+                        if end_col < bytes.len() {
+                            // de: delete to end of word (inclusive of last word char)
+                            if is_word_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                            } else if is_punct_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                            } else {
+                                // on whitespace, skip whitespace then word
+                                while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                                if end_col < bytes.len() && is_word_char(bytes[end_col]) {
+                                    while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                                } else if end_col < bytes.len() && is_punct_char(bytes[end_col]) {
+                                    while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                                }
+                            }
+                        }
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let start = row_col_to_offset(body, row, col);
+                        let end = row_col_to_offset(body, row, end_col);
+                        body.drain(start..end);
+                        let lines2: Vec<&str> = body.lines().collect();
+                        let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_cursor_col = col.min(line_len.saturating_sub(1).max(0));
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut end_col = col;
+                    if end_col < bytes.len() {
+                        if is_word_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                        } else if is_punct_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                        } else {
+                            while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                            if end_col < bytes.len() && is_word_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                            } else if end_col < bytes.len() && is_punct_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                            }
+                        }
+                    }
+                    self.state.yank_buffer = text[col..end_col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.drain_request_field(col, end_col);
+                    let new_len = self.get_request_field_len();
+                    self.set_request_cursor(col.min(new_len.saturating_sub(1).max(0)));
+                }
+            }
+            Action::DeleteWordBack => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let lines: Vec<&str> = body_text.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut start_col = col;
+                        if start_col > 0 {
+                            start_col -= 1;
+                            while start_col > 0 && bytes[start_col].is_ascii_whitespace() { start_col -= 1; }
+                            if is_word_char(bytes[start_col]) {
+                                while start_col > 0 && is_word_char(bytes[start_col - 1]) { start_col -= 1; }
+                            } else if is_punct_char(bytes[start_col]) {
+                                while start_col > 0 && is_punct_char(bytes[start_col - 1]) { start_col -= 1; }
+                            }
+                        }
+                        self.state.yank_buffer = line[start_col..col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let start = row_col_to_offset(body, row, start_col);
+                        let end = row_col_to_offset(body, row, col);
+                        body.drain(start..end);
+                        self.state.body_cursor_col = start_col;
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut start_col = col;
+                    if start_col > 0 {
+                        start_col -= 1;
+                        while start_col > 0 && bytes[start_col].is_ascii_whitespace() { start_col -= 1; }
+                        if is_word_char(bytes[start_col]) {
+                            while start_col > 0 && is_word_char(bytes[start_col - 1]) { start_col -= 1; }
+                        } else if is_punct_char(bytes[start_col]) {
+                            while start_col > 0 && is_punct_char(bytes[start_col - 1]) { start_col -= 1; }
+                        }
+                    }
+                    self.state.yank_buffer = text[start_col..col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.drain_request_field(start_col, col);
+                    self.set_request_cursor(start_col);
+                }
+            }
+            Action::YankWord => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    let body = self.state.current_request.body.as_deref().unwrap_or("");
+                    let lines: Vec<&str> = body.lines().collect();
+                    let row = self.state.body_cursor_row;
+                    if let Some(line) = lines.get(row) {
+                        let bytes = line.as_bytes();
+                        let col = self.state.body_cursor_col;
+                        let mut end_col = col;
+                        if end_col < bytes.len() {
+                            if is_word_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                            } else if is_punct_char(bytes[end_col]) {
+                                while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                            }
+                            while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                        }
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.state.set_status("Yanked word");
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    let text = self.get_request_field_text();
+                    let bytes = text.as_bytes();
+                    let col = self.get_request_cursor();
+                    let mut end_col = col;
+                    if end_col < bytes.len() {
+                        if is_word_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_word_char(bytes[end_col]) { end_col += 1; }
+                        } else if is_punct_char(bytes[end_col]) {
+                            while end_col < bytes.len() && is_punct_char(bytes[end_col]) { end_col += 1; }
+                        }
+                        while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
+                    }
+                    self.state.yank_buffer = text[col..end_col].to_string();
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.state.set_status("Yanked word");
+                }
+            }
             Action::Undo => {
                 if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
@@ -1030,6 +1417,17 @@ impl App {
                         .unwrap_or("_");
                     let key = format!("{}/{}", collection_name, name);
                     self.state.response_cache.insert(key, ((*response).clone(), std::time::Instant::now()));
+                    // Cap response cache at 50 entries, evicting oldest first
+                    while self.state.response_cache.len() > 50 {
+                        if let Some(oldest_key) = self.state.response_cache.iter()
+                            .min_by_key(|(_, (_, ts))| *ts)
+                            .map(|(k, _)| k.clone())
+                        {
+                            self.state.response_cache.remove(&oldest_key);
+                        } else {
+                            break;
+                        }
+                    }
                 }
 
                 self.state.current_response = Some(*response);
@@ -1334,11 +1732,121 @@ impl App {
                     Box::pin(self.update(action)).await?;
                 }
             }
+
+            // === Response Headers Inspector ===
+            Action::ToggleResponseHeaders => {
+                self.state.response_headers_expanded = !self.state.response_headers_expanded;
+                self.state.response_headers_scroll = 0;
+            }
+
+            // === Search ===
+            Action::StartSearch => {
+                self.state.search_active = true;
+                self.state.search_query.clear();
+                self.state.search_matches.clear();
+                self.state.search_match_idx = 0;
+            }
+            Action::SearchInput(c) => {
+                self.state.search_query.push(c);
+                self.recalculate_search_matches();
+            }
+            Action::SearchBackspace => {
+                self.state.search_query.pop();
+                self.recalculate_search_matches();
+            }
+            Action::SearchConfirm => {
+                self.state.search_active = false;
+                // Keep matches highlighted and current position
+            }
+            Action::SearchCancel => {
+                self.state.search_active = false;
+                self.state.search_query.clear();
+                self.state.search_matches.clear();
+                self.state.search_match_idx = 0;
+            }
+            Action::SearchNext => {
+                if !self.state.search_matches.is_empty() {
+                    self.state.search_match_idx =
+                        (self.state.search_match_idx + 1) % self.state.search_matches.len();
+                    self.jump_to_current_search_match();
+                }
+            }
+            Action::SearchPrev => {
+                if !self.state.search_matches.is_empty() {
+                    let len = self.state.search_matches.len();
+                    self.state.search_match_idx =
+                        (self.state.search_match_idx + len - 1) % len;
+                    self.jump_to_current_search_match();
+                }
+            }
         }
         Ok(())
     }
 
     // === Helpers ===
+
+    fn recalculate_search_matches(&mut self) {
+        self.state.search_matches.clear();
+        self.state.search_match_idx = 0;
+        if self.state.search_query.is_empty() {
+            return;
+        }
+        let query = self.state.search_query.to_lowercase();
+        let text = match self.state.active_panel {
+            Panel::Response => {
+                if let Some(ref resp) = self.state.current_response {
+                    resp.formatted_body()
+                } else {
+                    return;
+                }
+            }
+            Panel::Body => {
+                self.state.current_request.body.clone().unwrap_or_default()
+            }
+            _ => return,
+        };
+        for (row, line) in text.lines().enumerate() {
+            let line_lower = line.to_lowercase();
+            let mut start = 0;
+            while let Some(pos) = line_lower[start..].find(&query) {
+                self.state.search_matches.push((row, start + pos));
+                start += pos + 1;
+            }
+        }
+        // Jump to first match
+        if !self.state.search_matches.is_empty() {
+            self.jump_to_current_search_match();
+        }
+    }
+
+    fn jump_to_current_search_match(&mut self) {
+        if let Some(&(row, col)) = self.state.search_matches.get(self.state.search_match_idx) {
+            match self.state.active_panel {
+                Panel::Response => {
+                    self.state.resp_cursor_row = row;
+                    self.state.resp_cursor_col = col;
+                    // Scroll to make the match visible
+                    let visible = self.state.resp_visible_height as usize;
+                    if row < self.state.response_scroll.0 as usize {
+                        self.state.response_scroll.0 = row as u16;
+                    } else if row >= self.state.response_scroll.0 as usize + visible {
+                        self.state.response_scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    }
+                }
+                Panel::Body => {
+                    self.state.body_cursor_row = row;
+                    self.state.body_cursor_col = col;
+                    let visible = self.state.body_visible_height as usize;
+                    if row < self.state.body_scroll.0 as usize {
+                        self.state.body_scroll.0 = row as u16;
+                    } else if row >= self.state.body_scroll.0 as usize + visible {
+                        self.state.body_scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 
     /// Save a snapshot of the body for undo. Call before any body mutation.
     fn push_body_undo(&mut self) {
@@ -2037,6 +2545,32 @@ impl App {
         }
     }
 
+    /// Drain a range [start..end) from the currently focused request field.
+    fn drain_request_field(&mut self, start: usize, end: usize) {
+        if start >= end { return; }
+        match self.state.request_focus {
+            RequestFocus::Url => { self.state.current_request.url.drain(start..end); }
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
+                    field.drain(start..end);
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    field.drain(start..end);
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.drain(start..end);
+                }
+            }
+        }
+    }
+
     fn get_request_visual_selection(&self) -> String {
         let text = self.get_request_field_text();
         let cursor = self.get_request_cursor();
@@ -2481,6 +3015,17 @@ impl App {
                 // Only cache successful responses (2xx)
                 if resp.status >= 200 && resp.status < 300 {
                     self.state.response_cache.insert(cache_key.clone(), (resp, std::time::Instant::now()));
+                    // Cap response cache at 50 entries, evicting oldest first
+                    while self.state.response_cache.len() > 50 {
+                        if let Some(oldest_key) = self.state.response_cache.iter()
+                            .min_by_key(|(_, (_, ts))| *ts)
+                            .map(|(k, _)| k.clone())
+                        {
+                            self.state.response_cache.remove(&oldest_key);
+                        } else {
+                            break;
+                        }
+                    }
                 } else {
                     return Err(format!(
                         "Chain error: dependency '{}' returned {} {}",

@@ -9,6 +9,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         return map_command_palette_key(key);
     }
 
+    // 0.5. Search mode consumes input when active
+    if state.search_active {
+        return map_search_key(key);
+    }
+
     // 1. Overlays consume input first
     if state.overlay.is_some() {
         return map_overlay_key(key, state);
@@ -274,10 +279,17 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
             Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
+        ('d', KeyCode::Char('w')) => Some(Action::DeleteWord),
+        ('d', KeyCode::Char('e')) => Some(Action::DeleteWordEnd),
+        ('d', KeyCode::Char('b')) => Some(Action::DeleteWordBack),
+        ('c', KeyCode::Char('c')) => Some(Action::ChangeLine),
+        ('c', KeyCode::Char('w')) | ('c', KeyCode::Char('e')) => Some(Action::ChangeWord),
+        ('c', KeyCode::Char('b')) => Some(Action::ChangeWordBack),
         ('y', KeyCode::Char('y')) => match state.active_panel {
             Panel::Collections => Some(Action::YankRequest),
             _ => Some(Action::YankLine),
         },
+        ('y', KeyCode::Char('w')) => Some(Action::YankWord),
         ('r', KeyCode::Char(c)) => {
             // r + char: replace character under cursor
             match state.active_panel {
@@ -368,6 +380,9 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('v') => Some(Action::EnterVisualMode),
         // Edit
         KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
+        KeyCode::Char('s') => Some(Action::Substitute),
+        KeyCode::Char('C') => Some(Action::ChangeToEnd),
+        KeyCode::Char('c') => Some(Action::PendingKey('c')),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
         KeyCode::Char('u') => Some(Action::Undo),
@@ -402,6 +417,10 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('v') => Some(Action::EnterVisualMode),
         // Edit
         KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
+        KeyCode::Char('s') => Some(Action::Substitute),
+        KeyCode::Char('S') => Some(Action::ChangeLine),
+        KeyCode::Char('C') => Some(Action::ChangeToEnd),
+        KeyCode::Char('c') => Some(Action::PendingKey('c')),
         KeyCode::Char('r') => Some(Action::PendingKey('r')),
         KeyCode::Char('u') => Some(Action::Undo),
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
@@ -409,6 +428,10 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
         // Body type
         KeyCode::Char('t') => Some(Action::CycleBodyType),
+        // Search
+        KeyCode::Char('/') => Some(Action::StartSearch),
+        KeyCode::Char('n') => Some(Action::SearchNext),
+        KeyCode::Char('N') => Some(Action::SearchPrev),
         _ => None,
     }
 }
@@ -430,6 +453,20 @@ fn map_response_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('y') => Some(Action::CopyResponseBody),
         KeyCode::Char('Y') => Some(Action::CopyAsCurl),
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
+        KeyCode::Char('H') => Some(Action::ToggleResponseHeaders),
+        KeyCode::Char('/') => Some(Action::StartSearch),
+        KeyCode::Char('n') => Some(Action::SearchNext),
+        KeyCode::Char('N') => Some(Action::SearchPrev),
+        _ => None,
+    }
+}
+
+fn map_search_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::SearchCancel),
+        KeyCode::Enter => Some(Action::SearchConfirm),
+        KeyCode::Backspace => Some(Action::SearchBackspace),
+        KeyCode::Char(c) => Some(Action::SearchInput(c)),
         _ => None,
     }
 }

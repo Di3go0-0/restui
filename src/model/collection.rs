@@ -7,6 +7,7 @@ pub enum FileFormat {
     Yaml,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Collection {
     pub name: String,

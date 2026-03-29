@@ -11,7 +11,7 @@ pub struct Command {
 
 /// Central registry of all commands available in the palette.
 pub fn all_commands() -> Vec<Command> {
-    let mut cmds = vec![
+    let cmds = vec![
         // HTTP
         Command {
             name: "Run Request",

@@ -6,7 +6,6 @@ use ratatui::widgets::ListState;
 use crate::config::AppConfig;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
-use crate::model::history::HistoryEntry;
 use crate::model::request::Request;
 use crate::model::response::Response;
 
@@ -266,7 +265,6 @@ pub struct AppState {
 
     // Data
     pub collections: Vec<Collection>,
-    pub history: Vec<HistoryEntry>,
     pub environments: EnvironmentStore,
     pub active_collection: usize,
 
@@ -333,9 +331,6 @@ pub struct AppState {
     pub request_undo_stack: Vec<(RequestFocus, u8, String, usize)>,
     pub request_redo_stack: Vec<(RequestFocus, u8, String, usize)>,
 
-    // Pending replace mode (r + next char)
-    pub pending_replace: bool,
-
     // Response cache for request chaining: key = "collection/request_name", value = (Response, cached_at)
     pub response_cache: HashMap<String, (Response, Instant)>,
 
@@ -357,6 +352,16 @@ pub struct AppState {
     // Config
     pub config: AppConfig,
 
+    // Response headers inspector
+    pub response_headers_expanded: bool,
+    pub response_headers_scroll: usize,
+
+    // Search
+    pub search_query: String,
+    pub search_active: bool,
+    pub search_matches: Vec<(usize, usize)>,
+    pub search_match_idx: usize,
+
     // Misc
     pub should_quit: bool,
     pub status_message: Option<(String, Instant)>,
@@ -374,7 +379,6 @@ impl AppState {
             is_wide_layout: true,
             last_middle_panel: Panel::Request,
             collections: Vec::new(),
-            history: Vec::new(),
             environments: EnvironmentStore::default(),
             active_collection: 0,
             current_request: Request::default(),
@@ -415,7 +419,6 @@ impl AppState {
             body_redo_stack: Vec::new(),
             request_undo_stack: Vec::new(),
             request_redo_stack: Vec::new(),
-            pending_replace: false,
             response_cache: HashMap::new(),
             expanded_collections: {
                 let mut s = std::collections::HashSet::new();
@@ -429,6 +432,12 @@ impl AppState {
             env_selector_state: ListState::default(),
             theme: crate::theme::Theme::default(),
             config,
+            response_headers_expanded: false,
+            response_headers_scroll: 0,
+            search_query: String::new(),
+            search_active: false,
+            search_matches: Vec::new(),
+            search_match_idx: 0,
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),

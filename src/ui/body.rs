@@ -33,12 +33,25 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 
-    let inner = block.inner(area);
+    let outer_inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.width < 4 || inner.height < 1 {
+    if outer_inner.width < 4 || outer_inner.height < 1 {
         return;
     }
+
+    // Reserve space for search bar if needed
+    let has_search_bar = (state.search_active && state.active_panel == Panel::Body)
+        || (is_focused && !state.search_query.is_empty() && !state.search_matches.is_empty()
+            && state.active_panel == Panel::Body);
+    let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
+
+    let inner = if search_bar_height > 0 && outer_inner.height > 2 {
+        Rect::new(outer_inner.x, outer_inner.y, outer_inner.width,
+                   outer_inner.height.saturating_sub(search_bar_height))
+    } else {
+        outer_inner
+    };
 
     let body_text = state.current_request.body.as_deref().unwrap_or("");
 
@@ -98,6 +111,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
         // Content
         let line_text = body_lines.get(line_idx).copied().unwrap_or("");
+
+        // Prepare search info
+        let search_query_lower = state.search_query.to_lowercase();
+        let has_body_search = !search_query_lower.is_empty()
+            && !state.search_matches.is_empty()
+            && state.active_panel == Panel::Body;
+
         let content_line = if is_visual {
             let (sr, sc, er, ec) = visual_range(state);
             if line_idx >= sr && line_idx <= er {
@@ -112,6 +132,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 colorize_json_line(line_text, t)
             }
+        } else if has_body_search {
+            highlight_body_search_line(line_text, line_idx, state, &search_query_lower, t,
+                is_normal_focused && line_idx == cursor_row)
         } else {
             // Highlight current line background in normal mode + block cursor
             if is_normal_focused && line_idx == cursor_row {
@@ -135,6 +158,32 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
             }
         }
+    }
+
+    // Search bar
+    if has_search_bar && outer_inner.height > 2 {
+        let search_area = Rect::new(
+            outer_inner.x,
+            outer_inner.y + outer_inner.height.saturating_sub(1),
+            outer_inner.width,
+            1,
+        );
+        let match_info = if state.search_matches.is_empty() {
+            "No matches".to_string()
+        } else {
+            format!("{}/{}", state.search_match_idx + 1, state.search_matches.len())
+        };
+        let search_line = Line::from(vec![
+            Span::styled("/", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(state.search_query.clone(), Style::default().fg(t.text)),
+            if state.search_active {
+                Span::styled("█", Style::default().fg(t.accent))
+            } else {
+                Span::raw("")
+            },
+            Span::styled(format!("  {}", match_info), Style::default().fg(t.text_dim)),
+        ]);
+        frame.render_widget(Paragraph::new(search_line), search_area);
     }
 }
 
@@ -265,4 +314,66 @@ fn style_for_value(val: &str, t: &crate::theme::Theme) -> Style {
     } else {
         Style::default().fg(t.text)
     }
+}
+
+fn highlight_body_search_line<'a>(
+    line: &'a str,
+    line_idx: usize,
+    state: &AppState,
+    query_lower: &str,
+    t: &crate::theme::Theme,
+    is_cursor_line: bool,
+) -> Line<'a> {
+    if query_lower.is_empty() {
+        if is_cursor_line {
+            return render_normal_cursor_line(line, state.body_cursor_col, t);
+        }
+        return colorize_json_line(line, t);
+    }
+
+    let line_lower = line.to_lowercase();
+    let query_len = query_lower.len();
+    let mut spans: Vec<Span<'a>> = Vec::new();
+    let mut pos = 0;
+
+    let current_match = state.search_matches.get(state.search_match_idx).copied();
+
+    let match_bg = Color::Yellow;
+    let current_match_bg = Color::Rgb(255, 165, 0);
+    let match_fg = Color::Black;
+    let base_style = if is_cursor_line {
+        Style::default().fg(t.text).bg(t.bg_highlight)
+    } else {
+        Style::default().fg(t.text)
+    };
+
+    while pos < line.len() {
+        if let Some(found) = line_lower[pos..].find(query_lower) {
+            let match_start = pos + found;
+            let match_end = (match_start + query_len).min(line.len());
+
+            if match_start > pos {
+                spans.push(Span::styled(line[pos..match_start].to_string(), base_style));
+            }
+
+            let is_current = current_match == Some((line_idx, match_start));
+            let bg = if is_current { current_match_bg } else { match_bg };
+
+            spans.push(Span::styled(
+                line[match_start..match_end].to_string(),
+                Style::default().fg(match_fg).bg(bg).add_modifier(Modifier::BOLD),
+            ));
+
+            pos = match_end;
+        } else {
+            spans.push(Span::styled(line[pos..].to_string(), base_style));
+            pos = line.len();
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(String::new(), base_style));
+    }
+
+    Line::from(spans)
 }

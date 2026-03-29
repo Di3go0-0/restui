@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::request::HttpMethod;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub method: HttpMethod,

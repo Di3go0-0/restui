@@ -90,6 +90,15 @@ pub enum Action {
     ReplaceChar(char),        // r + char — replace character under cursor
     DeleteCharUnderCursor,    // x — delete char under cursor in normal mode
     DeleteLine,               // dd — delete line (yank + remove)
+    ChangeLine,               // cc — clear line + enter insert
+    ChangeWord,               // cw/ce — delete word forward + enter insert
+    ChangeWordBack,           // cb — delete word backward + enter insert
+    ChangeToEnd,              // C — delete to end of line + enter insert
+    Substitute,               // s — delete char under cursor + enter insert
+    DeleteWord,               // dw — delete word forward (stay normal)
+    DeleteWordEnd,            // de — delete to end of word (stay normal)
+    DeleteWordBack,           // db — delete word backward (stay normal)
+    YankWord,                 // yw — yank from cursor to next word start
     Undo,                     // u — undo last body edit
     Redo,                     // Ctrl+r — redo last undone edit
 
@@ -109,7 +118,9 @@ pub enum Action {
     CycleBodyType,
 
     // Theme
+    #[allow(dead_code)]
     CycleTheme,
+    #[allow(dead_code)]
     SetTheme(String),
 
     // Command Palette
@@ -142,6 +153,18 @@ pub enum Action {
     CopyResponseBody,
     CopyAsCurl,
     YankLine,
+
+    // Response headers inspector
+    ToggleResponseHeaders,
+
+    // Search
+    StartSearch,
+    SearchInput(char),
+    SearchBackspace,
+    SearchConfirm,
+    SearchCancel,
+    SearchNext,
+    SearchPrev,
 
     // App
     Quit,

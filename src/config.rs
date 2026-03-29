@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
@@ -10,6 +11,7 @@ pub struct AppConfig {
     pub theme: ThemeConfig,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct GeneralConfig {
     #[serde(default = "default_env")]
@@ -42,6 +44,7 @@ impl Default for GeneralConfig {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ThemeConfig {
     pub name: Option<String>,
@@ -84,6 +87,7 @@ pub fn config_path() -> PathBuf {
     config_dir().join("config.toml")
 }
 
+#[allow(dead_code)]
 pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))

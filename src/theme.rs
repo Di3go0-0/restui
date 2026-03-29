@@ -79,6 +79,7 @@ fn d_json_string() -> String { "#a6e3a1".into() }
 fn d_json_number() -> String { "#fab387".into() }
 fn d_json_bool() -> String { "#f9e2af".into() }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub name: String,
