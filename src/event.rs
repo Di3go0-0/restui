@@ -1,8 +1,9 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 #[derive(Debug)]
 pub enum AppEvent {
@@ -13,19 +14,22 @@ pub enum AppEvent {
 
 pub struct EventHandler {
     rx: mpsc::UnboundedReceiver<AppEvent>,
-    cancel: CancellationToken,
-    _task: tokio::task::JoinHandle<()>,
+    cancelled: Arc<AtomicBool>,
+    task: Option<std::thread::JoinHandle<()>>,
 }
 
 impl EventHandler {
     pub fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
-        let cancel = CancellationToken::new();
-        let cancel_clone = cancel.clone();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_clone = cancelled.clone();
 
-        let task = tokio::spawn(async move {
+        // Use a dedicated OS thread instead of tokio::spawn so that the
+        // blocking event::poll() call does not hold up the async runtime
+        // and can be joined reliably on shutdown.
+        let task = std::thread::spawn(move || {
             loop {
-                if cancel_clone.is_cancelled() {
+                if cancelled_clone.load(Ordering::Relaxed) {
                     break;
                 }
                 if event::poll(tick_rate).unwrap_or(false) {
@@ -50,8 +54,8 @@ impl EventHandler {
 
         Self {
             rx,
-            cancel,
-            _task: task,
+            cancelled,
+            task: Some(task),
         }
     }
 
@@ -62,8 +66,13 @@ impl EventHandler {
             .ok_or_else(|| anyhow::anyhow!("Event channel closed"))
     }
 
-    /// Stop the event polling task so terminal cleanup can proceed
-    pub fn stop(&self) {
-        self.cancel.cancel();
+    /// Stop the event polling thread and wait for it to finish so that
+    /// terminal cleanup can proceed without a zombie process.
+    pub fn stop(&mut self) {
+        self.cancelled.store(true, Ordering::Relaxed);
+        if let Some(task) = self.task.take() {
+            // The thread will exit within one tick_rate cycle (250ms)
+            let _ = task.join();
+        }
     }
 }
