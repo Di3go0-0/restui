@@ -9,6 +9,7 @@ use crate::http_client;
 use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, PathParam, QueryParam, Request};
+use crate::model::response::Response;
 use crate::parser;
 use crate::state::{AppState, BodyType, ChainAutocomplete, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, RESPONSE_CACHE_MAX, UNDO_STACK_MAX, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
 use crate::tui::Tui;
@@ -1648,18 +1649,7 @@ impl App {
                         .map(|c| c.name.as_str())
                         .unwrap_or("_");
                     let key = format!("{}/{}", collection_name, name);
-                    self.state.response_cache.insert(key, ((*response).clone(), std::time::Instant::now()));
-                    // Cap response cache at 50 entries, evicting oldest first
-                    while self.state.response_cache.len() > RESPONSE_CACHE_MAX {
-                        if let Some(oldest_key) = self.state.response_cache.iter()
-                            .min_by_key(|(_, (_, ts))| *ts)
-                            .map(|(k, _)| k.clone())
-                        {
-                            self.state.response_cache.remove(&oldest_key);
-                        } else {
-                            break;
-                        }
-                    }
+                    self.cache_response(key, (*response).clone());
                 }
 
                 self.state.current_response = Some(*response);
@@ -3946,6 +3936,20 @@ impl App {
         }
     }
 
+    fn cache_response(&mut self, key: String, response: Response) {
+        self.state.response_cache.insert(key, (response, std::time::Instant::now()));
+        while self.state.response_cache.len() > RESPONSE_CACHE_MAX {
+            if let Some(oldest_key) = self.state.response_cache.iter()
+                .min_by_key(|(_, (_, ts))| *ts)
+                .map(|(k, _)| k.clone())
+            {
+                self.state.response_cache.remove(&oldest_key);
+            } else {
+                break;
+            }
+        }
+    }
+
     async fn execute_request(&mut self) {
         // Allow re-sending: cancel conceptually the old one
         self.state.request_in_flight = true;
@@ -4192,18 +4196,7 @@ impl App {
 
                 // Only cache successful responses (2xx)
                 if resp.status >= 200 && resp.status < 300 {
-                    self.state.response_cache.insert(cache_key.clone(), (resp, std::time::Instant::now()));
-                    // Cap response cache at 50 entries, evicting oldest first
-                    while self.state.response_cache.len() > RESPONSE_CACHE_MAX {
-                        if let Some(oldest_key) = self.state.response_cache.iter()
-                            .min_by_key(|(_, (_, ts))| *ts)
-                            .map(|(k, _)| k.clone())
-                        {
-                            self.state.response_cache.remove(&oldest_key);
-                        } else {
-                            break;
-                        }
-                    }
+                    self.cache_response(cache_key.clone(), resp);
                 } else {
                     return Err(format!(
                         "Chain error: dependency '{}' returned {} {}",
