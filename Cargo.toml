@@ -2,7 +2,13 @@
 name = "restui"
 version = "0.1.0"
 edition = "2024"
-description = "A lazygit-style TUI HTTP client for Neovim"
+description = "A lazygit-style TUI HTTP client with vim keybindings"
+license = "MIT"
+repository = "https://github.com/Di3go0-0/restui"
+homepage = "https://github.com/Di3go0-0/restui"
+keywords = ["http", "rest", "tui", "vim", "api"]
+categories = ["command-line-utilities", "web-programming::http-client"]
+readme = "README.md"
 
 [dependencies]
 ratatui = "0.30"
