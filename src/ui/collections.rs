@@ -12,7 +12,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let border_color = if is_focused { t.border_focused } else { t.border_unfocused };
 
     let coll_count = state.collections.len();
-    let title = if coll_count > 0 {
+    let has_filter = !state.collections_filter.is_empty() && !state.collections_filter_active;
+    let title = if has_filter {
+        format!(
+            " [1] Collections (filter: \"{}\") ",
+            state.collections_filter
+        )
+    } else if coll_count > 0 {
         format!(
             " [1] Collections ({}/{}) ",
             state.active_collection + 1,
@@ -95,10 +101,14 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         })
         .collect();
 
-    // Split: list + bottom hints
+    // Determine if we need filter bar space
+    let show_filter_bar = state.collections_filter_active;
+    let bottom_height = if is_focused { 3 } else { 0 } + if show_filter_bar { 1 } else { 0 };
+
+    // Split: list + bottom (hints + optional filter bar)
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .constraints([Constraint::Min(1), Constraint::Length(bottom_height)])
         .split(inner);
 
     let mut list_state = state.collections_state.clone();
@@ -113,34 +123,72 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     frame.render_widget(block, area);
     frame.render_stateful_widget(list, chunks[0], &mut list_state);
 
-    // Hints at bottom
-    if is_focused {
-        let hints = vec![
-            Line::from(vec![
-                Span::styled(" s", Style::default().fg(t.accent)),
-                Span::styled(":save ", Style::default().fg(t.text_dim)),
-                Span::styled("r", Style::default().fg(t.accent)),
-                Span::styled(":rename ", Style::default().fg(t.text_dim)),
-                Span::styled("dd", Style::default().fg(t.accent)),
-                Span::styled(":del ", Style::default().fg(t.text_dim)),
-                Span::styled("yy", Style::default().fg(t.accent)),
-                Span::styled(":copy ", Style::default().fg(t.text_dim)),
-                Span::styled("p", Style::default().fg(t.accent)),
-                Span::styled(":paste", Style::default().fg(t.text_dim)),
-            ]),
-            Line::from(vec![
-                Span::styled(" m", Style::default().fg(t.accent)),
-                Span::styled(":move ", Style::default().fg(t.text_dim)),
-                Span::styled("n", Style::default().fg(t.accent)),
-                Span::styled(":coll ", Style::default().fg(t.text_dim)),
-                Span::styled("Sp", Style::default().fg(t.accent)),
-                Span::styled(":fold ", Style::default().fg(t.text_dim)),
-                Span::styled("{/}", Style::default().fg(t.accent)),
-                Span::styled(":switch", Style::default().fg(t.text_dim)),
-            ]),
-        ];
-        let hints_p = Paragraph::new(hints);
-        frame.render_widget(hints_p, chunks[1]);
+    // Bottom section: hints + filter bar
+    if is_focused || show_filter_bar {
+        let mut bottom_constraints = Vec::new();
+        if show_filter_bar {
+            bottom_constraints.push(Constraint::Length(1));
+        }
+        if is_focused {
+            bottom_constraints.push(Constraint::Length(3));
+        }
+
+        let bottom_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(bottom_constraints)
+            .split(chunks[1]);
+
+        let mut chunk_idx = 0;
+
+        // Filter bar
+        if show_filter_bar {
+            let filter_line = Line::from(vec![
+                Span::styled("/", Style::default().fg(t.accent)),
+                Span::styled(
+                    &state.collections_filter,
+                    Style::default().fg(t.text),
+                ),
+                Span::styled(
+                    "_",
+                    Style::default().fg(t.accent).add_modifier(Modifier::SLOW_BLINK),
+                ),
+            ]);
+            let filter_p = Paragraph::new(filter_line);
+            frame.render_widget(filter_p, bottom_chunks[chunk_idx]);
+            chunk_idx += 1;
+        }
+
+        // Hints
+        if is_focused && chunk_idx < bottom_chunks.len() {
+            let hints = vec![
+                Line::from(vec![
+                    Span::styled(" s", Style::default().fg(t.accent)),
+                    Span::styled(":save ", Style::default().fg(t.text_dim)),
+                    Span::styled("r", Style::default().fg(t.accent)),
+                    Span::styled(":rename ", Style::default().fg(t.text_dim)),
+                    Span::styled("dd", Style::default().fg(t.accent)),
+                    Span::styled(":del ", Style::default().fg(t.text_dim)),
+                    Span::styled("yy", Style::default().fg(t.accent)),
+                    Span::styled(":copy ", Style::default().fg(t.text_dim)),
+                    Span::styled("p", Style::default().fg(t.accent)),
+                    Span::styled(":paste", Style::default().fg(t.text_dim)),
+                ]),
+                Line::from(vec![
+                    Span::styled(" m", Style::default().fg(t.accent)),
+                    Span::styled(":move ", Style::default().fg(t.text_dim)),
+                    Span::styled("n", Style::default().fg(t.accent)),
+                    Span::styled(":coll ", Style::default().fg(t.text_dim)),
+                    Span::styled("Sp", Style::default().fg(t.accent)),
+                    Span::styled(":fold ", Style::default().fg(t.text_dim)),
+                    Span::styled("/", Style::default().fg(t.accent)),
+                    Span::styled(":filter ", Style::default().fg(t.text_dim)),
+                    Span::styled("{/}", Style::default().fg(t.accent)),
+                    Span::styled(":switch", Style::default().fg(t.text_dim)),
+                ]),
+            ];
+            let hints_p = Paragraph::new(hints);
+            frame.render_widget(hints_p, bottom_chunks[chunk_idx]);
+        }
     }
 }
 

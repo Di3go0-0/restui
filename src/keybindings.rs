@@ -14,6 +14,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         return map_search_key(key);
     }
 
+    // 0.6. Collections filter mode consumes input when active
+    if state.collections_filter_active {
+        return map_collections_filter_key(key);
+    }
+
     // 1. Overlays consume input first
     if state.overlay.is_some() {
         return map_overlay_key(key, state);
@@ -90,6 +95,13 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         }
     }
 
+    // Count prefix accumulation (digit keys)
+    match key.code {
+        KeyCode::Char(c @ '1'..='9') => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
+        KeyCode::Char('0') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(0)),
+        _ => {}
+    }
+
     // Global normal mode keys
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
@@ -97,10 +109,10 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('T') => return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 })),
         KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
         // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response
-        KeyCode::Char('1') => return Some(Action::FocusPanel(Panel::Collections)),
-        KeyCode::Char('2') => return Some(Action::FocusPanel(Panel::Request)),
-        KeyCode::Char('3') => return Some(Action::FocusPanel(Panel::Body)),
-        KeyCode::Char('4') => return Some(Action::FocusPanel(Panel::Response)),
+        KeyCode::Char('1') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Collections)),
+        KeyCode::Char('2') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Request)),
+        KeyCode::Char('3') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Body)),
+        KeyCode::Char('4') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Response)),
         _ => {}
     }
 
@@ -261,6 +273,10 @@ fn map_visual_mode_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('G') => Some(Action::ScrollBottom),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
         KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
+        KeyCode::Char('f') => Some(Action::PendingKey('f')),
+        KeyCode::Char('F') => Some(Action::PendingKey('F')),
+        KeyCode::Char('t') => Some(Action::PendingKey('t')),
+        KeyCode::Char('T') => Some(Action::PendingKey('T')),
         _ => None,
     }
 }
@@ -297,6 +313,17 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 _ => None,
             }
         },
+        // z-fold keys (collections panel)
+        ('z', KeyCode::Char('o')) if state.active_panel == Panel::Collections => Some(Action::ExpandCollection),
+        ('z', KeyCode::Char('c')) if state.active_panel == Panel::Collections => Some(Action::CollapseCollection),
+        ('z', KeyCode::Char('a')) if state.active_panel == Panel::Collections => Some(Action::ToggleCollapse),
+        ('z', KeyCode::Char('M')) if state.active_panel == Panel::Collections => Some(Action::CollapseAll),
+        ('z', KeyCode::Char('R')) if state.active_panel == Panel::Collections => Some(Action::ExpandAll),
+        // f/F/t/T find char motions
+        ('f', KeyCode::Char(c)) => Some(Action::FindCharForward(c)),
+        ('F', KeyCode::Char(c)) => Some(Action::FindCharBackward(c)),
+        ('t', KeyCode::Char(c)) => Some(Action::FindCharForwardBefore(c)),
+        ('T', KeyCode::Char(c)) => Some(Action::FindCharBackwardAfter(c)),
         _ => map_normal_mode_key(key, state),
     }
 }
@@ -321,6 +348,8 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('Y') => Some(Action::CopyAsCurl),
         KeyCode::Char('L') | KeyCode::Char('}') => Some(Action::NextCollection),
         KeyCode::Char('H') | KeyCode::Char('{') => Some(Action::PrevCollection),
+        KeyCode::Char('/') => Some(Action::StartCollectionsFilter),
+        KeyCode::Char('z') => Some(Action::PendingKey('z')),
         _ => None,
     }
 }
@@ -387,6 +416,11 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
         KeyCode::Char('u') => Some(Action::Undo),
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
+        // Find char motions
+        KeyCode::Char('f') => Some(Action::PendingKey('f')),
+        KeyCode::Char('F') => Some(Action::PendingKey('F')),
+        KeyCode::Char('t') => Some(Action::PendingKey('t')),
+        KeyCode::Char('T') => Some(Action::PendingKey('T')),
         // Tab to switch between name/value sub-fields
         KeyCode::Tab => Some(Action::InlineTab),
         // Exit field editing
@@ -426,8 +460,11 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
-        // Body type
-        KeyCode::Char('t') => Some(Action::CycleBodyType),
+        // Body type (use T for cycle, t for find-char-before)
+        KeyCode::Char('f') => Some(Action::PendingKey('f')),
+        KeyCode::Char('F') => Some(Action::PendingKey('F')),
+        KeyCode::Char('t') => Some(Action::PendingKey('t')),
+        KeyCode::Char('T') => Some(Action::PendingKey('T')),
         // Search
         KeyCode::Char('/') => Some(Action::StartSearch),
         KeyCode::Char('n') => Some(Action::SearchNext),
@@ -467,6 +504,16 @@ fn map_search_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Enter => Some(Action::SearchConfirm),
         KeyCode::Backspace => Some(Action::SearchBackspace),
         KeyCode::Char(c) => Some(Action::SearchInput(c)),
+        _ => None,
+    }
+}
+
+fn map_collections_filter_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::CollectionsFilterCancel),
+        KeyCode::Enter => Some(Action::CollectionsFilterConfirm),
+        KeyCode::Backspace => Some(Action::CollectionsFilterBackspace),
+        KeyCode::Char(c) => Some(Action::CollectionsFilterInput(c)),
         _ => None,
     }
 }

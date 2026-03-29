@@ -43,15 +43,43 @@ impl App {
     }
 
     fn rebuild_collection_items(&mut self) {
+        let filter = self.state.collections_filter.to_lowercase();
+        let has_filter = !filter.is_empty();
         let mut items = Vec::new();
         for (ci, collection) in self.state.collections.iter().enumerate() {
             let expanded = self.state.expanded_collections.contains(&ci);
-            let arrow = if expanded { "▼" } else { "▶" };
-            let marker = if ci == self.state.active_collection { "●" } else { "○" };
-            items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
-            if expanded {
-                for req in &collection.requests {
-                    items.push(format!("  {} {}", req.method, req.display_name()));
+
+            if has_filter {
+                // Check if any request in this collection matches the filter
+                let matching_requests: Vec<&crate::model::request::Request> = collection.requests.iter()
+                    .filter(|req| {
+                        req.display_name().to_lowercase().contains(&filter)
+                            || req.url.to_lowercase().contains(&filter)
+                    })
+                    .collect();
+                if matching_requests.is_empty() {
+                    continue; // skip collections with no matching requests
+                }
+                let arrow = if expanded { "▼" } else { "▶" };
+                let marker = if ci == self.state.active_collection { "●" } else { "○" };
+                items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
+                if expanded {
+                    for req in &collection.requests {
+                        let name_match = req.display_name().to_lowercase().contains(&filter);
+                        let url_match = req.url.to_lowercase().contains(&filter);
+                        if name_match || url_match {
+                            items.push(format!("  {} {}", req.method, req.display_name()));
+                        }
+                    }
+                }
+            } else {
+                let arrow = if expanded { "▼" } else { "▶" };
+                let marker = if ci == self.state.active_collection { "●" } else { "○" };
+                items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
+                if expanded {
+                    for req in &collection.requests {
+                        items.push(format!("  {} {}", req.method, req.display_name()));
+                    }
                 }
             }
         }
@@ -61,14 +89,33 @@ impl App {
     /// Maps a flat list index to (collection_index, Option<request_index>).
     /// Returns None if out of bounds.
     fn flat_idx_to_coll_req(&self, flat_idx: usize) -> Option<(usize, Option<usize>)> {
+        let filter = self.state.collections_filter.to_lowercase();
+        let has_filter = !filter.is_empty();
         let mut idx = 0;
         for (ci, collection) in self.state.collections.iter().enumerate() {
+            if has_filter {
+                let has_match = collection.requests.iter().any(|req| {
+                    req.display_name().to_lowercase().contains(&filter)
+                        || req.url.to_lowercase().contains(&filter)
+                });
+                if !has_match {
+                    continue;
+                }
+            }
             if idx == flat_idx {
                 return Some((ci, None)); // collection header
             }
             idx += 1;
             if self.state.expanded_collections.contains(&ci) {
                 for ri in 0..collection.requests.len() {
+                    if has_filter {
+                        let req = &collection.requests[ri];
+                        let name_match = req.display_name().to_lowercase().contains(&filter);
+                        let url_match = req.url.to_lowercase().contains(&filter);
+                        if !name_match && !url_match {
+                            continue;
+                        }
+                    }
                     if idx == flat_idx {
                         return Some((ci, Some(ri)));
                     }
@@ -159,6 +206,12 @@ impl App {
     }
 
     async fn update(&mut self, action: Action) -> Result<()> {
+        // Extract count prefix (consume it for all actions except AccumulateCount itself)
+        let count = match action {
+            Action::AccumulateCount(_) => 1,
+            _ => self.state.count_prefix.take().unwrap_or(1) as usize,
+        };
+
         match action {
             Action::Quit => self.state.should_quit = true,
             Action::Tick => {
@@ -424,8 +477,8 @@ impl App {
             }
 
             // === Scrolling ===
-            Action::ScrollDown => self.scroll_down(),
-            Action::ScrollUp => self.scroll_up(),
+            Action::ScrollDown => { for _ in 0..count { self.scroll_down(); } }
+            Action::ScrollUp => { for _ in 0..count { self.scroll_up(); } }
             Action::ScrollHalfDown => self.scroll_half_down(),
             Action::ScrollHalfUp => self.scroll_half_up(),
             Action::ScrollTop => self.scroll_top(),
@@ -706,8 +759,8 @@ impl App {
             Action::InlineBackspace => self.inline_backspace(),
             Action::InlineDelete => self.inline_delete(),
             Action::InlineNewline => self.inline_newline(),
-            Action::InlineCursorLeft => self.inline_cursor_left(),
-            Action::InlineCursorRight => self.inline_cursor_right(),
+            Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
+            Action::InlineCursorRight => { for _ in 0..count { self.inline_cursor_right(); } }
             Action::InlineCursorUp => match self.state.active_panel {
                 Panel::Response => self.resp_cursor_up(),
                 _ => self.body_cursor_up(),
@@ -722,24 +775,30 @@ impl App {
 
             // === Body/Request Vim Motions ===
             Action::BodyWordForward => {
-                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
-                    self.request_word_forward();
-                } else {
-                    self.body_word_forward();
+                for _ in 0..count {
+                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                        self.request_word_forward();
+                    } else {
+                        self.body_word_forward();
+                    }
                 }
             }
             Action::BodyWordBackward => {
-                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
-                    self.request_word_backward();
-                } else {
-                    self.body_word_backward();
+                for _ in 0..count {
+                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                        self.request_word_backward();
+                    } else {
+                        self.body_word_backward();
+                    }
                 }
             }
             Action::BodyWordEnd => {
-                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
-                    self.request_word_end();
-                } else {
-                    self.body_word_end();
+                for _ in 0..count {
+                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                        self.request_word_end();
+                    } else {
+                        self.body_word_end();
+                    }
                 }
             }
             Action::BodyLineHome => {
@@ -1779,6 +1838,83 @@ impl App {
                     self.jump_to_current_search_match();
                 }
             }
+
+            // === Fold actions ===
+            Action::ExpandCollection => {
+                if let Some(flat_idx) = self.state.collections_state.selected() {
+                    if let Some((ci, _)) = self.flat_idx_to_coll_req(flat_idx) {
+                        self.state.expanded_collections.insert(ci);
+                        self.rebuild_collection_items();
+                    }
+                }
+            }
+            Action::CollapseCollection => {
+                if let Some(flat_idx) = self.state.collections_state.selected() {
+                    if let Some((ci, _)) = self.flat_idx_to_coll_req(flat_idx) {
+                        self.state.expanded_collections.remove(&ci);
+                        self.rebuild_collection_items();
+                    }
+                }
+            }
+            Action::CollapseAll => {
+                self.state.expanded_collections.clear();
+                self.rebuild_collection_items();
+                self.state.collections_state.select(Some(0));
+            }
+            Action::ExpandAll => {
+                for ci in 0..self.state.collections.len() {
+                    self.state.expanded_collections.insert(ci);
+                }
+                self.rebuild_collection_items();
+            }
+
+            // === Collections filter ===
+            Action::StartCollectionsFilter => {
+                self.state.collections_filter_active = true;
+                self.state.collections_filter.clear();
+            }
+            Action::CollectionsFilterInput(c) => {
+                self.state.collections_filter.push(c);
+                self.rebuild_collection_items();
+                self.state.collections_state.select(Some(0));
+            }
+            Action::CollectionsFilterBackspace => {
+                self.state.collections_filter.pop();
+                self.rebuild_collection_items();
+                self.state.collections_state.select(Some(0));
+            }
+            Action::CollectionsFilterConfirm => {
+                self.state.collections_filter_active = false;
+            }
+            Action::CollectionsFilterCancel => {
+                self.state.collections_filter_active = false;
+                self.state.collections_filter.clear();
+                self.rebuild_collection_items();
+                self.state.collections_state.select(Some(0));
+            }
+
+            // === Count prefix ===
+            Action::AccumulateCount(digit) => {
+                self.state.count_prefix = Some(self.state.count_prefix.unwrap_or(0) * 10 + digit);
+            }
+
+            // === Find char motions ===
+            Action::FindCharForward(c) => {
+                self.state.pending_key = None;
+                self.find_char_forward(c, false);
+            }
+            Action::FindCharBackward(c) => {
+                self.state.pending_key = None;
+                self.find_char_backward(c, false);
+            }
+            Action::FindCharForwardBefore(c) => {
+                self.state.pending_key = None;
+                self.find_char_forward(c, true);
+            }
+            Action::FindCharBackwardAfter(c) => {
+                self.state.pending_key = None;
+                self.find_char_backward(c, true);
+            }
         }
         Ok(())
     }
@@ -2202,9 +2338,23 @@ impl App {
         if self.state.active_panel == Panel::Body {
             let body = self.state.current_request.body.get_or_insert_with(String::new);
             let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
-            body.insert(pos, '\n');
+
+            // Determine indent: copy leading whitespace from current line
+            let lines: Vec<&str> = body.lines().collect();
+            let current_line = lines.get(self.state.body_cursor_row).copied().unwrap_or("");
+            let leading_ws: String = current_line.chars().take_while(|c| c.is_whitespace()).collect();
+
+            // Check if char before cursor is { or [ for extra indent
+            let char_before = if pos > 0 { body.as_bytes().get(pos - 1).copied() } else { None };
+            let extra_indent = match char_before {
+                Some(b'{') | Some(b'[') => "  ",
+                _ => "",
+            };
+
+            let indent = format!("\n{}{}", leading_ws, extra_indent);
+            body.insert_str(pos, &indent);
             self.state.body_cursor_row += 1;
-            self.state.body_cursor_col = 0;
+            self.state.body_cursor_col = leading_ws.len() + extra_indent.len();
         }
     }
 
@@ -3269,6 +3419,107 @@ impl App {
                 self.state.last_error = None;
                 self.state.active_collection = ci;
             }
+        }
+    }
+
+    /// Find char forward on the current line (f/t motion).
+    /// If `before` is true, stop one position before the found char (t motion).
+    fn find_char_forward(&mut self, target: char, before: bool) {
+        match self.state.active_panel {
+            Panel::Body => {
+                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let lines: Vec<&str> = body.lines().collect();
+                if let Some(line) = lines.get(self.state.body_cursor_row) {
+                    let bytes = line.as_bytes();
+                    let start = self.state.body_cursor_col + 1;
+                    for i in start..bytes.len() {
+                        if bytes[i] == target as u8 {
+                            self.state.body_cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
+                            break;
+                        }
+                    }
+                }
+            }
+            Panel::Request if self.state.request_field_editing => {
+                let text = self.get_request_field_text();
+                let bytes = text.as_bytes();
+                let cursor = self.get_request_cursor();
+                let start = cursor + 1;
+                for i in start..bytes.len() {
+                    if bytes[i] == target as u8 {
+                        self.set_request_cursor(if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i });
+                        break;
+                    }
+                }
+            }
+            Panel::Response => {
+                let text = self.get_response_body_text();
+                let lines: Vec<&str> = text.lines().collect();
+                if let Some(line) = lines.get(self.state.resp_cursor_row) {
+                    let bytes = line.as_bytes();
+                    let start = self.state.resp_cursor_col + 1;
+                    for i in start..bytes.len() {
+                        if bytes[i] == target as u8 {
+                            self.state.resp_cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
+                            break;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Find char backward on the current line (F/T motion).
+    /// If `after` is true, stop one position after the found char (T motion).
+    fn find_char_backward(&mut self, target: char, after: bool) {
+        match self.state.active_panel {
+            Panel::Body => {
+                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let lines: Vec<&str> = body.lines().collect();
+                if let Some(line) = lines.get(self.state.body_cursor_row) {
+                    let bytes = line.as_bytes();
+                    let col = self.state.body_cursor_col;
+                    if col > 0 {
+                        for i in (0..col).rev() {
+                            if bytes[i] == target as u8 {
+                                self.state.body_cursor_col = if after { (i + 1).min(col) } else { i };
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Panel::Request if self.state.request_field_editing => {
+                let text = self.get_request_field_text();
+                let bytes = text.as_bytes();
+                let cursor = self.get_request_cursor();
+                if cursor > 0 {
+                    for i in (0..cursor).rev() {
+                        if bytes[i] == target as u8 {
+                            self.set_request_cursor(if after { (i + 1).min(cursor) } else { i });
+                            break;
+                        }
+                    }
+                }
+            }
+            Panel::Response => {
+                let text = self.get_response_body_text();
+                let lines: Vec<&str> = text.lines().collect();
+                if let Some(line) = lines.get(self.state.resp_cursor_row) {
+                    let bytes = line.as_bytes();
+                    let col = self.state.resp_cursor_col;
+                    if col > 0 {
+                        for i in (0..col).rev() {
+                            if bytes[i] == target as u8 {
+                                self.state.resp_cursor_col = if after { (i + 1).min(col) } else { i };
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

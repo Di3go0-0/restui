@@ -57,6 +57,10 @@ pub enum Action {
     DeleteSelected,       // D — delete selected request or collection
     MoveRequest,          // m — move request to another collection
     ToggleCollapse,       // Space on collection header — expand/collapse
+    ExpandCollection,     // zo — open fold
+    CollapseCollection,   // zc — close fold
+    CollapseAll,          // zM — close all folds
+    ExpandAll,            // zR — open all folds
     YankRequest,          // yy on a request — copy to clipboard
     PasteRequest,         // p — paste yanked request into current collection
 
@@ -165,6 +169,22 @@ pub enum Action {
     SearchCancel,
     SearchNext,
     SearchPrev,
+
+    // Collections filter
+    StartCollectionsFilter,
+    CollectionsFilterInput(char),
+    CollectionsFilterBackspace,
+    CollectionsFilterConfirm,
+    CollectionsFilterCancel,
+
+    // Count prefix (vim number prefix)
+    AccumulateCount(u32),
+
+    // Find char motions
+    FindCharForward(char),
+    FindCharBackward(char),
+    FindCharForwardBefore(char),
+    FindCharBackwardAfter(char),
 
     // App
     Quit,

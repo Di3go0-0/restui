@@ -362,6 +362,13 @@ pub struct AppState {
     pub search_matches: Vec<(usize, usize)>,
     pub search_match_idx: usize,
 
+    // Collections filter
+    pub collections_filter: String,
+    pub collections_filter_active: bool,
+
+    // Count prefix (vim number prefix for repeatable motions)
+    pub count_prefix: Option<u32>,
+
     // Misc
     pub should_quit: bool,
     pub status_message: Option<(String, Instant)>,
@@ -438,6 +445,9 @@ impl AppState {
             search_active: false,
             search_matches: Vec::new(),
             search_match_idx: 0,
+            collections_filter: String::new(),
+            collections_filter_active: false,
+            count_prefix: None,
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),
