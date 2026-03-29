@@ -298,7 +298,7 @@ impl App {
                             _ => self.state.request_focus,
                         };
                     }
-                    RequestTab::Params => {
+                    RequestTab::Queries => {
                         let pc = self.state.current_request.query_params.len();
                         self.state.request_focus = match self.state.request_focus {
                             RequestFocus::Url => if pc > 0 { RequestFocus::Param(0) } else { RequestFocus::Url },
@@ -314,7 +314,6 @@ impl App {
                             _ => self.state.request_focus,
                         };
                     }
-                    _ => {} // Auth — future
                 }
             }
             Action::RequestFocusUp => {

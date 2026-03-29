@@ -274,9 +274,8 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('i') | KeyCode::Char('e') => Some(Action::EnterInsertMode),
         KeyCode::Char('a') => match state.request_tab {
             RequestTab::Headers => Some(Action::AddHeader),
-            RequestTab::Params => Some(Action::AddParam),
+            RequestTab::Queries => Some(Action::AddParam),
             RequestTab::Cookies => Some(Action::AddCookie),
-            _ => None,
         },
         KeyCode::Char('A') => Some(Action::ShowHeaderAutocomplete),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),

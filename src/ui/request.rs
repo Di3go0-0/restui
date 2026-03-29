@@ -120,8 +120,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let content_area = chunks[3];
     match state.request_tab {
         RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert),
-        RequestTab::Params => render_params_tab(frame, state, content_area, area, is_focused, is_insert),
-        RequestTab::Auth => render_placeholder_tab(frame, state, content_area, "Auth configuration coming soon"),
+        RequestTab::Queries => render_params_tab(frame, state, content_area, area, is_focused, is_insert),
         RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert),
     }
 }
@@ -478,24 +477,6 @@ fn render_cookies_tab(
     }
 }
 
-fn render_placeholder_tab(
-    frame: &mut Frame,
-    state: &AppState,
-    content_area: Rect,
-    message: &str,
-) {
-    let t = &state.theme;
-    if content_area.height > 0 {
-        let hint = Line::from(Span::styled(
-            format!("   {}", message),
-            Style::default().fg(t.text_dim),
-        ));
-        frame.render_widget(
-            Paragraph::new(hint),
-            Rect::new(content_area.x, content_area.y, content_area.width, 1),
-        );
-    }
-}
 
 fn render_autocomplete_popup(
     frame: &mut Frame,

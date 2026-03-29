@@ -196,24 +196,21 @@ impl Autocomplete {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestTab {
     Headers,
-    Params,
-    Auth,
+    Queries,
     Cookies,
 }
 
 impl RequestTab {
     pub const ALL: &'static [RequestTab] = &[
         RequestTab::Headers,
-        RequestTab::Params,
-        RequestTab::Auth,
+        RequestTab::Queries,
         RequestTab::Cookies,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
             RequestTab::Headers => "Headers",
-            RequestTab::Params => "Params",
-            RequestTab::Auth => "Auth",
+            RequestTab::Queries => "Queries",
             RequestTab::Cookies => "Cookies",
         }
     }
