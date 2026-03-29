@@ -257,6 +257,7 @@ fn map_visual_mode_key(key: KeyEvent) -> Option<Action> {
 fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Action> {
     match (pending, key.code) {
         ('d', KeyCode::Char('d')) => match state.active_panel {
+            Panel::Request if state.request_field_editing => Some(Action::DeleteLine),
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) => Some(Action::DeleteHeader),
                 RequestFocus::Param(_) => Some(Action::DeleteParam),
@@ -307,6 +308,12 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
 }
 
 fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    // Field-edit normal mode: vim motions inside a field
+    if state.request_field_editing {
+        return map_request_field_edit_key(key);
+    }
+
+    // Panel navigation mode: move between fields
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => Some(Action::RequestFocusDown),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::RequestFocusUp),
@@ -315,7 +322,7 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('}') => Some(Action::RequestNextTab),
         KeyCode::Char('{') => Some(Action::RequestPrevTab),
         KeyCode::Char(' ') => Some(Action::ToggleItemEnabled),
-        KeyCode::Char('i') | KeyCode::Char('e') => Some(Action::EnterInsertMode),
+        KeyCode::Char('e') => Some(Action::EnterRequestFieldEdit),
         KeyCode::Char('a') => match state.request_tab {
             RequestTab::Headers => Some(Action::AddHeader),
             RequestTab::Queries => Some(Action::AddParam),
@@ -332,6 +339,35 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
         KeyCode::Char('y') => Some(Action::CopyResponseBody),
         KeyCode::Char('Y') => Some(Action::CopyAsCurl),
+        _ => None,
+    }
+}
+
+fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        // Vim motions
+        KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
+        KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
+        KeyCode::Char('w') => Some(Action::BodyWordForward),
+        KeyCode::Char('b') => Some(Action::BodyWordBackward),
+        KeyCode::Char('0') | KeyCode::Home => Some(Action::InlineCursorHome),
+        KeyCode::Char('$') | KeyCode::End => Some(Action::InlineCursorEnd),
+        // Enter insert mode
+        KeyCode::Char('i') => Some(Action::EnterInsertMode),
+        KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
+        KeyCode::Char('a') => Some(Action::EnterAppendMode),
+        KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
+        // Visual mode
+        KeyCode::Char('v') => Some(Action::EnterVisualMode),
+        // Edit
+        KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
+        KeyCode::Char('d') => Some(Action::PendingKey('d')),
+        KeyCode::Char('y') => Some(Action::PendingKey('y')),
+        KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
+        // Tab to switch between name/value sub-fields
+        KeyCode::Tab => Some(Action::InlineTab),
+        // Exit field editing
+        KeyCode::Esc => Some(Action::ExitRequestFieldEdit),
         _ => None,
     }
 }

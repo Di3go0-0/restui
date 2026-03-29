@@ -13,6 +13,8 @@ pub enum Action {
     EnterAppendMode,       // a — append after cursor
     EnterAppendModeEnd,    // A — append at end of line
     ExitInsertMode,
+    EnterRequestFieldEdit,   // e — enter vim normal mode inside a request field
+    ExitRequestFieldEdit,    // Esc from field-edit normal mode
     EnterVisualMode,
     EnterVisualBlockMode,  // Ctrl+V — block selection
     ExitVisualMode,

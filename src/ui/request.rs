@@ -10,6 +10,9 @@ use crate::state::{AppState, InputMode, Panel, RequestFocus, RequestTab};
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Request;
     let is_insert = is_focused && state.mode == InputMode::Insert;
+    let is_field_edit = is_focused && state.request_field_editing;
+    let is_editing = is_insert || (is_field_edit && state.mode == InputMode::Normal);
+    let is_visual = is_field_edit && state.mode == InputMode::Visual;
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
@@ -44,8 +47,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let method_str = format!(" {} ", req.method);
     let prefix_display_width = UnicodeWidthStr::width(url_prefix) + UnicodeWidthStr::width(method_str.as_str()) + 1; // +1 for space after method
 
-    // Build display URL: in insert mode show raw url, otherwise show url + enabled params
-    let display_url = if is_url_focused && is_insert {
+    // Build display URL: in edit modes show raw url, otherwise show url + enabled params
+    let is_url_editing = is_url_focused && (is_editing || is_visual);
+    let display_url = if is_url_editing {
         req.url.clone()
     } else {
         build_display_url(&req.url, &req.query_params)
@@ -53,7 +57,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // Horizontal scroll: derive scroll offset so cursor stays visible
     let url_area_width = (inner.width as usize).saturating_sub(prefix_display_width);
-    let scroll = if is_url_focused && is_insert && url_area_width > 0 {
+    let scroll = if is_url_editing && url_area_width > 0 {
         let cursor = state.url_cursor;
         if cursor < url_area_width {
             0
@@ -73,13 +77,23 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // Truncate to available width
     let truncated_url: String = visible_url.chars().take(url_area_width).collect();
 
-    let url_style = if is_url_focused && is_insert {
+    let url_base_style = if is_url_editing {
         Style::default().fg(t.text).add_modifier(Modifier::UNDERLINED)
     } else {
         Style::default().fg(t.text)
     };
 
-    let method_line = Line::from(vec![
+    // Build URL spans with block cursor / visual highlight
+    let url_spans = if is_url_focused && (is_editing || is_visual) && !is_insert {
+        let cursor_in_visible = state.url_cursor.saturating_sub(scroll);
+        build_field_spans(&truncated_url, cursor_in_visible,
+            if is_visual { Some((state.request_visual_anchor.saturating_sub(scroll), cursor_in_visible)) } else { None },
+            url_base_style, t)
+    } else {
+        vec![Span::styled(truncated_url, url_base_style)]
+    };
+
+    let mut method_spans = vec![
         Span::styled(
             url_prefix,
             Style::default().fg(if is_url_focused { t.accent } else { t.text_dim }),
@@ -92,11 +106,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        Span::styled(truncated_url, url_style),
-    ]);
-    frame.render_widget(Paragraph::new(method_line), chunks[0]);
+    ];
+    method_spans.extend(url_spans);
+    frame.render_widget(Paragraph::new(Line::from(method_spans)), chunks[0]);
 
-    // Cursor when editing URL (with scroll offset)
+    // Cursor when in insert mode (blinking line cursor)
     if is_insert && state.request_focus == RequestFocus::Url {
         let cursor_visual = state.url_cursor.saturating_sub(scroll);
         let cursor_x = inner.x + prefix_display_width as u16 + cursor_visual as u16;
@@ -119,9 +133,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // === Tab content ===
     let content_area = chunks[3];
     match state.request_tab {
-        RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert),
-        RequestTab::Queries => render_params_tab(frame, state, content_area, area, is_focused, is_insert),
-        RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert),
+        RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
+        RequestTab::Queries => render_params_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
+        RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
     }
 }
 
@@ -166,6 +180,8 @@ fn render_headers_tab(
     bounds: Rect,
     is_focused: bool,
     is_insert: bool,
+    is_editing: bool,
+    is_visual: bool,
 ) {
     let t = &state.theme;
     let req = &state.current_request;
@@ -205,7 +221,7 @@ fn render_headers_tab(
         let prefix_span = format!(" {} {} ", prefix, toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
-        if is_header_focused && is_insert {
+        if is_header_focused && (is_editing || is_visual) {
             let name_style = if state.header_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
@@ -216,32 +232,52 @@ fn render_headers_tab(
             } else {
                 style
             };
-            let line = Line::from(vec![
+
+            let active_style = if state.header_edit_field == 0 { name_style } else { value_style };
+
+            // Build spans — use block cursor / visual highlight for non-insert modes
+            let (name_spans, value_spans) = if !is_insert && state.header_edit_field == 0 {
+                (build_field_spans(&header.name, state.header_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.header_edit_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(&header.value, value_style)])
+            } else if !is_insert && state.header_edit_field == 1 {
+                (vec![Span::styled(&header.name, name_style)],
+                 build_field_spans(&header.value, state.header_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.header_edit_cursor)) } else { None },
+                    active_style, t))
+            } else {
+                (vec![Span::styled(&header.name, name_style)], vec![Span::styled(&header.value, value_style)])
+            };
+
+            let mut spans = vec![
                 Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
-                Span::styled(&header.name, name_style),
-                Span::styled(": ", style),
-                Span::styled(&header.value, value_style),
-            ]);
+            ];
+            spans.extend(name_spans);
+            spans.push(Span::styled(": ", style));
+            spans.extend(value_spans);
+            let line = Line::from(spans);
             frame.render_widget(
                 Paragraph::new(line),
                 Rect::new(content_area.x, row_y, content_area.width, 1),
             );
 
-            // Position cursor
-            let name_display_width = UnicodeWidthStr::width(header.name.as_str());
-            let cursor_before = if state.header_edit_field == 0 {
-                &header.name[..header.name.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.name.len())]
-            } else {
-                &header.value[..header.value.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.value.len())]
-            };
-            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
-            let cursor_x = if state.header_edit_field == 0 {
-                content_area.x + prefix_width as u16 + cursor_text_width
-            } else {
-                content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_text_width
-            };
-            if cursor_x < bounds.right() {
-                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            // Position cursor (only blinking line cursor in insert mode)
+            if is_insert {
+                let name_display_width = UnicodeWidthStr::width(header.name.as_str());
+                let cursor_before = if state.header_edit_field == 0 {
+                    &header.name[..header.name.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.name.len())]
+                } else {
+                    &header.value[..header.value.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.value.len())]
+                };
+                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let cursor_x = if state.header_edit_field == 0 {
+                    content_area.x + prefix_width as u16 + cursor_text_width
+                } else {
+                    content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_text_width
+                };
+                if cursor_x < bounds.right() {
+                    frame.set_cursor_position(Position::new(cursor_x, row_y));
+                }
             }
 
             // Save anchor for autocomplete popup
@@ -280,6 +316,8 @@ fn render_params_tab(
     bounds: Rect,
     is_focused: bool,
     is_insert: bool,
+    is_editing: bool,
+    is_visual: bool,
 ) {
     let t = &state.theme;
     let req = &state.current_request;
@@ -317,7 +355,7 @@ fn render_params_tab(
         let prefix_span = format!(" {} {} ", prefix, toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
-        if is_param_focused && is_insert {
+        if is_param_focused && (is_editing || is_visual) {
             let key_style = if state.param_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
@@ -328,32 +366,47 @@ fn render_params_tab(
             } else {
                 style
             };
-            let line = Line::from(vec![
-                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
-                Span::styled(&param.key, key_style),
-                Span::styled(" = ", style),
-                Span::styled(&param.value, value_style),
-            ]);
+
+            let active_style = if state.param_edit_field == 0 { key_style } else { value_style };
+            let (key_spans, value_spans) = if !is_insert && state.param_edit_field == 0 {
+                (build_field_spans(&param.key, state.param_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.param_edit_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(&param.value, value_style)])
+            } else if !is_insert && state.param_edit_field == 1 {
+                (vec![Span::styled(&param.key, key_style)],
+                 build_field_spans(&param.value, state.param_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.param_edit_cursor)) } else { None },
+                    active_style, t))
+            } else {
+                (vec![Span::styled(&param.key, key_style)], vec![Span::styled(&param.value, value_style)])
+            };
+
+            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            spans.extend(key_spans);
+            spans.push(Span::styled(" = ", style));
+            spans.extend(value_spans);
             frame.render_widget(
-                Paragraph::new(line),
+                Paragraph::new(Line::from(spans)),
                 Rect::new(content_area.x, row_y, content_area.width, 1),
             );
 
-            // Position cursor
-            let key_display_width = UnicodeWidthStr::width(param.key.as_str());
-            let cursor_before = if state.param_edit_field == 0 {
-                &param.key[..param.key.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
-            } else {
-                &param.value[..param.value.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
-            };
-            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
-            let cursor_x = if state.param_edit_field == 0 {
-                content_area.x + prefix_width as u16 + cursor_text_width
-            } else {
-                content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width // " = " is 3 chars
-            };
-            if cursor_x < bounds.right() {
-                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            // Position cursor (only in insert mode)
+            if is_insert {
+                let key_display_width = UnicodeWidthStr::width(param.key.as_str());
+                let cursor_before = if state.param_edit_field == 0 {
+                    &param.key[..param.key.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
+                } else {
+                    &param.value[..param.value.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
+                };
+                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let cursor_x = if state.param_edit_field == 0 {
+                    content_area.x + prefix_width as u16 + cursor_text_width
+                } else {
+                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width
+                };
+                if cursor_x < bounds.right() {
+                    frame.set_cursor_position(Position::new(cursor_x, row_y));
+                }
             }
         } else {
             let prefix_style = Style::default().fg(
@@ -382,6 +435,8 @@ fn render_cookies_tab(
     bounds: Rect,
     is_focused: bool,
     is_insert: bool,
+    is_editing: bool,
+    is_visual: bool,
 ) {
     let t = &state.theme;
     let req = &state.current_request;
@@ -419,7 +474,7 @@ fn render_cookies_tab(
         let prefix_span = format!(" {} {} ", prefix, toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
-        if is_cookie_focused && is_insert {
+        if is_cookie_focused && (is_editing || is_visual) {
             let name_style = if state.cookie_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
@@ -430,32 +485,47 @@ fn render_cookies_tab(
             } else {
                 style
             };
-            let line = Line::from(vec![
-                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
-                Span::styled(&cookie.name, name_style),
-                Span::styled("=", style),
-                Span::styled(&cookie.value, value_style),
-            ]);
+
+            let active_style = if state.cookie_edit_field == 0 { name_style } else { value_style };
+            let (name_spans, value_spans) = if !is_insert && state.cookie_edit_field == 0 {
+                (build_field_spans(&cookie.name, state.cookie_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.cookie_edit_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(&cookie.value, value_style)])
+            } else if !is_insert && state.cookie_edit_field == 1 {
+                (vec![Span::styled(&cookie.name, name_style)],
+                 build_field_spans(&cookie.value, state.cookie_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.cookie_edit_cursor)) } else { None },
+                    active_style, t))
+            } else {
+                (vec![Span::styled(&cookie.name, name_style)], vec![Span::styled(&cookie.value, value_style)])
+            };
+
+            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            spans.extend(name_spans);
+            spans.push(Span::styled("=", style));
+            spans.extend(value_spans);
             frame.render_widget(
-                Paragraph::new(line),
+                Paragraph::new(Line::from(spans)),
                 Rect::new(content_area.x, row_y, content_area.width, 1),
             );
 
-            // Position cursor
-            let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
-            let cursor_before = if state.cookie_edit_field == 0 {
-                &cookie.name[..cookie.name.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.name.len())]
-            } else {
-                &cookie.value[..cookie.value.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.value.len())]
-            };
-            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
-            let cursor_x = if state.cookie_edit_field == 0 {
-                content_area.x + prefix_width as u16 + cursor_text_width
-            } else {
-                content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_text_width // "=" is 1 char
-            };
-            if cursor_x < bounds.right() {
-                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            // Position cursor (only in insert mode)
+            if is_insert {
+                let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
+                let cursor_before = if state.cookie_edit_field == 0 {
+                    &cookie.name[..cookie.name.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.name.len())]
+                } else {
+                    &cookie.value[..cookie.value.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.value.len())]
+                };
+                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let cursor_x = if state.cookie_edit_field == 0 {
+                    content_area.x + prefix_width as u16 + cursor_text_width
+                } else {
+                    content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_text_width
+                };
+                if cursor_x < bounds.right() {
+                    frame.set_cursor_position(Position::new(cursor_x, row_y));
+                }
             }
         } else {
             let prefix_style = Style::default().fg(
@@ -556,5 +626,60 @@ fn build_display_url(base_url: &str, params: &[crate::model::request::QueryParam
         format!("{}&{}", base_url, qs.join("&"))
     } else {
         format!("{}?{}", base_url, qs.join("&"))
+    }
+}
+
+/// Build spans for a field with block cursor and optional visual selection.
+/// `cursor_pos` is the character position for the block cursor.
+/// `visual_range` is Some((anchor, cursor)) for visual mode selection.
+fn build_field_spans<'a>(
+    text: &'a str,
+    cursor_pos: usize,
+    visual_range: Option<(usize, usize)>,
+    base_style: Style,
+    t: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    if text.is_empty() {
+        // Show block cursor on empty field
+        return vec![Span::styled(" ", Style::default().fg(t.overlay_bg).bg(t.text))];
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+    let cursor = cursor_pos.min(chars.len().saturating_sub(1));
+
+    if let Some((anchor, _)) = visual_range {
+        // Visual mode: highlight selection range
+        let sel_start = anchor.min(cursor);
+        let sel_end = (anchor.max(cursor) + 1).min(chars.len());
+        let visual_style = Style::default().fg(t.overlay_bg).bg(t.accent);
+
+        let mut spans = Vec::new();
+        if sel_start > 0 {
+            let before: String = chars[..sel_start].iter().collect();
+            spans.push(Span::styled(before, base_style));
+        }
+        let selected: String = chars[sel_start..sel_end].iter().collect();
+        spans.push(Span::styled(selected, visual_style));
+        if sel_end < chars.len() {
+            let after: String = chars[sel_end..].iter().collect();
+            spans.push(Span::styled(after, base_style));
+        }
+        spans
+    } else {
+        // Normal mode: block cursor on current char
+        let cursor_style = Style::default().fg(t.overlay_bg).bg(t.text);
+
+        let mut spans = Vec::new();
+        if cursor > 0 {
+            let before: String = chars[..cursor].iter().collect();
+            spans.push(Span::styled(before, base_style));
+        }
+        let cursor_char: String = chars[cursor..cursor + 1].iter().collect();
+        spans.push(Span::styled(cursor_char, cursor_style));
+        if cursor + 1 < chars.len() {
+            let after: String = chars[cursor + 1..].iter().collect();
+            spans.push(Span::styled(after, base_style));
+        }
+        spans
     }
 }

@@ -172,10 +172,12 @@ impl App {
                 self.state.active_panel = target;
                 self.state.mode = InputMode::Normal;
                 self.state.pending_key = None;
+                self.state.request_field_editing = false;
             }
             Action::FocusPanel(panel) => {
                 self.state.active_panel = panel;
                 self.state.mode = InputMode::Normal;
+                self.state.request_field_editing = false;
             }
 
             // === Vim Mode Transitions ===
@@ -188,38 +190,67 @@ impl App {
                     }
                     Panel::Request => {
                         self.state.mode = InputMode::Insert;
-                        self.position_request_cursor_at_end();
+                        // If already in field-edit mode, keep cursor position; otherwise go to end
+                        if !self.state.request_field_editing {
+                            self.position_request_cursor_at_end();
+                        }
+                        self.state.request_field_editing = true;
                     }
                     _ => {}
                 }
             }
             Action::EnterInsertModeStart => {
-                if self.state.active_panel == Panel::Body {
-                    self.push_body_undo();
-                    self.state.mode = InputMode::Insert;
-                    self.state.body_cursor_col = 0;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        self.state.mode = InputMode::Insert;
+                        self.state.body_cursor_col = 0;
+                    }
+                    Panel::Request => {
+                        self.state.mode = InputMode::Insert;
+                        self.state.request_field_editing = true;
+                        self.set_request_cursor(0);
+                    }
+                    _ => {}
                 }
             }
             Action::EnterAppendMode => {
-                if self.state.active_panel == Panel::Body {
-                    self.push_body_undo();
-                    self.state.mode = InputMode::Insert;
-                    // 'a' — move cursor one right (append after cursor)
-                    let body = self.state.current_request.body.as_deref().unwrap_or("");
-                    let lines: Vec<&str> = body.lines().collect();
-                    let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                    self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        self.state.mode = InputMode::Insert;
+                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let lines: Vec<&str> = body.lines().collect();
+                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
+                    }
+                    Panel::Request => {
+                        self.state.mode = InputMode::Insert;
+                        self.state.request_field_editing = true;
+                        let cursor = self.get_request_cursor();
+                        let len = self.get_request_field_len();
+                        self.set_request_cursor((cursor + 1).min(len));
+                    }
+                    _ => {}
                 }
             }
             Action::EnterAppendModeEnd => {
-                if self.state.active_panel == Panel::Body {
-                    self.push_body_undo();
-                    self.state.mode = InputMode::Insert;
-                    // 'A' — move cursor to end of line
-                    let body = self.state.current_request.body.as_deref().unwrap_or("");
-                    let lines: Vec<&str> = body.lines().collect();
-                    let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                    self.state.body_cursor_col = line_len;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.push_body_undo();
+                        self.state.mode = InputMode::Insert;
+                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let lines: Vec<&str> = body.lines().collect();
+                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        self.state.body_cursor_col = line_len;
+                    }
+                    Panel::Request => {
+                        self.state.mode = InputMode::Insert;
+                        self.state.request_field_editing = true;
+                        let len = self.get_request_field_len();
+                        self.set_request_cursor(len);
+                    }
+                    _ => {}
                 }
             }
             Action::OpenLineBelow => {
@@ -262,6 +293,23 @@ impl App {
                 self.state.mode = InputMode::Normal;
                 self.state.autocomplete = None;
                 self.state.validate_body();
+                // Return to field-edit normal mode (not panel navigation) in Request panel
+                if self.state.active_panel == Panel::Request {
+                    self.state.request_field_editing = true;
+                }
+            }
+            Action::EnterRequestFieldEdit => {
+                if self.state.active_panel == Panel::Request {
+                    self.state.request_field_editing = true;
+                    self.position_request_cursor_at_end();
+                }
+            }
+            Action::ExitRequestFieldEdit => {
+                self.state.request_field_editing = false;
+                // Sync query params from URL when leaving field edit
+                if self.state.active_panel == Panel::Request && self.state.request_focus == RequestFocus::Url {
+                    self.sync_params_from_url();
+                }
             }
             Action::EnterVisualMode => {
                 match self.state.active_panel {
@@ -274,6 +322,10 @@ impl App {
                         self.state.mode = InputMode::Visual;
                         self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
                         self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
+                    }
+                    Panel::Request if self.state.request_field_editing => {
+                        self.state.mode = InputMode::Visual;
+                        self.state.request_visual_anchor = self.get_request_cursor();
                     }
                     _ => {}
                 }
@@ -293,7 +345,13 @@ impl App {
                     _ => {}
                 }
             }
-            Action::ExitVisualMode => self.state.mode = InputMode::Normal,
+            Action::ExitVisualMode => {
+                self.state.mode = InputMode::Normal;
+                // Stay in field-edit mode when exiting visual in Request panel
+                if self.state.active_panel == Panel::Request {
+                    self.state.request_field_editing = true;
+                }
+            }
 
             // === Inline Autocomplete ===
             Action::AutocompleteNext => {
@@ -631,10 +689,28 @@ impl App {
             Action::InlineCursorEnd => self.inline_cursor_end(),
             Action::InlineTab => self.inline_tab(),
 
-            // === Body Vim Motions ===
-            Action::BodyWordForward => self.body_word_forward(),
-            Action::BodyWordBackward => self.body_word_backward(),
-            Action::BodyLineHome => { self.state.body_cursor_col = 0; }
+            // === Body/Request Vim Motions ===
+            Action::BodyWordForward => {
+                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.request_word_forward();
+                } else {
+                    self.body_word_forward();
+                }
+            }
+            Action::BodyWordBackward => {
+                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.request_word_backward();
+                } else {
+                    self.body_word_backward();
+                }
+            }
+            Action::BodyLineHome => {
+                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.set_request_cursor(0);
+                } else {
+                    self.state.body_cursor_col = 0;
+                }
+            }
             Action::BodyLineEnd => self.inline_cursor_end(),
 
             // === Visual Mode ===
@@ -645,6 +721,7 @@ impl App {
                     Panel::Body => Some(self.get_visual_selection()),
                     Panel::Response if is_block => Some(self.get_response_block_selection()),
                     Panel::Response => Some(self.get_response_visual_selection()),
+                    Panel::Request if self.state.request_field_editing => Some(self.get_request_visual_selection()),
                     _ => None,
                 };
                 if let Some(text) = text {
@@ -657,17 +734,26 @@ impl App {
                 }
             }
             Action::VisualDelete => {
-                if self.state.active_panel == Panel::Body {
-                    let is_block = self.state.mode == InputMode::VisualBlock;
-                    let text = if is_block { self.get_block_selection() } else { self.get_visual_selection() };
-                    self.state.yank_buffer = text;
-                    self.push_body_undo();
-                    if is_block {
-                        self.delete_block_selection();
-                    } else {
-                        self.delete_visual_selection();
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let is_block = self.state.mode == InputMode::VisualBlock;
+                        let text = if is_block { self.get_block_selection() } else { self.get_visual_selection() };
+                        self.state.yank_buffer = text;
+                        self.push_body_undo();
+                        if is_block {
+                            self.delete_block_selection();
+                        } else {
+                            self.delete_visual_selection();
+                        }
+                        self.state.mode = InputMode::Normal;
                     }
-                    self.state.mode = InputMode::Normal;
+                    Panel::Request if self.state.request_field_editing => {
+                        let text = self.get_request_visual_selection();
+                        self.state.yank_buffer = text;
+                        self.delete_request_visual_selection();
+                        self.state.mode = InputMode::Normal;
+                    }
+                    _ => {}
                 }
             }
             Action::Paste => {
@@ -675,6 +761,9 @@ impl App {
                     self.push_body_undo();
                     let paste = self.state.yank_buffer.clone();
                     self.paste_text_at_cursor(&paste);
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    let paste = self.state.yank_buffer.clone();
+                    self.paste_request_text(&paste);
                 }
             }
             Action::PasteFromClipboard => {
@@ -706,6 +795,12 @@ impl App {
             Action::YankLine => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
+                    Panel::Request if self.state.request_field_editing => {
+                        let text = self.get_request_field_text();
+                        self.state.yank_buffer = text.clone();
+                        let _ = crate::clipboard::copy_to_clipboard(&text);
+                        self.state.set_status("Yanked field");
+                    }
                     Panel::Body => {
                         let body = self.state.current_request.body.as_deref().unwrap_or("");
                         let lines: Vec<&str> = body.lines().collect();
@@ -742,6 +837,14 @@ impl App {
                         self.delete_body_line(self.state.body_cursor_row);
                         self.state.set_status("Line deleted");
                     }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    // dd in request field edit: clear the field
+                    let text = self.get_request_field_text();
+                    self.state.yank_buffer = text;
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.clear_request_field();
+                    self.set_request_cursor(0);
+                    self.state.set_status("Field cleared");
                 }
             }
             Action::DeleteCharUnderCursor => {
@@ -759,6 +862,8 @@ impl App {
                             self.state.body_cursor_col = self.state.body_cursor_col.min(line_len.saturating_sub(1).max(0));
                         }
                     }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.delete_request_char_under_cursor();
                 }
             }
             Action::ReplaceChar(c) => {
@@ -1738,6 +1843,194 @@ impl App {
                 *cursor_col = col;
             }
         }
+    }
+
+    // === Request field-edit helpers ===
+
+    fn get_request_cursor(&self) -> usize {
+        match self.state.request_focus {
+            RequestFocus::Url => self.state.url_cursor,
+            RequestFocus::Header(_) => self.state.header_edit_cursor,
+            RequestFocus::Param(_) => self.state.param_edit_cursor,
+            RequestFocus::Cookie(_) => self.state.cookie_edit_cursor,
+        }
+    }
+
+    fn set_request_cursor(&mut self, pos: usize) {
+        match self.state.request_focus {
+            RequestFocus::Url => self.state.url_cursor = pos,
+            RequestFocus::Header(_) => self.state.header_edit_cursor = pos,
+            RequestFocus::Param(_) => self.state.param_edit_cursor = pos,
+            RequestFocus::Cookie(_) => self.state.cookie_edit_cursor = pos,
+        }
+    }
+
+    fn get_request_field_len(&self) -> usize {
+        self.get_request_field_text().len()
+    }
+
+    fn get_request_field_text(&self) -> String {
+        match self.state.request_focus {
+            RequestFocus::Url => self.state.current_request.url.clone(),
+            RequestFocus::Header(idx) => {
+                self.state.current_request.headers.get(idx).map(|h| {
+                    if self.state.header_edit_field == 0 { h.name.clone() } else { h.value.clone() }
+                }).unwrap_or_default()
+            }
+            RequestFocus::Param(idx) => {
+                self.state.current_request.query_params.get(idx).map(|p| {
+                    if self.state.param_edit_field == 0 { p.key.clone() } else { p.value.clone() }
+                }).unwrap_or_default()
+            }
+            RequestFocus::Cookie(idx) => {
+                self.state.current_request.cookies.get(idx).map(|c| {
+                    if self.state.cookie_edit_field == 0 { c.name.clone() } else { c.value.clone() }
+                }).unwrap_or_default()
+            }
+        }
+    }
+
+    fn clear_request_field(&mut self) {
+        match self.state.request_focus {
+            RequestFocus::Url => self.state.current_request.url.clear(),
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    if self.state.header_edit_field == 0 { h.name.clear(); } else { h.value.clear(); }
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    if self.state.param_edit_field == 0 { p.key.clear(); } else { p.value.clear(); }
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    if self.state.cookie_edit_field == 0 { c.name.clear(); } else { c.value.clear(); }
+                }
+            }
+        }
+    }
+
+    fn get_request_visual_selection(&self) -> String {
+        let text = self.get_request_field_text();
+        let cursor = self.get_request_cursor();
+        let anchor = self.state.request_visual_anchor;
+        let start = cursor.min(anchor);
+        let end = (cursor.max(anchor) + 1).min(text.len());
+        if start <= end { text[start..end].to_string() } else { String::new() }
+    }
+
+    fn delete_request_visual_selection(&mut self) {
+        let cursor = self.get_request_cursor();
+        let anchor = self.state.request_visual_anchor;
+        let start = cursor.min(anchor);
+        let end = (cursor.max(anchor) + 1).min(self.get_request_field_len());
+        match self.state.request_focus {
+            RequestFocus::Url => { self.state.current_request.url.drain(start..end); }
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
+                    field.drain(start..end);
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    field.drain(start..end);
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.drain(start..end);
+                }
+            }
+        }
+        self.set_request_cursor(start);
+    }
+
+    fn delete_request_char_under_cursor(&mut self) {
+        let cursor = self.get_request_cursor();
+        let len = self.get_request_field_len();
+        if cursor >= len { return; }
+        match self.state.request_focus {
+            RequestFocus::Url => { self.state.current_request.url.remove(cursor); }
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
+                    field.remove(cursor);
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    field.remove(cursor);
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.remove(cursor);
+                }
+            }
+        }
+        // Clamp cursor
+        let new_len = self.get_request_field_len();
+        if cursor >= new_len && new_len > 0 {
+            self.set_request_cursor(new_len - 1);
+        }
+    }
+
+    fn paste_request_text(&mut self, text: &str) {
+        // Filter newlines out for single-line fields
+        let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
+        let cursor = self.get_request_cursor();
+        match self.state.request_focus {
+            RequestFocus::Url => { self.state.current_request.url.insert_str(cursor, &clean); }
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
+                    field.insert_str(cursor, &clean);
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    field.insert_str(cursor, &clean);
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.insert_str(cursor, &clean);
+                }
+            }
+        }
+        self.set_request_cursor(cursor + clean.len());
+    }
+
+    fn request_word_forward(&mut self) {
+        let text = self.get_request_field_text();
+        let bytes = text.as_bytes();
+        let mut col = self.get_request_cursor();
+        // Skip non-whitespace
+        while col < bytes.len() && !bytes[col].is_ascii_whitespace() { col += 1; }
+        // Skip whitespace
+        while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+        self.set_request_cursor(col.min(bytes.len()));
+    }
+
+    fn request_word_backward(&mut self) {
+        let text = self.get_request_field_text();
+        let bytes = text.as_bytes();
+        let mut col = self.get_request_cursor();
+        if col == 0 { return; }
+        col = col.saturating_sub(1);
+        // Skip whitespace
+        while col > 0 && bytes[col].is_ascii_whitespace() { col -= 1; }
+        // Skip non-whitespace
+        while col > 0 && !bytes[col - 1].is_ascii_whitespace() { col -= 1; }
+        self.set_request_cursor(col);
     }
 
     fn get_visual_selection(&self) -> String {

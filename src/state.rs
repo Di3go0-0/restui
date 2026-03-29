@@ -293,6 +293,8 @@ pub struct AppState {
     pub param_edit_field: u8, // 0=key, 1=value
     pub cookie_edit_cursor: usize,
     pub cookie_edit_field: u8, // 0=name, 1=value
+    pub request_field_editing: bool,   // true = vim normal mode inside a field
+    pub request_visual_anchor: usize,  // visual selection anchor for request fields
 
     // Body inline editing
     pub body_cursor_row: usize,
@@ -388,6 +390,8 @@ impl AppState {
             param_edit_field: 0,
             cookie_edit_cursor: 0,
             cookie_edit_field: 0,
+            request_field_editing: false,
+            request_visual_anchor: 0,
             body_cursor_row: 0,
             body_cursor_col: 0,
             visual_anchor_row: 0,
