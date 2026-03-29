@@ -215,6 +215,10 @@ impl App {
                 }
             }
             Action::ExitInsertMode => {
+                // Sync query params from URL when leaving insert on URL field
+                if self.state.active_panel == Panel::Request && self.state.request_focus == RequestFocus::Url {
+                    self.sync_params_from_url();
+                }
                 self.state.mode = InputMode::Normal;
                 self.state.autocomplete = None;
                 self.state.validate_body();
@@ -793,6 +797,38 @@ impl App {
             self.persist_collection(self.state.active_collection);
             self.rebuild_collection_items();
             self.state.set_status("Saved as new request");
+        }
+    }
+
+    /// Extract query params from the URL and merge them into the params list.
+    /// Preserves existing disabled params and avoids duplicates.
+    fn sync_params_from_url(&mut self) {
+        let url = &self.state.current_request.url;
+        if let Some((base, query)) = url.split_once('?') {
+            let base_url = base.to_string();
+            let url_params: Vec<(String, String)> = query
+                .split('&')
+                .filter_map(|pair| {
+                    let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+                    if key.is_empty() { None } else { Some((key.to_string(), value.to_string())) }
+                })
+                .collect();
+
+            // Merge: add new params from URL, mark existing ones
+            let mut existing = self.state.current_request.query_params.clone();
+            for (key, value) in &url_params {
+                let found = existing.iter().any(|p| p.key == *key && p.value == *value);
+                if !found {
+                    existing.push(QueryParam {
+                        key: key.clone(),
+                        value: value.clone(),
+                        enabled: true,
+                    });
+                }
+            }
+
+            self.state.current_request.query_params = existing;
+            self.state.current_request.url = base_url;
         }
     }
 
