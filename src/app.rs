@@ -10,7 +10,7 @@ use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, BodyType, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS};
+use crate::state::{AppState, BodyType, ChainAutocomplete, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS};
 use crate::tui::Tui;
 use crate::ui;
 use crossterm::cursor::SetCursorStyle;
@@ -271,11 +271,13 @@ impl App {
                 self.state.mode = InputMode::Normal;
                 self.state.pending_key = None;
                 self.state.request_field_editing = false;
+                self.state.chain_autocomplete = None;
             }
             Action::FocusPanel(panel) => {
                 self.state.active_panel = panel;
                 self.state.mode = InputMode::Normal;
                 self.state.request_field_editing = false;
+                self.state.chain_autocomplete = None;
             }
 
             // === Vim Mode Transitions ===
@@ -397,6 +399,7 @@ impl App {
                 }
                 self.state.mode = InputMode::Normal;
                 self.state.autocomplete = None;
+                self.state.chain_autocomplete = None;
                 self.state.validate_body();
                 // Clamp cursor to last char (normal mode can't be past end)
                 match self.state.active_panel {
@@ -486,7 +489,9 @@ impl App {
 
             // === Inline Autocomplete ===
             Action::AutocompleteNext => {
-                if let Some(ref mut ac) = self.state.autocomplete {
+                if let Some(ref mut ac) = self.state.chain_autocomplete {
+                    ac.next();
+                } else if let Some(ref mut ac) = self.state.autocomplete {
                     ac.next();
                 } else {
                     // Open autocomplete if editing header name
@@ -494,14 +499,26 @@ impl App {
                 }
             }
             Action::AutocompletePrev => {
-                if let Some(ref mut ac) = self.state.autocomplete {
+                if let Some(ref mut ac) = self.state.chain_autocomplete {
+                    ac.prev();
+                } else if let Some(ref mut ac) = self.state.autocomplete {
                     ac.prev();
                 } else {
                     self.try_open_autocomplete();
                 }
             }
             Action::AutocompleteAccept => {
-                if let Some(ac) = self.state.autocomplete.take() {
+                if let Some(ac) = self.state.chain_autocomplete.take() {
+                    if let Some(text) = ac.accept() {
+                        if !text.is_empty() {
+                            for c in text.chars() {
+                                self.inline_input(c);
+                            }
+                        }
+                    }
+                    // Re-trigger chain autocomplete after insertion (e.g., after inserting request name, user may want to type '.')
+                    self.try_chain_autocomplete();
+                } else if let Some(ac) = self.state.autocomplete.take() {
                     if let Some((name, value)) = ac.accept() {
                         if self.state.active_panel == Panel::Request {
                             if let RequestFocus::Header(idx) = self.state.request_focus {
@@ -839,8 +856,14 @@ impl App {
             }
 
             // === Inline Text Editing ===
-            Action::InlineInput(c) => self.inline_input(c),
-            Action::InlineBackspace => self.inline_backspace(),
+            Action::InlineInput(c) => {
+                self.inline_input(c);
+                self.try_chain_autocomplete();
+            }
+            Action::InlineBackspace => {
+                self.inline_backspace();
+                self.try_chain_autocomplete();
+            }
             Action::InlineDelete => self.inline_delete(),
             Action::InlineNewline => self.inline_newline(),
             Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
@@ -2776,6 +2799,204 @@ impl App {
                 }
             }
         }
+    }
+
+    fn try_chain_autocomplete(&mut self) {
+        // Get text and cursor position based on active panel
+        let (text, cursor_pos) = match self.state.active_panel {
+            Panel::Request => {
+                let text = self.get_request_field_text();
+                let cursor = self.get_request_cursor();
+                (text, cursor)
+            }
+            Panel::Body => {
+                let body = self.active_body().to_string();
+                let lines: Vec<&str> = body.lines().collect();
+                let line = lines.get(self.state.body_cursor_row).copied().unwrap_or("");
+                (line.to_string(), self.state.body_cursor_col)
+            }
+            _ => {
+                self.state.chain_autocomplete = None;
+                return;
+            }
+        };
+
+        // Find {{@ before cursor
+        let before_cursor = &text[..cursor_pos.min(text.len())];
+        let at_pos = before_cursor.rfind("{{@");
+        if at_pos.is_none() {
+            self.state.chain_autocomplete = None;
+            return;
+        }
+        let at_pos = at_pos.unwrap();
+        let after_at = &before_cursor[at_pos + 3..]; // everything after {{@
+
+        // Check if we've already closed with }}
+        if after_at.contains("}}") {
+            self.state.chain_autocomplete = None;
+            return;
+        }
+
+        let panel = self.state.active_panel;
+
+        if !after_at.contains('.') {
+            // Suggest request names matching prefix
+            let prefix = after_at.to_lowercase();
+            let mut items: Vec<(String, String)> = Vec::new();
+            for coll in &self.state.collections {
+                for req in &coll.requests {
+                    if let Some(ref name) = req.name {
+                        if name.to_lowercase().starts_with(&prefix) || prefix.is_empty() {
+                            items.push((
+                                format!("{} ({})", name, coll.name),
+                                name.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            if items.is_empty() {
+                items.push(("(no named requests)".to_string(), String::new()));
+            }
+            self.state.chain_autocomplete = Some(ChainAutocomplete {
+                items,
+                selected: 0,
+                anchor_panel: panel,
+            });
+        } else {
+            // Has dot — suggest fields from type
+            let parts: Vec<&str> = after_at.splitn(2, '.').collect();
+            let request_name = parts[0];
+            let path_so_far = parts.get(1).copied().unwrap_or("");
+
+            // Find cached response type for this request
+            let mut found_type: Option<crate::model::response_type::JsonType> = None;
+            for coll in &self.state.collections {
+                for req in &coll.requests {
+                    if req.name.as_deref() == Some(request_name) {
+                        let key = format!("{}/{}", coll.name, request_name);
+                        if let Some((resp, _)) = self.state.response_cache.get(&key) {
+                            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                                found_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let Some(root_type) = found_type else {
+                self.state.chain_autocomplete = Some(ChainAutocomplete {
+                    items: vec![("(no type \u{2014} execute request first)".to_string(), String::new())],
+                    selected: 0,
+                    anchor_panel: panel,
+                });
+                return;
+            };
+
+            // Navigate type by path segments
+            let segments: Vec<&str> = path_so_far.split('.').collect();
+            let current_prefix = segments.last().copied().unwrap_or("");
+
+            // Clone root_type to avoid borrow issues, then navigate
+            let navigated = Self::navigate_type(&root_type, &segments[..segments.len().saturating_sub(1)]);
+            let current_type = match navigated {
+                Some(t) => t,
+                None => {
+                    self.state.chain_autocomplete = Some(ChainAutocomplete {
+                        items: vec![("(field not found)".to_string(), String::new())],
+                        selected: 0,
+                        anchor_panel: panel,
+                    });
+                    return;
+                }
+            };
+
+            // Build suggestions from current_type's fields
+            let mut items: Vec<(String, String)> = Vec::new();
+
+            match &current_type {
+                crate::model::response_type::JsonType::Object(fields) => {
+                    let prefix_lower = current_prefix.to_lowercase();
+                    for (key, val_type) in fields {
+                        if key.to_lowercase().starts_with(&prefix_lower) || current_prefix.is_empty() {
+                            let type_label = val_type.label();
+                            items.push((
+                                format!("{}: {}", key, type_label),
+                                key.clone(),
+                            ));
+                        }
+                    }
+                }
+                crate::model::response_type::JsonType::Array(inner) => {
+                    items.push((
+                        format!("\u{26a0} Array of {} \u{2014} use [index]", inner.label()),
+                        "[0]".to_string(),
+                    ));
+                    // Also show inner fields if it's an array of objects
+                    if let crate::model::response_type::JsonType::Object(fields) = inner.as_ref() {
+                        items.push(("\u{2500}\u{2500} after [index]: \u{2500}\u{2500}".to_string(), String::new()));
+                        for (key, val_type) in fields {
+                            items.push((
+                                format!("  {}: {}", key, val_type.label()),
+                                key.clone(),
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    items.push((format!("(type: {}, no sub-fields)", current_type.label()), String::new()));
+                }
+            }
+
+            if items.is_empty() {
+                items.push(("(no fields available)".to_string(), String::new()));
+            }
+
+            self.state.chain_autocomplete = Some(ChainAutocomplete {
+                items,
+                selected: 0,
+                anchor_panel: panel,
+            });
+        }
+    }
+
+    /// Navigate a JsonType by path segments, returning the type at the end of the path.
+    fn navigate_type(root: &crate::model::response_type::JsonType, segments: &[&str]) -> Option<crate::model::response_type::JsonType> {
+        use crate::model::response_type::JsonType;
+        let mut current = root.clone();
+        for seg in segments {
+            if seg.is_empty() { continue; }
+            // Strip array index if present
+            let field_name = seg.split('[').next().unwrap_or(seg);
+            match &current {
+                JsonType::Object(fields) => {
+                    if let Some((_, ft)) = fields.iter().find(|(k, _)| k == field_name) {
+                        current = ft.clone();
+                        // If it's an array, navigate into the element type
+                        if let JsonType::Array(inner) = &current {
+                            current = inner.as_ref().clone();
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+                JsonType::Array(inner) => {
+                    current = inner.as_ref().clone();
+                    // Try to navigate into the inner type
+                    if let JsonType::Object(fields) = &current {
+                        if let Some((_, ft)) = fields.iter().find(|(k, _)| k == field_name) {
+                            current = ft.clone();
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+                _ => {
+                    return None;
+                }
+            }
+        }
+        Some(current)
     }
 
     fn inline_backspace(&mut self) {

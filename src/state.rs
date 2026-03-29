@@ -181,6 +181,30 @@ pub enum Overlay {
 }
 
 #[derive(Debug, Clone)]
+pub struct ChainAutocomplete {
+    pub items: Vec<(String, String)>,  // (display_text, insert_text)
+    pub selected: usize,
+    #[allow(dead_code)]
+    pub anchor_panel: Panel,  // which panel triggered it
+}
+
+impl ChainAutocomplete {
+    pub fn next(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + 1) % self.items.len();
+        }
+    }
+    pub fn prev(&mut self) {
+        if !self.items.is_empty() {
+            self.selected = (self.selected + self.items.len() - 1) % self.items.len();
+        }
+    }
+    pub fn accept(&self) -> Option<&str> {
+        self.items.get(self.selected).map(|(_, insert)| insert.as_str())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Autocomplete {
     pub filtered: Vec<(String, String)>, // (header_name, default_value)
     pub selected: usize,
@@ -360,6 +384,9 @@ pub struct AppState {
     // Inline autocomplete (for header names)
     pub autocomplete: Option<Autocomplete>,
 
+    // Chain reference autocomplete (for {{@...}} syntax)
+    pub chain_autocomplete: Option<ChainAutocomplete>,
+
     // Clipboard (internal)
     pub yank_buffer: String,
     pub yanked_request: Option<Request>,
@@ -480,6 +507,7 @@ impl AppState {
             resp_visible_width: 80,
             pending_key: None,
             autocomplete: None,
+            chain_autocomplete: None,
             yank_buffer: String::new(),
             yanked_request: None,
             body_undo_stack: Vec::new(),
