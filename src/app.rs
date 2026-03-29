@@ -2839,9 +2839,25 @@ impl App {
 
         let panel = self.state.active_panel;
 
-        if !after_at.contains('.') {
+        // Extract request name and path from after_at
+        // Handles: "auth", "auth.", "auth.token", "auth[0]", "auth[0].", "auth[0].token"
+        let (request_name_raw, path_so_far, has_path) = if let Some(bracket_pos) = after_at.find('[') {
+            // Has bracket: split at first [
+            let name = &after_at[..bracket_pos];
+            let rest = &after_at[bracket_pos..];
+            // rest is like "[0].token" or "[0]." or "[0]"
+            (name, rest, true)
+        } else if let Some(dot_pos) = after_at.find('.') {
+            let name = &after_at[..dot_pos];
+            let rest = &after_at[dot_pos + 1..];
+            (name, rest, true)
+        } else {
+            (after_at, "", false)
+        };
+
+        if !has_path {
             // Suggest request names matching prefix
-            let prefix = after_at.to_lowercase();
+            let prefix = request_name_raw.to_lowercase();
             let mut items: Vec<(String, String)> = Vec::new();
             for coll in &self.state.collections {
                 for req in &coll.requests {
@@ -2864,10 +2880,8 @@ impl App {
                 anchor_panel: panel,
             });
         } else {
-            // Has dot — suggest fields from type
-            let parts: Vec<&str> = after_at.splitn(2, '.').collect();
-            let request_name = parts[0];
-            let path_so_far = parts.get(1).copied().unwrap_or("");
+            // Has path — suggest fields from type
+            let request_name = request_name_raw;
 
             // Find cached response type for this request
             let mut found_type: Option<crate::model::response_type::JsonType> = None;
@@ -2966,23 +2980,39 @@ impl App {
         let mut current = root.clone();
         for seg in segments {
             if seg.is_empty() { continue; }
-            // Strip array index if present
+
+            // Check if this is a pure array index like "[0]"
+            let is_array_index = seg.starts_with('[');
             let field_name = seg.split('[').next().unwrap_or(seg);
+            let has_index = seg.contains('[');
+
+            if is_array_index {
+                // Pure array index: [0] — just descend into array element
+                if let JsonType::Array(inner) = &current {
+                    current = inner.as_ref().clone();
+                } else {
+                    return None; // not an array
+                }
+                continue;
+            }
+
             match &current {
                 JsonType::Object(fields) => {
                     if let Some((_, ft)) = fields.iter().find(|(k, _)| k == field_name) {
                         current = ft.clone();
-                        // If it's an array, navigate into the element type
-                        if let JsonType::Array(inner) = &current {
-                            current = inner.as_ref().clone();
+                        // If field has array index (e.g., "items[0]"), descend into element
+                        if has_index {
+                            if let JsonType::Array(inner) = &current {
+                                current = inner.as_ref().clone();
+                            }
                         }
                     } else {
                         return None;
                     }
                 }
                 JsonType::Array(inner) => {
+                    // If current is array but segment is a field name, descend first
                     current = inner.as_ref().clone();
-                    // Try to navigate into the inner type
                     if let JsonType::Object(fields) = &current {
                         if let Some((_, ft)) = fields.iter().find(|(k, _)| k == field_name) {
                             current = ft.clone();
