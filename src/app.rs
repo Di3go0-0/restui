@@ -8,9 +8,9 @@ use crate::event::{AppEvent, EventHandler};
 use crate::http_client;
 use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
-use crate::model::request::{Header, Request};
+use crate::model::request::{Header, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, COMMON_HEADERS};
+use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
 use crate::tui::Tui;
 use crate::ui;
 
@@ -285,18 +285,57 @@ impl App {
 
             // === Request Panel Focus ===
             Action::RequestFocusDown => {
-                let hc = self.state.current_request.headers.len();
-                self.state.request_focus = match self.state.request_focus {
-                    RequestFocus::Url => if hc > 0 { RequestFocus::Header(0) } else { RequestFocus::Url },
-                    RequestFocus::Header(i) => if i + 1 < hc { RequestFocus::Header(i + 1) } else { RequestFocus::Header(i) },
-                };
+                match self.state.request_tab {
+                    RequestTab::Headers => {
+                        let hc = self.state.current_request.headers.len();
+                        self.state.request_focus = match self.state.request_focus {
+                            RequestFocus::Url => if hc > 0 { RequestFocus::Header(0) } else { RequestFocus::Url },
+                            RequestFocus::Header(i) => if i + 1 < hc { RequestFocus::Header(i + 1) } else { RequestFocus::Header(i) },
+                            _ => self.state.request_focus,
+                        };
+                    }
+                    RequestTab::Params => {
+                        let pc = self.state.current_request.query_params.len();
+                        self.state.request_focus = match self.state.request_focus {
+                            RequestFocus::Url => if pc > 0 { RequestFocus::Param(0) } else { RequestFocus::Url },
+                            RequestFocus::Param(i) => if i + 1 < pc { RequestFocus::Param(i + 1) } else { RequestFocus::Param(i) },
+                            _ => self.state.request_focus,
+                        };
+                    }
+                    _ => {} // Auth/Cookies — future
+                }
             }
             Action::RequestFocusUp => {
                 self.state.request_focus = match self.state.request_focus {
                     RequestFocus::Url => RequestFocus::Url,
                     RequestFocus::Header(0) => RequestFocus::Url,
                     RequestFocus::Header(i) => RequestFocus::Header(i - 1),
+                    RequestFocus::Param(0) => RequestFocus::Url,
+                    RequestFocus::Param(i) => RequestFocus::Param(i - 1),
                 };
+            }
+            Action::RequestNextTab => {
+                self.state.request_tab = self.state.request_tab.next();
+                self.state.request_focus = RequestFocus::Url;
+            }
+            Action::RequestPrevTab => {
+                self.state.request_tab = self.state.request_tab.prev();
+                self.state.request_focus = RequestFocus::Url;
+            }
+            Action::ToggleItemEnabled => {
+                match self.state.request_focus {
+                    RequestFocus::Header(idx) => {
+                        if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                            h.enabled = !h.enabled;
+                        }
+                    }
+                    RequestFocus::Param(idx) => {
+                        if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                            p.enabled = !p.enabled;
+                        }
+                    }
+                    _ => {}
+                }
             }
             Action::AddHeader => {
                 self.state.current_request.headers.push(Header { name: String::new(), value: String::new(), enabled: true });
@@ -304,6 +343,14 @@ impl App {
                 self.state.request_focus = RequestFocus::Header(idx);
                 self.state.header_edit_field = 0;
                 self.state.header_edit_cursor = 0;
+                self.state.mode = InputMode::Insert;
+            }
+            Action::AddParam => {
+                self.state.current_request.query_params.push(QueryParam { key: String::new(), value: String::new(), enabled: true });
+                let idx = self.state.current_request.query_params.len() - 1;
+                self.state.request_focus = RequestFocus::Param(idx);
+                self.state.param_edit_field = 0;
+                self.state.param_edit_cursor = 0;
                 self.state.mode = InputMode::Insert;
             }
             Action::DeleteHeader => {
@@ -317,6 +364,20 @@ impl App {
                             RequestFocus::Header(idx.min(self.state.current_request.headers.len() - 1))
                         };
                         self.state.set_status("Header deleted");
+                    }
+                }
+            }
+            Action::DeleteParam => {
+                self.state.pending_key = None;
+                if let RequestFocus::Param(idx) = self.state.request_focus {
+                    if idx < self.state.current_request.query_params.len() {
+                        self.state.current_request.query_params.remove(idx);
+                        self.state.request_focus = if self.state.current_request.query_params.is_empty() {
+                            RequestFocus::Url
+                        } else {
+                            RequestFocus::Param(idx.min(self.state.current_request.query_params.len() - 1))
+                        };
+                        self.state.set_status("Param deleted");
                     }
                 }
             }
@@ -681,6 +742,11 @@ impl App {
                     self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
                 }
             }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get(idx) {
+                    self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                }
+            }
         }
     }
 
@@ -786,6 +852,14 @@ impl App {
                         self.state.autocomplete = None;
                     }
                 }
+                RequestFocus::Param(idx) => {
+                    if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                        let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                        let cursor = self.state.param_edit_cursor.min(field.len());
+                        field.insert(cursor, c);
+                        self.state.param_edit_cursor = cursor + 1;
+                    }
+                }
             },
             _ => {}
         }
@@ -852,6 +926,17 @@ impl App {
                         }
                     }
                 }
+                RequestFocus::Param(idx) => {
+                    if self.state.param_edit_cursor > 0 {
+                        if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                            let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                            self.state.param_edit_cursor -= 1;
+                            if self.state.param_edit_cursor < field.len() {
+                                field.remove(self.state.param_edit_cursor);
+                            }
+                        }
+                    }
+                }
             },
             _ => {}
         }
@@ -874,6 +959,12 @@ impl App {
                     if let Some(h) = self.state.current_request.headers.get_mut(idx) {
                         let field = if self.state.header_edit_field == 0 { &mut h.name } else { &mut h.value };
                         if self.state.header_edit_cursor < field.len() { field.remove(self.state.header_edit_cursor); }
+                    }
+                }
+                RequestFocus::Param(idx) => {
+                    if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                        let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                        if self.state.param_edit_cursor < field.len() { field.remove(self.state.param_edit_cursor); }
                     }
                 }
             },
@@ -906,6 +997,7 @@ impl App {
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => { self.state.url_cursor = self.state.url_cursor.saturating_sub(1); }
                 RequestFocus::Header(_) => { self.state.header_edit_cursor = self.state.header_edit_cursor.saturating_sub(1); }
+                RequestFocus::Param(_) => { self.state.param_edit_cursor = self.state.param_edit_cursor.saturating_sub(1); }
             },
             Panel::Response => {
                 self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
@@ -935,6 +1027,12 @@ impl App {
                     if let Some(h) = self.state.current_request.headers.get(idx) {
                         let len = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
                         if self.state.header_edit_cursor < len { self.state.header_edit_cursor += 1; }
+                    }
+                }
+                RequestFocus::Param(idx) => {
+                    if let Some(p) = self.state.current_request.query_params.get(idx) {
+                        let len = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                        if self.state.param_edit_cursor < len { self.state.param_edit_cursor += 1; }
                     }
                 }
             },
@@ -987,6 +1085,7 @@ impl App {
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = 0,
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
+                RequestFocus::Param(_) => self.state.param_edit_cursor = 0,
             },
             _ => {}
         }
@@ -1010,6 +1109,11 @@ impl App {
                         self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
                     }
                 }
+                RequestFocus::Param(idx) => {
+                    if let Some(p) = self.state.current_request.query_params.get(idx) {
+                        self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                    }
+                }
             },
             _ => {}
         }
@@ -1030,11 +1134,20 @@ impl App {
                     }
                 }
                 self.state.autocomplete = None;
-                if let RequestFocus::Header(idx) = self.state.request_focus {
-                    self.state.header_edit_field = (self.state.header_edit_field + 1) % 2;
-                    if let Some(h) = self.state.current_request.headers.get(idx) {
-                        self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
+                match self.state.request_focus {
+                    RequestFocus::Header(idx) => {
+                        self.state.header_edit_field = (self.state.header_edit_field + 1) % 2;
+                        if let Some(h) = self.state.current_request.headers.get(idx) {
+                            self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
+                        }
                     }
+                    RequestFocus::Param(idx) => {
+                        self.state.param_edit_field = (self.state.param_edit_field + 1) % 2;
+                        if let Some(p) = self.state.current_request.query_params.get(idx) {
+                            self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                        }
+                    }
+                    _ => {}
                 }
             }
             Panel::Body => {

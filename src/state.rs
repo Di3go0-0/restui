@@ -194,9 +194,48 @@ impl Autocomplete {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestTab {
+    Headers,
+    Params,
+    Auth,
+    Cookies,
+}
+
+impl RequestTab {
+    pub const ALL: &'static [RequestTab] = &[
+        RequestTab::Headers,
+        RequestTab::Params,
+        RequestTab::Auth,
+        RequestTab::Cookies,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RequestTab::Headers => "Headers",
+            RequestTab::Params => "Params",
+            RequestTab::Auth => "Auth",
+            RequestTab::Cookies => "Cookies",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let all = Self::ALL;
+        let idx = all.iter().position(|&t| t == self).unwrap_or(0);
+        all[(idx + 1) % all.len()]
+    }
+
+    pub fn prev(self) -> Self {
+        let all = Self::ALL;
+        let idx = all.iter().position(|&t| t == self).unwrap_or(0);
+        all[(idx + all.len() - 1) % all.len()]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestFocus {
     Url,
     Header(usize),
+    Param(usize),
 }
 
 pub struct AppState {
@@ -227,11 +266,14 @@ pub struct AppState {
     pub body_scroll: (u16, u16),
     pub response_scroll: (u16, u16),
 
-    // Request panel inline editing
+    // Request panel tabs & inline editing
+    pub request_tab: RequestTab,
     pub request_focus: RequestFocus,
     pub url_cursor: usize,
     pub header_edit_cursor: usize,
-    pub header_edit_field: u8,
+    pub header_edit_field: u8, // 0=name, 1=value
+    pub param_edit_cursor: usize,
+    pub param_edit_field: u8, // 0=key, 1=value
 
     // Body inline editing
     pub body_cursor_row: usize,
@@ -304,10 +346,13 @@ impl AppState {
             collections_state,
             body_scroll: (0, 0),
             response_scroll: (0, 0),
+            request_tab: RequestTab::Headers,
             request_focus: RequestFocus::Url,
             url_cursor: 0,
             header_edit_cursor: 0,
             header_edit_field: 0,
+            param_edit_cursor: 0,
+            param_edit_field: 0,
             body_cursor_row: 0,
             body_cursor_col: 0,
             visual_anchor_row: 0,

@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use crate::state::{AppState, InputMode, Panel, RequestFocus};
+use crate::state::{AppState, InputMode, Panel, RequestFocus, RequestTab};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Request;
@@ -21,7 +21,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if inner.height < 3 {
+    if inner.height < 4 {
         return;
     }
 
@@ -30,11 +30,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .constraints([
             Constraint::Length(1), // Method + URL
             Constraint::Length(1), // Separator
-            Constraint::Min(1),   // Headers
+            Constraint::Length(1), // Tab bar
+            Constraint::Min(1),   // Tab content
         ])
         .split(inner);
 
-    // Method + URL line
+    // === Method + URL line ===
     let req = &state.current_request;
     let method_color = t.method_color(req.method);
     let is_url_focused = is_focused && state.request_focus == RequestFocus::Url;
@@ -75,165 +76,293 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         }
     }
 
-    // Separator
+    // === Separator ===
     let sep = Line::from(Span::styled(
         "─".repeat(inner.width as usize),
         Style::default().fg(t.text_dim),
     ));
     frame.render_widget(Paragraph::new(sep), chunks[1]);
 
-    // Headers — render line by line for precise cursor positioning
-    let headers_area = chunks[2];
-    let mut y_offset: u16 = 0;
+    // === Tab bar ===
+    let tab_bar = render_tab_bar(state, is_focused);
+    frame.render_widget(Paragraph::new(tab_bar), chunks[2]);
 
-    // Title line
-    let title_line = Line::from(Span::styled(
-        " Headers",
-        Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD),
-    ));
-    if y_offset < headers_area.height {
-        frame.render_widget(
-            Paragraph::new(title_line),
-            Rect::new(headers_area.x, headers_area.y + y_offset, headers_area.width, 1),
-        );
-        y_offset += 1;
+    // === Tab content ===
+    let content_area = chunks[3];
+    match state.request_tab {
+        RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert),
+        RequestTab::Params => render_params_tab(frame, state, content_area, area, is_focused, is_insert),
+        RequestTab::Auth => render_placeholder_tab(frame, state, content_area, "Auth configuration coming soon"),
+        RequestTab::Cookies => render_placeholder_tab(frame, state, content_area, "Cookie management coming soon"),
+    }
+}
+
+fn render_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
+    let t = &state.theme;
+    let mut spans = Vec::new();
+    spans.push(Span::raw(" "));
+
+    for (i, tab) in RequestTab::ALL.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ", Style::default().fg(t.text_dim)));
+        }
+
+        let is_active = state.request_tab == *tab;
+        if is_active {
+            spans.push(Span::styled(
+                format!("[{}]", tab.label()),
+                Style::default()
+                    .fg(if is_focused { t.accent } else { t.text })
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            spans.push(Span::styled(
+                tab.label().to_string(),
+                Style::default().fg(t.text_dim),
+            ));
+        }
     }
 
+    // Hint for tab switching
+    if is_focused {
+        spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
+    }
+
+    Line::from(spans)
+}
+
+fn render_headers_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    content_area: Rect,
+    bounds: Rect,
+    is_focused: bool,
+    is_insert: bool,
+) {
+    let t = &state.theme;
+    let req = &state.current_request;
+    let mut y_offset: u16 = 0;
+
     if req.headers.is_empty() {
-        if y_offset < headers_area.height {
+        if y_offset < content_area.height {
             let hint = Line::from(Span::styled(
                 "   (none) 'a' to add, 'A' for autocomplete",
                 Style::default().fg(t.text_dim),
             ));
             frame.render_widget(
                 Paragraph::new(hint),
-                Rect::new(headers_area.x, headers_area.y + y_offset, headers_area.width, 1),
+                Rect::new(content_area.x, content_area.y + y_offset, content_area.width, 1),
             );
         }
-    } else {
-        let mut autocomplete_anchor: Option<(u16, u16)> = None; // (x, y) for popup
-
-        for (i, header) in req.headers.iter().enumerate() {
-            if y_offset >= headers_area.height {
-                break;
-            }
-
-            let is_header_focused = is_focused && state.request_focus == RequestFocus::Header(i);
-            let prefix = if is_header_focused { "▸" } else { " " };
-            let style = if header.enabled {
-                Style::default().fg(t.text)
-            } else {
-                Style::default().fg(t.text_dim)
-            };
-            let toggle = if header.enabled { "●" } else { "○" };
-
-            let row_y = headers_area.y + y_offset;
-            let prefix_span = format!(" {} {} ", prefix, toggle);
-            let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
-
-            if is_header_focused && is_insert {
-                let name_style = if state.header_edit_field == 0 {
-                    Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
-                } else {
-                    style.add_modifier(Modifier::BOLD)
-                };
-                let value_style = if state.header_edit_field == 1 {
-                    Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
-                } else {
-                    style
-                };
-                let line = Line::from(vec![
-                    Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
-                    Span::styled(&header.name, name_style),
-                    Span::styled(": ", style),
-                    Span::styled(&header.value, value_style),
-                ]);
-                frame.render_widget(
-                    Paragraph::new(line),
-                    Rect::new(headers_area.x, row_y, headers_area.width, 1),
-                );
-
-                // Position cursor using display width, not byte length
-                let name_display_width = UnicodeWidthStr::width(header.name.as_str());
-                let cursor_before = if state.header_edit_field == 0 {
-                    &header.name[..header.name.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.name.len())]
-                } else {
-                    &header.value[..header.value.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.value.len())]
-                };
-                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
-                let cursor_x = if state.header_edit_field == 0 {
-                    headers_area.x + prefix_width as u16 + cursor_text_width
-                } else {
-                    headers_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_text_width
-                };
-                if cursor_x < area.right() {
-                    frame.set_cursor_position(Position::new(cursor_x, row_y));
-                }
-
-                // Save anchor for autocomplete popup
-                if state.header_edit_field == 0 && state.autocomplete.is_some() {
-                    autocomplete_anchor = Some((headers_area.x + prefix_width as u16, row_y + 1));
-                }
-            } else {
-                let prefix_style = Style::default().fg(
-                    if is_header_focused { t.accent } else { t.text_dim },
-                );
-                let line = Line::from(vec![
-                    Span::styled(&prefix_span, prefix_style),
-                    Span::styled(&header.name, style.add_modifier(Modifier::BOLD)),
-                    Span::styled(": ", style),
-                    Span::styled(&header.value, style),
-                ]);
-                frame.render_widget(
-                    Paragraph::new(line),
-                    Rect::new(headers_area.x, row_y, headers_area.width, 1),
-                );
-            }
-
-            y_offset += 1;
-        }
-
-        // Render autocomplete popup
-        if let (Some((ax, ay)), Some(ac)) = (autocomplete_anchor, &state.autocomplete) {
-            render_autocomplete_popup(frame, ac, ax, ay, area);
-        }
+        return;
     }
 
-    // Query params
-    if !req.query_params.is_empty() && y_offset + 2 < headers_area.height {
-        y_offset += 1; // blank line
-        let qp_title = Line::from(Span::styled(
-            " Query Params",
-            Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD),
-        ));
-        frame.render_widget(
-            Paragraph::new(qp_title),
-            Rect::new(headers_area.x, headers_area.y + y_offset, headers_area.width, 1),
-        );
-        y_offset += 1;
+    let mut autocomplete_anchor: Option<(u16, u16)> = None;
 
-        for param in &req.query_params {
-            if y_offset >= headers_area.height {
-                break;
-            }
-            let style = if param.enabled {
-                Style::default().fg(t.text)
+    for (i, header) in req.headers.iter().enumerate() {
+        if y_offset >= content_area.height {
+            break;
+        }
+
+        let is_header_focused = is_focused && state.request_focus == RequestFocus::Header(i);
+        let prefix = if is_header_focused { "▸" } else { " " };
+        let style = if header.enabled {
+            Style::default().fg(t.text)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+        let toggle = if header.enabled { "●" } else { "○" };
+
+        let row_y = content_area.y + y_offset;
+        let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
+
+        if is_header_focused && is_insert {
+            let name_style = if state.header_edit_field == 0 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
-                Style::default().fg(t.text_dim)
+                style.add_modifier(Modifier::BOLD)
             };
-            let toggle = if param.enabled { "●" } else { "○" };
+            let value_style = if state.header_edit_field == 1 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style
+            };
             let line = Line::from(vec![
-                Span::styled(format!("   {} ", toggle), Style::default().fg(t.accent)),
+                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
+                Span::styled(&header.name, name_style),
+                Span::styled(": ", style),
+                Span::styled(&header.value, value_style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+
+            // Position cursor
+            let name_display_width = UnicodeWidthStr::width(header.name.as_str());
+            let cursor_before = if state.header_edit_field == 0 {
+                &header.name[..header.name.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.name.len())]
+            } else {
+                &header.value[..header.value.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.value.len())]
+            };
+            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+            let cursor_x = if state.header_edit_field == 0 {
+                content_area.x + prefix_width as u16 + cursor_text_width
+            } else {
+                content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_text_width
+            };
+            if cursor_x < bounds.right() {
+                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            }
+
+            // Save anchor for autocomplete popup
+            if state.header_edit_field == 0 && state.autocomplete.is_some() {
+                autocomplete_anchor = Some((content_area.x + prefix_width as u16, row_y + 1));
+            }
+        } else {
+            let prefix_style = Style::default().fg(
+                if is_header_focused { t.accent } else { t.text_dim },
+            );
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&header.name, style.add_modifier(Modifier::BOLD)),
+                Span::styled(": ", style),
+                Span::styled(&header.value, style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+        }
+
+        y_offset += 1;
+    }
+
+    // Render autocomplete popup
+    if let (Some((ax, ay)), Some(ac)) = (autocomplete_anchor, &state.autocomplete) {
+        render_autocomplete_popup(frame, ac, ax, ay, bounds);
+    }
+}
+
+fn render_params_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    content_area: Rect,
+    bounds: Rect,
+    is_focused: bool,
+    is_insert: bool,
+) {
+    let t = &state.theme;
+    let req = &state.current_request;
+    let mut y_offset: u16 = 0;
+
+    if req.query_params.is_empty() {
+        if content_area.height > 0 {
+            let hint = Line::from(Span::styled(
+                "   (none) 'a' to add a query parameter",
+                Style::default().fg(t.text_dim),
+            ));
+            frame.render_widget(
+                Paragraph::new(hint),
+                Rect::new(content_area.x, content_area.y, content_area.width, 1),
+            );
+        }
+        return;
+    }
+
+    for (i, param) in req.query_params.iter().enumerate() {
+        if y_offset >= content_area.height {
+            break;
+        }
+
+        let is_param_focused = is_focused && state.request_focus == RequestFocus::Param(i);
+        let prefix = if is_param_focused { "▸" } else { " " };
+        let style = if param.enabled {
+            Style::default().fg(t.text)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+        let toggle = if param.enabled { "●" } else { "○" };
+
+        let row_y = content_area.y + y_offset;
+        let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
+
+        if is_param_focused && is_insert {
+            let key_style = if state.param_edit_field == 0 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style.add_modifier(Modifier::BOLD)
+            };
+            let value_style = if state.param_edit_field == 1 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style
+            };
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
+                Span::styled(&param.key, key_style),
+                Span::styled(" = ", style),
+                Span::styled(&param.value, value_style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+
+            // Position cursor
+            let key_display_width = UnicodeWidthStr::width(param.key.as_str());
+            let cursor_before = if state.param_edit_field == 0 {
+                &param.key[..param.key.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
+            } else {
+                &param.value[..param.value.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
+            };
+            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+            let cursor_x = if state.param_edit_field == 0 {
+                content_area.x + prefix_width as u16 + cursor_text_width
+            } else {
+                content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width // " = " is 3 chars
+            };
+            if cursor_x < bounds.right() {
+                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            }
+        } else {
+            let prefix_style = Style::default().fg(
+                if is_param_focused { t.accent } else { t.text_dim },
+            );
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, prefix_style),
                 Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
                 Span::styled(" = ", style),
                 Span::styled(&param.value, style),
             ]);
             frame.render_widget(
                 Paragraph::new(line),
-                Rect::new(headers_area.x, headers_area.y + y_offset, headers_area.width, 1),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
             );
-            y_offset += 1;
         }
+
+        y_offset += 1;
+    }
+}
+
+fn render_placeholder_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    content_area: Rect,
+    message: &str,
+) {
+    let t = &state.theme;
+    if content_area.height > 0 {
+        let hint = Line::from(Span::styled(
+            format!("   {}", message),
+            Style::default().fg(t.text_dim),
+        ));
+        frame.render_widget(
+            Paragraph::new(hint),
+            Rect::new(content_area.x, content_area.y, content_area.width, 1),
+        );
     }
 }
 
@@ -295,4 +424,3 @@ fn render_autocomplete_popup(
 
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
-

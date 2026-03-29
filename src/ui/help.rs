@@ -27,12 +27,14 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
         (
             "Editing (Request)",
             vec![
+                ("{ / }", "Switch tab (Headers/Params/Auth/Cookies)"),
                 ("i / e", "Enter insert mode"),
-                ("a", "Add new empty header"),
+                ("a", "Add new header or param"),
                 ("A", "Add header from autocomplete"),
-                ("dd", "Delete selected header"),
-                ("x", "Delete selected header"),
-                ("Tab", "Switch header name/value"),
+                ("dd / x", "Delete selected item"),
+                ("Space", "Toggle enabled/disabled"),
+                ("Tab", "Switch key/value field"),
+                ("] / [", "Cycle HTTP method"),
                 ("Esc", "Return to normal mode"),
             ],
         ),
@@ -59,7 +61,7 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
             ],
         ),
         (
-            "HTTP Method",
+            "HTTP Method (Request panel)",
             vec![
                 ("]", "Next method (GET→POST→...)"),
                 ("[", "Previous method"),
@@ -85,10 +87,10 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
         (
             "Collections (CRUD)",
             vec![
-                ("s", "Save — overwrite selected request"),
-                ("S", "Save As — copy current as new request"),
-                ("C", "New Empty — blank request from scratch"),
-                ("n", "New Collection — create .http file"),
+                ("s", "Sobrescribir — save over selected request, persist to disk"),
+                ("S", "Guardar como — copy current as new request in collection"),
+                ("C", "Nuevo vacío — clear all fields, blank request from scratch"),
+                ("n", "Nueva colección — create a new .http collection file"),
             ],
         ),
         (
@@ -102,6 +104,7 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
                 ("Ctrl+V", "Paste from system clipboard"),
                 ("Ctrl+D", "Scroll half page down"),
                 ("Ctrl+U", "Scroll half page up"),
+                ("Ctrl+N / Ctrl+P", "Navigate menus/overlays (cmp-style)"),
             ],
         ),
     ];

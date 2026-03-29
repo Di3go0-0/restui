@@ -33,6 +33,11 @@ pub enum Action {
     AddHeader,
     DeleteHeader,
     ShowHeaderAutocomplete,
+    RequestNextTab,
+    RequestPrevTab,
+    ToggleItemEnabled,
+    AddParam,
+    DeleteParam,
 
     // Collections
     SelectRequest,
