@@ -1,6 +1,5 @@
 use crate::action::Action;
 use crate::state::Overlay;
-use crate::theme::THEME_NAMES;
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -172,18 +171,15 @@ pub fn all_commands() -> Vec<Command> {
             category: "General",
             action: Action::Quit,
         },
-    ];
 
-    // Theme commands — one per theme
-    for &theme_name in THEME_NAMES {
-        cmds.push(Command {
-            // We leak to get a &'static str — tiny, one-time allocation
-            name: Box::leak(format!("Theme: {}", theme_name).into_boxed_str()),
-            description: Box::leak(format!("Switch to {} color theme", theme_name).into_boxed_str()),
+        // Theme
+        Command {
+            name: "Theme",
+            description: "Select color theme",
             category: "Theme",
-            action: Action::SetTheme(theme_name.to_string()),
-        });
-    }
+            action: Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }),
+        },
+    ];
 
     cmds
 }

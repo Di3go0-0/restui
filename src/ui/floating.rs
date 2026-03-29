@@ -17,6 +17,7 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         Overlay::ConfirmDelete { message } => render_confirm_delete(frame, message),
         Overlay::MoveRequest { selected } => render_move_request(frame, state, *selected),
         Overlay::SetCacheTTL { input } => render_cache_ttl(frame, state, input),
+        Overlay::ThemeSelector { selected } => render_theme_selector(frame, *selected),
         Overlay::Help => {}
     }
 }
@@ -288,4 +289,44 @@ fn render_cache_ttl(frame: &mut Frame, state: &AppState, input: &str) {
         )),
     ];
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_theme_selector(frame: &mut Frame, selected: usize) {
+    use crate::theme::THEME_NAMES;
+
+    let area = centered_rect(40, 30, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Select Theme ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let items: Vec<ListItem> = THEME_NAMES
+        .iter()
+        .enumerate()
+        .map(|(i, &name)| {
+            let marker = if i == selected { "▸ " } else { "  " };
+            let style = if i == selected {
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            ListItem::new(Line::from(Span::styled(
+                format!("{}{}", marker, name),
+                style,
+            )))
+        })
+        .collect();
+
+    let mut list_state = ratatui::widgets::ListState::default();
+    list_state.select(Some(selected));
+
+    let list = List::new(items)
+        .highlight_style(Style::default().bg(Color::Rgb(40, 40, 50)));
+
+    frame.render_stateful_widget(list, inner, &mut list_state);
 }

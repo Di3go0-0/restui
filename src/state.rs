@@ -160,6 +160,9 @@ pub enum Overlay {
     SetCacheTTL {
         input: String,
     },
+    ThemeSelector {
+        selected: usize,
+    },
 }
 
 #[derive(Debug, Clone)]

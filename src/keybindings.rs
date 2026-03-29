@@ -84,7 +84,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
-        KeyCode::Char('T') => return Some(Action::CycleTheme),
+        KeyCode::Char('T') => return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 })),
         KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
         // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response
         KeyCode::Char('1') => return Some(Action::FocusPanel(Panel::Collections)),
@@ -154,7 +154,7 @@ fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
             _ => None,
         },
-        Some(Overlay::MoveRequest { .. }) => match key.code {
+        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) => match key.code {
             KeyCode::Esc => Some(Action::CloseOverlay),
             KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
             KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),

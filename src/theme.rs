@@ -230,26 +230,29 @@ pub fn next_theme_name(current: &str) -> &'static str {
 }
 
 fn theme_path(name: &str) -> PathBuf {
-    // Check bundled themes dir (relative to binary or CWD)
-    let candidates = [
-        PathBuf::from(format!("themes/{}.toml", name)),
-        crate::config::config_dir().join(format!("themes/{}.toml", name)),
-    ];
-    for p in &candidates {
-        if p.exists() {
-            return p.clone();
-        }
-    }
-    // Also check next to the executable
+    let filename = format!("themes/{}.toml", name);
+
+    // 1. Relative to CWD
+    let p = PathBuf::from(&filename);
+    if p.exists() { return p; }
+
+    // 2. User config dir (~/.config/restui/themes/)
+    let p = crate::config::config_dir().join(&filename);
+    if p.exists() { return p; }
+
+    // 3. Next to the executable
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let p = dir.join(format!("themes/{}.toml", name));
-            if p.exists() {
-                return p;
-            }
+            let p = dir.join(&filename);
+            if p.exists() { return p; }
         }
     }
-    candidates[0].clone()
+
+    // 4. Compiled-in source directory (for cargo run from any CWD)
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&filename);
+    if p.exists() { return p; }
+
+    PathBuf::from(&filename)
 }
 
 fn parse_hex(hex: &str) -> Color {

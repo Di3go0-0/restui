@@ -885,6 +885,7 @@ impl App {
                     }
                     Some(Overlay::HeaderAutocomplete { selected, .. }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::MoveRequest { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::ThemeSelector { selected }) => { *selected = selected.saturating_sub(1); }
                     _ => {}
                 }
             }
@@ -900,6 +901,10 @@ impl App {
                     }
                     Some(Overlay::MoveRequest { selected }) => {
                         let max = self.state.collections.len().saturating_sub(1);
+                        *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::ThemeSelector { selected }) => {
+                        let max = crate::theme::THEME_NAMES.len().saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
                     _ => {}
@@ -1037,6 +1042,12 @@ impl App {
                                     self.state.set_status("Cannot move to same collection");
                                 }
                             }
+                        }
+                    }
+                    Some(Overlay::ThemeSelector { selected }) => {
+                        if let Some(&name) = crate::theme::THEME_NAMES.get(selected) {
+                            self.state.theme = crate::theme::load_theme(name);
+                            self.state.set_status(format!("Theme: {}", name));
                         }
                     }
                     Some(Overlay::SetCacheTTL { input }) => {
