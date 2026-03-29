@@ -195,12 +195,7 @@ fn build_request_info(state: &AppState) -> Vec<Line<'static>> {
     }
 
     // Sent body (preview - first few lines)
-    let body = match state.body_type {
-        crate::state::BodyType::Json => req.body_json.as_deref(),
-        crate::state::BodyType::Xml => req.body_xml.as_deref(),
-        crate::state::BodyType::FormUrlEncoded => req.body_form.as_deref(),
-        crate::state::BodyType::Plain => req.body_raw.as_deref(),
-    };
+    let body = req.get_body_opt(state.body_type);
     if let Some(body_text) = body {
         let trimmed = body_text.trim();
         if !trimmed.is_empty() {

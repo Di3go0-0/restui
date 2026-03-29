@@ -67,12 +67,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         outer_inner
     };
 
-    let body_text = match state.body_type {
-        BodyType::Json => state.current_request.body_json.as_deref().unwrap_or(""),
-        BodyType::Xml => state.current_request.body_xml.as_deref().unwrap_or(""),
-        BodyType::FormUrlEncoded => state.current_request.body_form.as_deref().unwrap_or(""),
-        BodyType::Plain => state.current_request.body_raw.as_deref().unwrap_or(""),
-    };
+    let body_text = state.current_request.get_body(state.body_type);
 
     if body_text.is_empty() && !is_insert {
         let placeholder = Paragraph::new(Line::from(Span::styled(

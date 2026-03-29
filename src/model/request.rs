@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::state::BodyType;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HttpMethod {
     GET,
@@ -141,6 +143,48 @@ impl Request {
             name.clone()
         } else {
             format!("{} {}", self.method, self.url)
+        }
+    }
+
+    /// Returns the first non-empty body in priority order: json > xml > form > raw.
+    pub fn any_body(&self) -> Option<&str> {
+        self.body_json.as_deref()
+            .or(self.body_xml.as_deref())
+            .or(self.body_form.as_deref())
+            .or(self.body_raw.as_deref())
+    }
+
+    pub fn has_chain_refs_in_body(&self, has_refs: impl Fn(&str) -> bool) -> bool {
+        self.body_json.as_deref().map(&has_refs).unwrap_or(false)
+            || self.body_xml.as_deref().map(&has_refs).unwrap_or(false)
+            || self.body_form.as_deref().map(&has_refs).unwrap_or(false)
+            || self.body_raw.as_deref().map(&has_refs).unwrap_or(false)
+    }
+
+    pub fn get_body_opt(&self, body_type: BodyType) -> Option<&str> {
+        match body_type {
+            BodyType::Json => self.body_json.as_deref(),
+            BodyType::Xml => self.body_xml.as_deref(),
+            BodyType::FormUrlEncoded => self.body_form.as_deref(),
+            BodyType::Plain => self.body_raw.as_deref(),
+        }
+    }
+
+    pub fn get_body(&self, body_type: BodyType) -> &str {
+        match body_type {
+            BodyType::Json => self.body_json.as_deref().unwrap_or(""),
+            BodyType::Xml => self.body_xml.as_deref().unwrap_or(""),
+            BodyType::FormUrlEncoded => self.body_form.as_deref().unwrap_or(""),
+            BodyType::Plain => self.body_raw.as_deref().unwrap_or(""),
+        }
+    }
+
+    pub fn set_body(&mut self, body_type: BodyType, value: Option<String>) {
+        match body_type {
+            BodyType::Json => self.body_json = value,
+            BodyType::Xml => self.body_xml = value,
+            BodyType::FormUrlEncoded => self.body_form = value,
+            BodyType::Plain => self.body_raw = value,
         }
     }
 }

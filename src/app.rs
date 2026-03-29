@@ -33,23 +33,11 @@ impl App {
     }
 
     fn active_body(&self) -> &str {
-        let req = &self.state.current_request;
-        match self.state.body_type {
-            BodyType::Json => req.body_json.as_deref().unwrap_or(""),
-            BodyType::Xml => req.body_xml.as_deref().unwrap_or(""),
-            BodyType::FormUrlEncoded => req.body_form.as_deref().unwrap_or(""),
-            BodyType::Plain => req.body_raw.as_deref().unwrap_or(""),
-        }
+        self.state.current_request.get_body(self.state.body_type)
     }
 
     fn set_active_body(&mut self, value: Option<String>) {
-        let req = &mut self.state.current_request;
-        match self.state.body_type {
-            BodyType::Json => req.body_json = value,
-            BodyType::Xml => req.body_xml = value,
-            BodyType::FormUrlEncoded => req.body_form = value,
-            BodyType::Plain => req.body_raw = value,
-        }
+        self.state.current_request.set_body(self.state.body_type, value);
     }
 
     pub fn load_collections(&mut self, dirs: &[PathBuf]) {
@@ -325,7 +313,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
@@ -346,7 +334,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_cursor_col = line_len;
@@ -405,7 +393,7 @@ impl App {
                 // Clamp cursor to last char (normal mode can't be past end)
                 match self.state.active_panel {
                     Panel::Body => {
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         if line_len > 0 {
@@ -1011,7 +999,7 @@ impl App {
                         self.state.set_status("Yanked field");
                     }
                     Panel::Body => {
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let row = self.state.body_cursor_row;
                         let end_row = (row + count).min(lines.len());
@@ -1045,7 +1033,7 @@ impl App {
             Action::DeleteLine => {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
-                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                    let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_cursor_row;
                     let end_row = (row + count).min(lines.len());
@@ -1463,7 +1451,7 @@ impl App {
             Action::YankWord => {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
-                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                    let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -2199,7 +2187,7 @@ impl App {
                 self.state.pending_key = None;
                 match self.state.active_panel {
                     Panel::Body => {
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let row = self.state.body_cursor_row;
                         let col = self.state.body_cursor_col;
@@ -2228,7 +2216,7 @@ impl App {
                 self.state.pending_key = None;
                 match self.state.active_panel {
                     Panel::Body => {
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let row = self.state.body_cursor_row;
                         let col = self.state.body_cursor_col;
@@ -2257,7 +2245,7 @@ impl App {
                 self.state.pending_key = None;
                 match self.state.active_panel {
                     Panel::Body => {
-                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                        let body = self.state.current_request.get_body(self.state.body_type);
                         let lines: Vec<&str> = body.lines().collect();
                         let row = self.state.body_cursor_row;
                         if row < lines.len() {
@@ -3225,7 +3213,7 @@ impl App {
                     self.state.body_cursor_col -= 1;
                 } else if self.state.body_cursor_row > 0 {
                     self.state.body_cursor_row -= 1;
-                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                    let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
                     self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 }
@@ -3263,7 +3251,7 @@ impl App {
         let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 // In normal mode, cursor stays on last char (max = len-1)
@@ -3314,7 +3302,7 @@ impl App {
     fn body_cursor_up(&mut self) {
         if self.state.body_cursor_row > 0 {
             self.state.body_cursor_row -= 1;
-            let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+            let body = self.state.current_request.get_body(self.state.body_type);
             let lines: Vec<&str> = body.lines().collect();
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
@@ -3324,7 +3312,7 @@ impl App {
     }
 
     fn body_cursor_down(&mut self) {
-        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+        let body = self.state.current_request.get_body(self.state.body_type);
         let line_count = body.lines().count().max(1);
         if self.state.body_cursor_row + 1 < line_count {
             self.state.body_cursor_row += 1;
@@ -3359,7 +3347,7 @@ impl App {
         let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
@@ -3844,7 +3832,7 @@ impl App {
     }
 
     fn get_visual_selection(&self) -> String {
-        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+        let body = self.state.current_request.get_body(self.state.body_type);
         let (sr, sc, er, ec) = self.visual_range();
         let start = row_col_to_offset(body, sr, sc);
         let end = row_col_to_offset(body, er, ec).min(body.len());
@@ -3869,7 +3857,7 @@ impl App {
 
     /// Get block (rectangle) selection text from body — each line's column slice joined by newlines.
     fn get_block_selection(&self) -> String {
-        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+        let body = self.state.current_request.get_body(self.state.body_type);
         let lines: Vec<&str> = body.lines().collect();
         let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
         let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
@@ -3982,13 +3970,7 @@ impl App {
         resolved.url = http_client::resolve_path_params(&resolved.url, &resolved.path_params);
 
         // Pick the active body based on body_type
-        let active_body_ref = match self.state.body_type {
-            BodyType::Json => &resolved.body_json,
-            BodyType::Xml => &resolved.body_xml,
-            BodyType::FormUrlEncoded => &resolved.body_form,
-            BodyType::Plain => &resolved.body_raw,
-        };
-        let body_text_trimmed = active_body_ref.as_deref().unwrap_or("").trim().to_string();
+        let body_text_trimmed = resolved.get_body(self.state.body_type).trim().to_string();
 
         // Auto-inject Content-Type if body exists and no Content-Type header set
         if !body_text_trimmed.is_empty() {
@@ -4008,12 +3990,7 @@ impl App {
         resolved.body_form = None;
         resolved.body_raw = None;
         if !body_text_trimmed.is_empty() {
-            match self.state.body_type {
-                BodyType::Json => resolved.body_json = Some(body_text_trimmed),
-                BodyType::Xml => resolved.body_xml = Some(body_text_trimmed),
-                BodyType::FormUrlEncoded => resolved.body_form = Some(body_text_trimmed),
-                BodyType::Plain => resolved.body_raw = Some(body_text_trimmed),
-            }
+            resolved.set_body(self.state.body_type, Some(body_text_trimmed));
         }
 
         let config = self.state.config.general.clone();
@@ -4061,10 +4038,7 @@ impl App {
             || req.headers.iter().any(|h| has_refs(&h.value))
             || req.query_params.iter().any(|p| has_refs(&p.value))
             || req.cookies.iter().any(|c| has_refs(&c.value))
-            || req.body_json.as_deref().map(|b| has_refs(b)).unwrap_or(false)
-            || req.body_xml.as_deref().map(|b| has_refs(b)).unwrap_or(false)
-            || req.body_form.as_deref().map(|b| has_refs(b)).unwrap_or(false)
-            || req.body_raw.as_deref().map(|b| has_refs(b)).unwrap_or(false);
+            || req.has_chain_refs_in_body(has_refs);
 
         if !need_resolve {
             return Ok(());
@@ -4165,11 +4139,7 @@ impl App {
                 let mut resolved_dep = self.resolve_env_vars(&dep_request_clone);
 
                 // Auto-inject Content-Type for dependency if it has a body
-                let dep_body = resolved_dep.body_json.as_deref()
-                    .or(resolved_dep.body_xml.as_deref())
-                    .or(resolved_dep.body_form.as_deref())
-                    .or(resolved_dep.body_raw.as_deref())
-                    .unwrap_or("").trim();
+                let dep_body = resolved_dep.any_body().unwrap_or("").trim();
                 if !dep_body.is_empty() {
                     let has_ct = resolved_dep.headers.iter().any(|h| h.enabled && h.name.eq_ignore_ascii_case("content-type"));
                     if !has_ct {
@@ -4321,7 +4291,7 @@ impl App {
                 self.state.collections_state.select(Some(max));
             }
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
                 self.state.body_cursor_row = lines.len().saturating_sub(1);
                 self.state.body_cursor_col = 0;
@@ -4393,7 +4363,7 @@ impl App {
         let half = 15usize;
         match self.state.active_panel {
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let max = body.lines().count().saturating_sub(1);
                 self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
                 self.sync_body_scroll(); self.sync_body_hscroll();
@@ -4548,7 +4518,7 @@ impl App {
     fn find_char_forward(&mut self, target: char, before: bool) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
                 if let Some(line) = lines.get(self.state.body_cursor_row) {
                     let bytes = line.as_bytes();
@@ -4596,7 +4566,7 @@ impl App {
     fn find_char_backward(&mut self, target: char, after: bool) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
+                let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
                 if let Some(line) = lines.get(self.state.body_cursor_row) {
                     let bytes = line.as_bytes();

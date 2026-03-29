@@ -64,11 +64,7 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         builder = builder.header("Cookie", &cookie_str);
     }
 
-    // Try each body field in priority order: json, xml, form, raw
-    let body = request.body_json.as_deref()
-        .or(request.body_xml.as_deref())
-        .or(request.body_form.as_deref())
-        .or(request.body_raw.as_deref());
+    let body = request.any_body();
     if let Some(body) = body {
         builder = builder.body(body.to_string());
     }
@@ -182,10 +178,7 @@ pub fn to_curl(request: &Request) -> String {
         parts.push(format!("-H 'Cookie: {}'", shell_escape(&cookie_str)));
     }
 
-    let curl_body = request.body_json.as_deref()
-        .or(request.body_xml.as_deref())
-        .or(request.body_form.as_deref())
-        .or(request.body_raw.as_deref());
+    let curl_body = request.any_body();
     if let Some(body) = curl_body {
         parts.push(format!("-d '{}'", shell_escape(body)));
     }

@@ -222,10 +222,7 @@ pub fn serialize(requests: &[Request]) -> String {
         }
 
         // Body — output the first non-empty body field
-        let body = req.body_json.as_deref()
-            .or(req.body_xml.as_deref())
-            .or(req.body_form.as_deref())
-            .or(req.body_raw.as_deref());
+        let body = req.any_body();
         if let Some(body) = body {
             let trimmed = body.trim();
             if !trimmed.is_empty() {
