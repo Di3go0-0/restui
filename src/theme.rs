@@ -216,6 +216,85 @@ impl Theme {
             json_bool: Color::Yellow,
         }
     }
+
+    /// Build a theme from nvim highlight colors passed as key=value pairs.
+    /// Format: "bg=#1e1e2e,fg=#cdd6f4,accent=#89b4fa,border=#585b70,..."
+    pub fn from_nvim_colors(colors_str: &str) -> Self {
+        use std::collections::HashMap;
+        let map: HashMap<&str, &str> = colors_str
+            .split(',')
+            .filter_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                Some((parts.next()?.trim(), parts.next()?.trim()))
+            })
+            .collect();
+
+        let get = |key: &str| -> Option<Color> {
+            map.get(key).map(|v| parse_hex(v))
+        };
+
+        // Base colors with fallbacks
+        let fg = get("fg").unwrap_or(Color::White);
+        let bg = get("bg").unwrap_or(Color::Rgb(30, 30, 46));
+        let accent = get("accent").unwrap_or(Color::Cyan);
+        let dim = get("dim").unwrap_or(Color::DarkGray);
+        let border = get("border").unwrap_or(dim);
+        let green = get("green").unwrap_or(Color::Green);
+        let yellow = get("yellow").unwrap_or(Color::Yellow);
+        let red = get("red").unwrap_or(Color::Red);
+        let blue = get("blue").unwrap_or(accent);
+        let magenta = get("magenta").unwrap_or(Color::Magenta);
+        let cyan = get("cyan").unwrap_or(Color::Cyan);
+        let orange = get("orange").unwrap_or(yellow);
+        let bg_hl = get("bg_hl").unwrap_or_else(|| lighten_color(bg, 10));
+        let gutter = get("gutter").unwrap_or(dim);
+        let gutter_active = get("gutter_active").unwrap_or(yellow);
+        let string_color = get("string").unwrap_or(green);
+        let number_color = get("number").unwrap_or(orange);
+        let keyword_color = get("keyword").unwrap_or(accent);
+        let boolean_color = get("boolean").unwrap_or(yellow);
+
+        Self {
+            name: "nvim".to_string(),
+            border_focused: accent,
+            border_unfocused: border,
+            border_insert: green,
+            border_visual: magenta,
+            status_ok: green,
+            status_client_error: yellow,
+            status_server_error: red,
+            method_get: green,
+            method_post: blue,
+            method_put: yellow,
+            method_delete: red,
+            method_patch: orange,
+            method_head: magenta,
+            method_options: cyan,
+            bg_highlight: bg_hl,
+            gutter,
+            gutter_active,
+            text: fg,
+            text_dim: dim,
+            overlay_bg: bg,
+            accent,
+            key_hint: accent,
+            json_key: keyword_color,
+            json_string: string_color,
+            json_number: number_color,
+            json_bool: boolean_color,
+        }
+    }
+}
+
+fn lighten_color(color: Color, amount: u8) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => Color::Rgb(
+            r.saturating_add(amount),
+            g.saturating_add(amount),
+            b.saturating_add(amount),
+        ),
+        _ => Color::Rgb(40, 40, 50),
+    }
 }
 
 pub const THEME_NAMES: &[&str] = &["default", "catppuccin", "gruvbox", "tokyonight"];

@@ -32,6 +32,11 @@ struct Cli {
     /// Working directory to scan for .http files
     #[arg(short, long)]
     dir: Option<PathBuf>,
+
+    /// Inherit colors from Neovim (passed by restui.nvim plugin)
+    /// Format: "bg=#1e1e2e,fg=#cdd6f4,accent=#89b4fa,..."
+    #[arg(long)]
+    colors: Option<String>,
 }
 
 #[tokio::main]
@@ -56,6 +61,11 @@ async fn main() -> Result<()> {
         if let Some(parent) = file.parent() {
             dirs.push(parent.to_path_buf());
         }
+    }
+
+    // Apply nvim colorscheme if --colors was passed
+    if let Some(ref colors) = cli.colors {
+        app.state.theme = theme::Theme::from_nvim_colors(colors);
     }
 
     app.load_collections(&dirs);
