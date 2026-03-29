@@ -13,6 +13,7 @@ mod state;
 mod theme;
 mod tui;
 mod ui;
+mod vim_buffer;
 
 use anyhow::Result;
 use clap::Parser;
