@@ -126,11 +126,23 @@ fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Enter => Some(Action::OverlayConfirm),
             _ => None,
         },
-        Some(Overlay::NewCollection { .. }) => match key.code {
+        Some(Overlay::NewCollection { .. }) | Some(Overlay::RenameRequest { .. }) => match key.code {
             KeyCode::Esc => Some(Action::CloseOverlay),
             KeyCode::Enter => Some(Action::OverlayConfirm),
             KeyCode::Backspace => Some(Action::OverlayBackspace),
             KeyCode::Char(c) => Some(Action::OverlayInput(c)),
+            _ => None,
+        },
+        Some(Overlay::ConfirmDelete { .. }) => match key.code {
+            KeyCode::Esc | KeyCode::Char('n') => Some(Action::CloseOverlay),
+            KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
+            _ => None,
+        },
+        Some(Overlay::MoveRequest { .. }) => match key.code {
+            KeyCode::Esc => Some(Action::CloseOverlay),
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
+            KeyCode::Enter => Some(Action::OverlayConfirm),
             _ => None,
         },
         _ => match key.code {
@@ -254,6 +266,9 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('s') => Some(Action::SaveRequest),
         KeyCode::Char('S') => Some(Action::SaveRequestAs),
         KeyCode::Char('C') => Some(Action::NewEmptyRequest),
+        KeyCode::Char('R') => Some(Action::RenameRequest),
+        KeyCode::Char('D') => Some(Action::DeleteSelected),
+        KeyCode::Char('m') => Some(Action::MoveRequest),
         KeyCode::Char('L') | KeyCode::Char('}') => Some(Action::NextCollection),
         KeyCode::Char('H') | KeyCode::Char('{') => Some(Action::PrevCollection),
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),

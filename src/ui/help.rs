@@ -87,10 +87,13 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
         (
             "Collections (CRUD)",
             vec![
-                ("s", "Sobrescribir — save over selected request, persist to disk"),
-                ("S", "Guardar como — copy current as new request in collection"),
-                ("C", "Nuevo vacío — clear all fields, blank request from scratch"),
-                ("n", "Nueva colección — create a new .http collection file"),
+                ("s", "Save — overwrite selected request, persist to disk"),
+                ("S", "Save As — copy current as new request in collection"),
+                ("C", "New Empty — clear all fields, blank request"),
+                ("n", "New Collection — create a new .http file"),
+                ("R", "Rename — rename request or collection"),
+                ("D", "Delete — delete request or collection (with confirm)"),
+                ("m", "Move — move request to another collection"),
             ],
         ),
         (

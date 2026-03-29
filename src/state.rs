@@ -144,6 +144,15 @@ pub enum Overlay {
     NewCollection {
         name: String,
     },
+    RenameRequest {
+        name: String,
+    },
+    MoveRequest {
+        selected: usize,
+    },
+    ConfirmDelete {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone)]
