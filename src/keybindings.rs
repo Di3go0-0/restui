@@ -32,6 +32,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 let in_vim_edit = match state.active_panel {
                     Panel::Body => state.mode == InputMode::Normal,
                     Panel::Request => state.request_field_editing,
+                    Panel::Response if state.response_tab == ResponseTab::Type => state.mode == InputMode::Normal,
                     _ => false,
                 };
                 if in_vim_edit {
@@ -104,8 +105,13 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
-        KeyCode::Char('T') => return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 })),
-        KeyCode::Char('H') => return Some(Action::OpenOverlay(Overlay::History { selected: 0 })),
+        // T/H are global shortcuts ONLY when not in an editable panel (they conflict with vim motions)
+        KeyCode::Char('T') if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+            return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }));
+        }
+        KeyCode::Char('H') if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+            return Some(Action::OpenOverlay(Overlay::History { selected: 0 }));
+        }
         KeyCode::Char('E') => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
             selected: 0,
             editing_key: false,
@@ -333,6 +339,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 _ => None,
             },
             Panel::Body => Some(Action::DeleteLine),
+            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::DeleteLine),
             Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
@@ -360,6 +367,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
             match state.active_panel {
                 Panel::Body => Some(Action::ReplaceChar(c)),
                 Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
+                Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::ReplaceChar(c)),
                 _ => None,
             }
         },
