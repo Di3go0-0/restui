@@ -374,7 +374,6 @@ pub struct AppState {
 
     // Panel state
     pub collections_state: ListState,
-    pub response_scroll: (u16, u16),
 
     // Request panel tabs & inline editing
     pub request_tab: RequestTab,
@@ -394,15 +393,8 @@ pub struct AppState {
     // Body vim buffer
     pub body_buf: VimBuffer,
 
-    // Response cursor (for visual mode in response)
-    pub resp_cursor_row: usize,
-    pub resp_cursor_col: usize,
-    pub resp_visual_anchor_row: usize,
-    pub resp_visual_anchor_col: usize,
-
-    // Viewport heights/widths (updated each frame by UI — response only, body uses body_buf)
-    pub resp_visible_height: u16,
-    pub resp_visible_width: u16,
+    // Response vim buffer (read-only)
+    pub resp_buf: VimBuffer,
 
     // Pending key for dd
     pub pending_key: Option<(char, Instant)>,
@@ -496,7 +488,6 @@ impl AppState {
             body_type: BodyType::Json,
             body_validation_error: None,
             collections_state,
-            response_scroll: (0, 0),
             request_tab: RequestTab::Headers,
             request_focus: RequestFocus::Url,
             url_cursor: 0,
@@ -511,12 +502,7 @@ impl AppState {
             request_field_editing: false,
             request_visual_anchor: 0,
             body_buf: VimBuffer::default(),
-            resp_cursor_row: 0,
-            resp_cursor_col: 0,
-            resp_visual_anchor_row: 0,
-            resp_visual_anchor_col: 0,
-            resp_visible_height: 20,
-            resp_visible_width: 80,
+            resp_buf: VimBuffer::default(),
             pending_key: None,
             autocomplete: None,
             chain_autocomplete: None,

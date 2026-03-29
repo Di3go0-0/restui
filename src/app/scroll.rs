@@ -45,9 +45,9 @@ impl App {
             Panel::Collections => self.state.collections_state.select(Some(0)),
             Panel::Body => { self.state.body_buf.scroll = (0, 0); self.state.body_buf.cursor_row = 0; self.state.body_buf.cursor_col = 0; }
             Panel::Response => {
-                self.state.resp_cursor_row = 0;
-                self.state.resp_cursor_col = 0;
-                self.state.response_scroll = (0, 0);
+                self.state.resp_buf.cursor_row = 0;
+                self.state.resp_buf.cursor_col = 0;
+                self.state.resp_buf.scroll = (0, 0);
             }
             _ => {}
         }
@@ -68,8 +68,8 @@ impl App {
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
-                self.state.resp_cursor_row = lines.len().saturating_sub(1);
-                self.state.resp_cursor_col = 0;
+                self.state.resp_buf.cursor_row = lines.len().saturating_sub(1);
+                self.state.resp_buf.cursor_col = 0;
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -101,26 +101,26 @@ impl App {
     }
 
     pub(super) fn sync_resp_scroll(&mut self) {
-        let visible = self.state.resp_visible_height as usize;
+        let visible = self.state.resp_buf.visible_height as usize;
         if visible == 0 { return; }
-        let scroll = self.state.response_scroll.0 as usize;
-        let row = self.state.resp_cursor_row;
+        let scroll = self.state.resp_buf.scroll.0 as usize;
+        let row = self.state.resp_buf.cursor_row;
         if row < scroll {
-            self.state.response_scroll.0 = row as u16;
+            self.state.resp_buf.scroll.0 = row as u16;
         } else if row >= scroll + visible {
-            self.state.response_scroll.0 = (row - visible + 1) as u16;
+            self.state.resp_buf.scroll.0 = (row - visible + 1) as u16;
         }
     }
 
     pub(super) fn sync_resp_hscroll(&mut self) {
-        let col = self.state.resp_cursor_col;
-        let hscroll = self.state.response_scroll.1 as usize;
-        let visible_w = self.state.resp_visible_width as usize;
+        let col = self.state.resp_buf.cursor_col;
+        let hscroll = self.state.resp_buf.scroll.1 as usize;
+        let visible_w = self.state.resp_buf.visible_width as usize;
         if visible_w == 0 { return; }
         if col < hscroll {
-            self.state.response_scroll.1 = col as u16;
+            self.state.resp_buf.scroll.1 = col as u16;
         } else if col >= hscroll + visible_w {
-            self.state.response_scroll.1 = (col - visible_w + 1) as u16;
+            self.state.resp_buf.scroll.1 = (col - visible_w + 1) as u16;
         }
     }
 
@@ -135,7 +135,7 @@ impl App {
             }
             Panel::Response => {
                 let max = self.get_response_lines().len().saturating_sub(1);
-                self.state.resp_cursor_row = (self.state.resp_cursor_row + half).min(max);
+                self.state.resp_buf.cursor_row = (self.state.resp_buf.cursor_row + half).min(max);
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -150,7 +150,7 @@ impl App {
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
-                self.state.resp_cursor_row = self.state.resp_cursor_row.saturating_sub(half);
+                self.state.resp_buf.cursor_row = self.state.resp_buf.cursor_row.saturating_sub(half);
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -173,20 +173,20 @@ impl App {
 
     pub(super) fn resp_cursor_down(&mut self) {
         let lines = self.get_response_lines();
-        if self.state.resp_cursor_row + 1 < lines.len() {
-            self.state.resp_cursor_row += 1;
-            let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
+        if self.state.resp_buf.cursor_row + 1 < lines.len() {
+            self.state.resp_buf.cursor_row += 1;
+            let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.min(line_len);
         }
         self.sync_resp_scroll(); self.sync_resp_hscroll();
     }
 
     pub(super) fn resp_cursor_up(&mut self) {
-        if self.state.resp_cursor_row > 0 {
-            self.state.resp_cursor_row -= 1;
+        if self.state.resp_buf.cursor_row > 0 {
+            self.state.resp_buf.cursor_row -= 1;
             let lines = self.get_response_lines();
-            let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
+            let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.min(line_len);
         }
         self.sync_resp_scroll(); self.sync_resp_hscroll();
     }

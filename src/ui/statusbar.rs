@@ -88,7 +88,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     };
     if show_cursor_pos {
         let (row, col) = match state.active_panel {
-            Panel::Response => (state.resp_cursor_row, state.resp_cursor_col),
+            Panel::Response => (state.resp_buf.cursor_row, state.resp_buf.cursor_col),
             _ => (state.body_buf.cursor_row, state.body_buf.cursor_col),
         };
         spans.push(Span::styled(

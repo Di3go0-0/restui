@@ -41,13 +41,13 @@ impl App {
         if let Some(&(row, col)) = self.state.search.matches.get(self.state.search.match_idx) {
             match self.state.active_panel {
                 Panel::Response => {
-                    self.state.resp_cursor_row = row;
-                    self.state.resp_cursor_col = col;
-                    let visible = self.state.resp_visible_height as usize;
-                    if row < self.state.response_scroll.0 as usize {
-                        self.state.response_scroll.0 = row as u16;
-                    } else if row >= self.state.response_scroll.0 as usize + visible {
-                        self.state.response_scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    self.state.resp_buf.cursor_row = row;
+                    self.state.resp_buf.cursor_col = col;
+                    let visible = self.state.resp_buf.visible_height as usize;
+                    if row < self.state.resp_buf.scroll.0 as usize {
+                        self.state.resp_buf.scroll.0 = row as u16;
+                    } else if row >= self.state.resp_buf.scroll.0 as usize + visible {
+                        self.state.resp_buf.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
                     }
                 }
                 Panel::Body => {

@@ -165,29 +165,29 @@ impl App {
                     // Wide: center is 50% of right, body is 60% of center
                     let center_h = main_h;
                     self.state.body_buf.visible_height = (center_h as u32 * 60 / 100) as u16;
-                    self.state.resp_visible_height = main_h;
+                    self.state.resp_buf.visible_height = main_h;
                 } else {
                     // Narrow: body 35%, response 40%
                     self.state.body_buf.visible_height = (main_h as u32 * 35 / 100) as u16;
-                    self.state.resp_visible_height = (main_h as u32 * 40 / 100) as u16;
+                    self.state.resp_buf.visible_height = (main_h as u32 * 40 / 100) as u16;
                 }
                 // Account for borders and internal layout (approx 5 lines for response header area)
                 self.state.body_buf.visible_height = self.state.body_buf.visible_height.saturating_sub(2);
-                self.state.resp_visible_height = self.state.resp_visible_height.saturating_sub(5);
+                self.state.resp_buf.visible_height = self.state.resp_buf.visible_height.saturating_sub(5);
 
                 // Calculate visible widths for horizontal scroll-follow
                 // Body and response panels share the right side; subtract gutter (4) + border (2)
                 if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center panel is ~40% of right
                     self.state.body_buf.visible_width = (right_width as u32 * 40 / 100) as u16;
-                    self.state.resp_visible_width = (right_width as u32 * 50 / 100) as u16;
+                    self.state.resp_buf.visible_width = (right_width as u32 * 50 / 100) as u16;
                 } else {
                     // Narrow: body/response take full right width
                     self.state.body_buf.visible_width = right_width;
-                    self.state.resp_visible_width = right_width;
+                    self.state.resp_buf.visible_width = right_width;
                 }
                 self.state.body_buf.visible_width = self.state.body_buf.visible_width.saturating_sub(6); // gutter(4) + borders(2)
-                self.state.resp_visible_width = self.state.resp_visible_width.saturating_sub(6);
+                self.state.resp_buf.visible_width = self.state.resp_buf.visible_width.saturating_sub(6);
             }
 
             terminal.draw(|frame| {
@@ -490,8 +490,8 @@ impl App {
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::Visual;
-                        self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
-                        self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
+                        self.state.resp_buf.visual_anchor_row = self.state.resp_buf.cursor_row;
+                        self.state.resp_buf.visual_anchor_col = self.state.resp_buf.cursor_col;
                     }
                     Panel::Request if self.state.request_field_editing => {
                         self.state.mode = InputMode::Visual;
@@ -509,8 +509,8 @@ impl App {
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::VisualBlock;
-                        self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
-                        self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
+                        self.state.resp_buf.visual_anchor_row = self.state.resp_buf.cursor_row;
+                        self.state.resp_buf.visual_anchor_col = self.state.resp_buf.cursor_col;
                     }
                     _ => {}
                 }
@@ -1079,7 +1079,7 @@ impl App {
                         // yy on response: copy the current line(s)
                         let text = self.get_response_body_text();
                         let lines: Vec<&str> = text.lines().collect();
-                        let row = self.state.resp_cursor_row;
+                        let row = self.state.resp_buf.cursor_row;
                         let end_row = (row + count).min(lines.len());
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
@@ -1744,7 +1744,7 @@ impl App {
                 }
 
                 self.state.current_response = Some(*response);
-                self.state.response_scroll = (0, 0);
+                self.state.resp_buf.scroll = (0, 0);
 
                 // Infer type from JSON response
                 if let Some(ref resp) = self.state.current_response {
@@ -3323,7 +3323,7 @@ impl App {
                 }
             }
             Panel::Response => {
-                self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
+                self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.saturating_sub(1);
             }
             _ => {}
         }
@@ -3371,10 +3371,10 @@ impl App {
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
-                let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+                let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 let max = line_len.saturating_sub(1); // response is always "normal mode"
-                if self.state.resp_cursor_col < max {
-                    self.state.resp_cursor_col += 1;
+                if self.state.resp_buf.cursor_col < max {
+                    self.state.resp_buf.cursor_col += 1;
                 }
             }
             _ => {}
@@ -3419,7 +3419,7 @@ impl App {
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
                 self.state.type_buf.cursor_col = 0;
             },
-            Panel::Response => { self.state.resp_cursor_col = 0; self.sync_resp_hscroll(); },
+            Panel::Response => { self.state.resp_buf.cursor_col = 0; self.sync_resp_hscroll(); },
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = 0,
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
@@ -3448,8 +3448,8 @@ impl App {
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
-                let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
-                self.state.resp_cursor_col = line_len.saturating_sub(1);
+                let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.resp_buf.cursor_col = line_len.saturating_sub(1);
                 self.sync_resp_hscroll();
             }
             Panel::Request => {
@@ -3501,7 +3501,7 @@ impl App {
         match self.state.active_panel {
             Panel::Response => {
                 let t = self.get_response_body_text();
-                (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
+                (t, &mut self.state.resp_buf.cursor_row as *mut usize, &mut self.state.resp_buf.cursor_col as *mut usize)
             }
             _ => {
                 let t = self.active_body().to_string();
@@ -3985,8 +3985,8 @@ impl App {
     fn get_response_block_selection(&self) -> String {
         let body = self.get_response_body_text();
         let lines: Vec<&str> = body.lines().collect();
-        let (ar, ac) = (self.state.resp_visual_anchor_row, self.state.resp_visual_anchor_col);
-        let (cr, cc) = (self.state.resp_cursor_row, self.state.resp_cursor_col);
+        let (ar, ac) = (self.state.resp_buf.visual_anchor_row, self.state.resp_buf.visual_anchor_col);
+        let (cr, cc) = (self.state.resp_buf.cursor_row, self.state.resp_buf.cursor_col);
         let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
         let mut result = Vec::new();
         for row in min_row..=max_row {
@@ -4055,8 +4055,8 @@ impl App {
     }
 
     fn resp_visual_range(&self) -> (usize, usize, usize, usize) {
-        let (ar, ac) = (self.state.resp_visual_anchor_row, self.state.resp_visual_anchor_col);
-        let (cr, cc) = (self.state.resp_cursor_row, self.state.resp_cursor_col);
+        let (ar, ac) = (self.state.resp_buf.visual_anchor_row, self.state.resp_buf.visual_anchor_col);
+        let (cr, cc) = (self.state.resp_buf.cursor_row, self.state.resp_buf.cursor_col);
         if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) }
     }
 
@@ -4108,12 +4108,12 @@ impl App {
             Panel::Response => {
                 let text = self.get_response_body_text();
                 let lines: Vec<&str> = text.lines().collect();
-                if let Some(line) = lines.get(self.state.resp_cursor_row) {
+                if let Some(line) = lines.get(self.state.resp_buf.cursor_row) {
                     let bytes = line.as_bytes();
-                    let start = self.state.resp_cursor_col + 1;
+                    let start = self.state.resp_buf.cursor_col + 1;
                     for i in start..bytes.len() {
                         if bytes[i] == target as u8 {
-                            self.state.resp_cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
+                            self.state.resp_buf.cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
                             break;
                         }
                     }
@@ -4163,13 +4163,13 @@ impl App {
             Panel::Response => {
                 let text = self.get_response_body_text();
                 let lines: Vec<&str> = text.lines().collect();
-                if let Some(line) = lines.get(self.state.resp_cursor_row) {
+                if let Some(line) = lines.get(self.state.resp_buf.cursor_row) {
                     let bytes = line.as_bytes();
-                    let col = self.state.resp_cursor_col;
+                    let col = self.state.resp_buf.cursor_col;
                     if col > 0 {
                         for i in (0..col).rev() {
                             if bytes[i] == target as u8 {
-                                self.state.resp_cursor_col = if after { (i + 1).min(col) } else { i };
+                                self.state.resp_buf.cursor_col = if after { (i + 1).min(col) } else { i };
                                 break;
                             }
                         }
