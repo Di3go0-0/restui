@@ -14,7 +14,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let border_color = t.border_for_mode(is_focused, state.mode);
 
     let block = Block::default()
-        .title(" Response ")
+        .title(" [4] Response ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 

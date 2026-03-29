@@ -14,12 +14,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let coll_count = state.collections.len();
     let title = if coll_count > 0 {
         format!(
-            " Collections ({}/{}) ",
+            " [1] Collections ({}/{}) ",
             state.active_collection + 1,
             coll_count
         )
     } else {
-        " Collections ".to_string()
+        " [1] Collections ".to_string()
     };
 
     let block = Block::default()

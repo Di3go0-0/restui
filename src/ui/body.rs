@@ -16,9 +16,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let body_type_label = state.body_type.label();
     let title = if let Some(ref err) = state.body_validation_error {
-        format!(" Body [{}] ⚠ {} ", body_type_label, err)
+        format!(" [3] Body [{}] ⚠ {} ", body_type_label, err)
     } else {
-        format!(" Body [{}] ", body_type_label)
+        format!(" [3] Body [{}] ", body_type_label)
     };
     let title_style = if state.body_validation_error.is_some() {
         Style::default().fg(Color::Red)
