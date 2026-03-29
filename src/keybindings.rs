@@ -142,7 +142,7 @@ fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Enter => Some(Action::OverlayConfirm),
             _ => None,
         },
-        Some(Overlay::NewCollection { .. }) | Some(Overlay::RenameRequest { .. }) => match key.code {
+        Some(Overlay::NewCollection { .. }) | Some(Overlay::RenameRequest { .. }) | Some(Overlay::SetCacheTTL { .. }) => match key.code {
             KeyCode::Esc => Some(Action::CloseOverlay),
             KeyCode::Enter => Some(Action::OverlayConfirm),
             KeyCode::Backspace => Some(Action::OverlayBackspace),

@@ -140,9 +140,6 @@ pub enum Action {
     CopyAsCurl,
     YankLine,
 
-    // Chain cache
-    SetChainCacheTTL(u64),
-
     // App
     Quit,
     Tick,

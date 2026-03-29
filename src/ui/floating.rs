@@ -16,6 +16,7 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         Overlay::RenameRequest { name } => render_rename_request(frame, name),
         Overlay::ConfirmDelete { message } => render_confirm_delete(frame, message),
         Overlay::MoveRequest { selected } => render_move_request(frame, state, *selected),
+        Overlay::SetCacheTTL { input } => render_cache_ttl(frame, state, input),
         Overlay::Help => {}
     }
 }
@@ -247,6 +248,42 @@ fn render_new_collection(frame: &mut Frame, name: &str) {
         Line::from(""),
         Line::from(Span::styled(
             " Enter to create, Esc to cancel",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_cache_ttl(frame: &mut Frame, state: &AppState, input: &str) {
+    let area = centered_rect(50, 20, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Set Cache TTL ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let current = state.config.general.chain_cache_ttl;
+    let lines = vec![
+        Line::from(Span::styled(
+            format!(" Current: {}s", current),
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Time in seconds:",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(Span::styled(
+            format!(" {}▌", input),
+            Style::default().fg(Color::Cyan),
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Enter to set, Esc to cancel",
             Style::default().fg(Color::DarkGray),
         )),
     ];

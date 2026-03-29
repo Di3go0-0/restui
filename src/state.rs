@@ -157,6 +157,9 @@ pub enum Overlay {
     ConfirmDelete {
         message: String,
     },
+    SetCacheTTL {
+        input: String,
+    },
 }
 
 #[derive(Debug, Clone)]

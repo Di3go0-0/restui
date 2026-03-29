@@ -1039,6 +1039,19 @@ impl App {
                             }
                         }
                     }
+                    Some(Overlay::SetCacheTTL { input }) => {
+                        if let Ok(secs) = input.parse::<u64>() {
+                            if secs > 0 {
+                                self.state.config.general.chain_cache_ttl = secs;
+                                self.state.response_cache.clear();
+                                self.state.set_status(format!("Chain cache TTL: {}s", secs));
+                            } else {
+                                self.state.set_status("TTL must be > 0");
+                            }
+                        } else {
+                            self.state.set_status("Invalid number");
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1046,6 +1059,9 @@ impl App {
                 match self.state.overlay {
                     Some(Overlay::NewCollection { ref mut name }) => { name.push(c); }
                     Some(Overlay::RenameRequest { ref mut name }) => { name.push(c); }
+                    Some(Overlay::SetCacheTTL { ref mut input }) => {
+                        if c.is_ascii_digit() { input.push(c); }
+                    }
                     _ => {}
                 }
             }
@@ -1053,6 +1069,7 @@ impl App {
                 match self.state.overlay {
                     Some(Overlay::NewCollection { ref mut name }) => { name.pop(); }
                     Some(Overlay::RenameRequest { ref mut name }) => { name.pop(); }
+                    Some(Overlay::SetCacheTTL { ref mut input }) => { input.pop(); }
                     _ => {}
                 }
             }
@@ -1079,11 +1096,6 @@ impl App {
             Action::SetTheme(name) => {
                 self.state.theme = crate::theme::load_theme(&name);
                 self.state.set_status(format!("Theme: {}", self.state.theme.name));
-            }
-            Action::SetChainCacheTTL(secs) => {
-                self.state.config.general.chain_cache_ttl = secs;
-                self.state.response_cache.clear();
-                self.state.set_status(format!("Chain cache TTL: {}s", secs));
             }
 
             // === Command Palette ===
