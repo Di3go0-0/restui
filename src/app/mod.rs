@@ -1003,6 +1003,15 @@ impl App {
                         }
                         self.state.mode = InputMode::Normal;
                     }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        let text = self.state.type_buf.get_visual_selection(&self.state.response_type_text);
+                        self.state.yank_buffer = text;
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.state.type_buf.delete_visual_selection(&mut self.state.response_type_text);
+                        self.state.response_type_locked = true;
+                        self.state.mode = InputMode::Normal;
+                    }
                     Panel::Request if self.state.request_field_editing => {
                         self.push_request_undo();
                         let text = self.get_request_visual_selection();
@@ -1014,7 +1023,12 @@ impl App {
                 }
             }
             Action::Paste => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let paste = self.state.yank_buffer.clone();
+                    self.state.type_buf.paste(&mut self.state.response_type_text, &paste);
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let paste = self.state.yank_buffer.clone();
                     self.paste_text_at_cursor(&paste);
@@ -1047,6 +1061,11 @@ impl App {
                         }
                         self.state.validate_body();
                         self.state.set_status("Pasted from clipboard");
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        self.state.type_buf.paste(&mut self.state.response_type_text, &text);
+                        self.state.response_type_locked = true;
+                        self.state.set_status("Pasted from clipboard");
                     }
                 }
             }
@@ -1075,8 +1094,18 @@ impl App {
                             }
                         }
                     }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                        let row = self.state.type_buf.cursor_row;
+                        let end_row = (row + count).min(lines.len());
+                        if row < lines.len() {
+                            let yanked: String = lines[row..end_row].join("\n");
+                            self.state.yank_buffer = format!("{}\n", yanked);
+                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            self.state.set_status("Yanked line");
+                        }
+                    }
                     Panel::Response => {
-                        // yy on response: copy the current line(s)
                         let text = self.get_response_body_text();
                         let lines: Vec<&str> = text.lines().collect();
                         let row = self.state.resp_buf.cursor_row;
@@ -1316,7 +1345,14 @@ impl App {
                 }
             }
             Action::ChangeToEnd => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let yanked = self.state.type_buf.delete_to_end(&mut self.state.response_type_text);
+                    self.state.yank_buffer = yanked;
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
@@ -1347,7 +1383,12 @@ impl App {
                 }
             }
             Action::Substitute => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    self.state.type_buf.delete_char(&mut self.state.response_type_text);
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_buf.cursor_row, self.state.body_buf.cursor_col);
@@ -2414,6 +2455,13 @@ impl App {
             Action::DeleteToEnd => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        let yanked = self.state.type_buf.delete_to_end(&mut self.state.response_type_text);
+                        self.state.yank_buffer = yanked;
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.state.response_type_locked = true;
+                    }
                     Panel::Body => {
                         self.push_body_undo();
                         let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
