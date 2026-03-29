@@ -228,6 +228,24 @@ impl Autocomplete {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseTab {
+    Body,
+    Type,
+}
+
+impl ResponseTab {
+    pub fn next(self) -> Self {
+        match self {
+            ResponseTab::Body => ResponseTab::Type,
+            ResponseTab::Type => ResponseTab::Body,
+        }
+    }
+    pub fn prev(self) -> Self {
+        self.next()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestTab {
     Headers,
     Cookies,
@@ -390,6 +408,11 @@ pub struct AppState {
     pub collections_filter: String,
     pub collections_filter_active: bool,
 
+    // Response type inference
+    pub response_type: Option<crate::model::response_type::JsonType>,
+    pub response_tab: ResponseTab,
+    pub type_scroll: usize,
+
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
     pub matched_bracket: Option<(usize, usize)>,
@@ -479,6 +502,9 @@ impl AppState {
             search_match_idx: 0,
             collections_filter: String::new(),
             collections_filter_active: false,
+            response_type: None,
+            response_tab: ResponseTab::Body,
+            type_scroll: 0,
             matched_bracket: None,
             count_prefix: None,
             should_quit: false,

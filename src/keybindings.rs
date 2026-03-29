@@ -512,6 +512,8 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
 
 fn map_response_key(key: KeyEvent) -> Option<Action> {
     match key.code {
+        KeyCode::Char('}') => Some(Action::ResponseNextTab),
+        KeyCode::Char('{') => Some(Action::ResponsePrevTab),
         KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
         KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),

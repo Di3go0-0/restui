@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::model::response::StatusCategory;
-use crate::state::{AppState, InputMode, Panel};
+use crate::state::{AppState, InputMode, Panel, ResponseTab};
 use crate::ui::body::find_matching_bracket;
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
@@ -77,33 +77,52 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
 
-    // Calculate headers area height
-    let headers_height: u16 = if state.response_headers_expanded {
-        // Show all headers, capped at half the available space
-        let max_h = (inner.height.saturating_sub(4)) / 2;
-        let h = resp.headers.len() as u16;
-        h.min(max_h).max(1)
+    let current_tab = state.response_tab;
+    if current_tab != ResponseTab::Type {
+        render_body_tab(frame, state, resp, inner, is_focused, is_visual, is_visual_block);
     } else {
-        1 // Just the "N response headers" line
-    };
+        render_type_tab(frame, state, resp, inner, is_focused);
+    }
+}
 
-    // Reserve 1 line for search bar when search is active or has matches
-    let has_search_bar = state.search_active
-        || (is_focused && !state.search_query.is_empty() && !state.search_matches.is_empty());
-    let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
+fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
+    let t = &state.theme;
+    let tabs = [ResponseTab::Body, ResponseTab::Type];
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    spans.push(Span::raw(" "));
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),              // Status line
-            Constraint::Length(headers_height),  // Headers (expanded or count)
-            Constraint::Length(1),              // Separator
-            Constraint::Min(1),                // Body with line numbers
-            Constraint::Length(search_bar_height), // Search bar
-        ])
-        .split(inner);
+    for (i, tab) in tabs.iter().enumerate() {
+        let label = match tab {
+            ResponseTab::Body => "Body",
+            ResponseTab::Type => "Type",
+        };
+        let is_active = *tab == state.response_tab;
 
-    // Status line
+        if is_active {
+            spans.push(Span::styled(
+                format!("[{}]", label),
+                Style::default()
+                    .fg(if is_focused { t.accent } else { t.text })
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            spans.push(Span::styled(
+                label.to_string(),
+                Style::default().fg(t.text_dim),
+            ));
+        }
+
+        if i < tabs.len() - 1 {
+            spans.push(Span::raw("  "));
+        }
+    }
+
+    spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
+
+    Line::from(spans)
+}
+
+fn build_status_line(resp: &crate::model::response::Response, t: &crate::theme::Theme) -> Line<'static> {
     let status_color = match resp.status_category() {
         StatusCategory::Success => Color::Green,
         StatusCategory::Redirect => Color::Cyan,
@@ -112,7 +131,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         StatusCategory::Unknown => Color::DarkGray,
     };
 
-    let status_line = Line::from(vec![
+    Line::from(vec![
         Span::styled(
             format!(" {} {} ", resp.status, resp.status_text),
             Style::default()
@@ -125,33 +144,174 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::styled(resp.size_display(), Style::default().fg(t.json_number)),
         Span::raw("  "),
         Span::styled(
-            resp.content_type.as_deref().unwrap_or(""),
+            resp.content_type.as_deref().unwrap_or("").to_string(),
             Style::default().fg(t.text_dim),
         ),
-    ]);
+    ])
+}
+
+fn build_request_info(state: &AppState) -> Vec<Line<'static>> {
+    let t = &state.theme;
+    let req = &state.current_request;
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Sent headers
+    let enabled_headers: Vec<_> = req.headers.iter().filter(|h| h.enabled).collect();
+    if !enabled_headers.is_empty() {
+        lines.push(Line::from(Span::styled("  Headers:", Style::default().fg(t.gutter_active))));
+        for h in enabled_headers {
+            lines.push(Line::from(vec![
+                Span::styled(format!("    {}", h.name), Style::default().fg(t.json_key)),
+                Span::styled(": ", Style::default().fg(t.text_dim)),
+                Span::styled(h.value.clone(), Style::default().fg(t.text)),
+            ]));
+        }
+    }
+
+    // Sent query params
+    let enabled_params: Vec<_> = req.query_params.iter().filter(|p| p.enabled).collect();
+    if !enabled_params.is_empty() {
+        lines.push(Line::from(Span::styled("  Queries:", Style::default().fg(t.gutter_active))));
+        for p in enabled_params {
+            lines.push(Line::from(vec![
+                Span::styled(format!("    {}", p.key), Style::default().fg(t.json_key)),
+                Span::styled(" = ", Style::default().fg(t.text_dim)),
+                Span::styled(p.value.clone(), Style::default().fg(t.text)),
+            ]));
+        }
+    }
+
+    // Sent path params
+    let enabled_path: Vec<_> = req.path_params.iter().filter(|p| p.enabled).collect();
+    if !enabled_path.is_empty() {
+        lines.push(Line::from(Span::styled("  Params:", Style::default().fg(t.gutter_active))));
+        for p in enabled_path {
+            lines.push(Line::from(vec![
+                Span::styled(format!("    {}", p.key), Style::default().fg(t.json_key)),
+                Span::styled(" = ", Style::default().fg(t.text_dim)),
+                Span::styled(p.value.clone(), Style::default().fg(t.text)),
+            ]));
+        }
+    }
+
+    // Sent body (preview - first few lines)
+    let body = match state.body_type {
+        crate::state::BodyType::Json => req.body_json.as_deref(),
+        crate::state::BodyType::Xml => req.body_xml.as_deref(),
+        crate::state::BodyType::FormUrlEncoded => req.body_form.as_deref(),
+        crate::state::BodyType::Plain => req.body_raw.as_deref(),
+    };
+    if let Some(body_text) = body {
+        let trimmed = body_text.trim();
+        if !trimmed.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled(format!("  Body [{}]:", state.body_type.label()), Style::default().fg(t.gutter_active)),
+            ]));
+            for (i, line) in trimmed.lines().take(5).enumerate() {
+                lines.push(Line::from(Span::styled(
+                    format!("    {}", line),
+                    Style::default().fg(t.text_dim),
+                )));
+                if i == 4 && trimmed.lines().count() > 5 {
+                    lines.push(Line::from(Span::styled(
+                        "    ...".to_string(),
+                        Style::default().fg(t.text_dim),
+                    )));
+                }
+            }
+        }
+    }
+
+    // Sent cookies
+    let enabled_cookies: Vec<_> = req.cookies.iter().filter(|c| c.enabled).collect();
+    if !enabled_cookies.is_empty() {
+        lines.push(Line::from(Span::styled("  Cookies:", Style::default().fg(t.gutter_active))));
+        for c in enabled_cookies {
+            lines.push(Line::from(vec![
+                Span::styled(format!("    {}", c.name), Style::default().fg(t.json_key)),
+                Span::styled("=", Style::default().fg(t.text_dim)),
+                Span::styled(c.value.clone(), Style::default().fg(t.text)),
+            ]));
+        }
+    }
+
+    lines
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_body_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    resp: &crate::model::response::Response,
+    inner: Rect,
+    is_focused: bool,
+    is_visual: bool,
+    is_visual_block: bool,
+) {
+    let status_line = build_status_line(resp, &state.theme);
+    let tab_bar = render_response_tab_bar(state, is_focused);
+    let t = &state.theme;
+
+    // Build request info lines (shown when headers expanded)
+    let request_info_lines = build_request_info(state);
+
+    // Calculate headers area height
+    let headers_height: u16 = if state.response_headers_expanded {
+        let max_h = (inner.height.saturating_sub(5)) / 2;
+        let total = resp.headers.len() + if request_info_lines.is_empty() { 0 } else { request_info_lines.len() + 1 }; // +1 for separator
+        (total as u16).min(max_h).max(1)
+    } else {
+        1
+    };
+
+    let has_search_bar = state.search_active
+        || (is_focused && !state.search_query.is_empty() && !state.search_matches.is_empty());
+    let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),              // Status line
+            Constraint::Length(1),              // Tab bar
+            Constraint::Length(headers_height), // Headers
+            Constraint::Length(1),              // Separator
+            Constraint::Min(1),                // Body with line numbers
+            Constraint::Length(search_bar_height), // Search bar
+        ])
+        .split(inner);
+
     frame.render_widget(Paragraph::new(status_line), chunks[0]);
+    frame.render_widget(Paragraph::new(tab_bar), chunks[1]);
 
     // Headers area
     if state.response_headers_expanded {
         let header_scroll = state.response_headers_scroll;
         let visible = headers_height as usize;
-        for vi in 0..visible {
-            let idx = header_scroll + vi;
-            if idx >= resp.headers.len() {
-                break;
-            }
-            let (name, value) = &resp.headers[idx];
-            let y = chunks[1].y + vi as u16;
-            let header_line = Line::from(vec![
+        // Build combined lines: response headers + separator + request info
+        let mut all_lines: Vec<Line<'static>> = Vec::new();
+        for (name, value) in &resp.headers {
+            all_lines.push(Line::from(vec![
                 Span::styled(
                     format!("  {}", name),
                     Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(": ", Style::default().fg(t.text_dim)),
                 Span::styled(value.to_string(), Style::default().fg(t.text)),
-            ]);
-            let line_area = Rect::new(chunks[1].x, y, chunks[1].width, 1);
-            frame.render_widget(Paragraph::new(header_line), line_area);
+            ]));
+        }
+        if !request_info_lines.is_empty() {
+            all_lines.push(Line::from(Span::styled(
+                format!("  ── Sent Request ──"),
+                Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD),
+            )));
+            all_lines.extend(request_info_lines);
+        }
+        for vi in 0..visible {
+            let idx = header_scroll + vi;
+            if idx >= all_lines.len() { break; }
+            let y = chunks[2].y + vi as u16;
+            let line_area = Rect::new(chunks[2].x, y, chunks[2].width, 1);
+            frame.render_widget(Paragraph::new(all_lines[idx].clone()), line_area);
         }
     } else {
         let toggle_hint = if is_focused { " (H to expand)" } else { "" };
@@ -159,7 +319,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             format!(" {} response headers{}", resp.headers.len(), toggle_hint),
             Style::default().fg(Color::DarkGray),
         ));
-        frame.render_widget(Paragraph::new(headers_info), chunks[1]);
+        frame.render_widget(Paragraph::new(headers_info), chunks[2]);
     }
 
     // Separator
@@ -167,10 +327,225 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         "─".repeat(inner.width as usize),
         Style::default().fg(Color::DarkGray),
     ));
-    frame.render_widget(Paragraph::new(sep), chunks[2]);
+    frame.render_widget(Paragraph::new(sep), chunks[3]);
 
-    // Body area with line numbers (like nvim)
-    let body_area = chunks[3];
+    // Body area with line numbers
+    let body_area = chunks[4];
+    render_response_body(frame, state, resp, body_area, inner, is_focused, is_visual, is_visual_block);
+
+    // Search bar
+    if has_search_bar {
+        let search_area = chunks[5];
+        let match_info = if state.search_matches.is_empty() {
+            "No matches".to_string()
+        } else {
+            format!("{}/{}", state.search_match_idx + 1, state.search_matches.len())
+        };
+        let search_line = Line::from(vec![
+            Span::styled("/", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(state.search_query.clone(), Style::default().fg(t.text)),
+            if state.search_active {
+                Span::styled("█", Style::default().fg(t.accent))
+            } else {
+                Span::raw("")
+            },
+            Span::styled(format!("  {}", match_info), Style::default().fg(t.text_dim)),
+        ]);
+        frame.render_widget(Paragraph::new(search_line), search_area);
+    }
+}
+
+fn render_type_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    resp: &crate::model::response::Response,
+    inner: Rect,
+    is_focused: bool,
+) {
+    let status_line = build_status_line(resp, &state.theme);
+    let tab_bar = render_response_tab_bar(state, is_focused);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),        // Status line
+            Constraint::Length(1),        // Tab bar
+            Constraint::Length(1),        // Separator
+            Constraint::Percentage(50),   // Type schema
+            Constraint::Length(1),        // Separator
+            Constraint::Min(1),           // Response body preview
+        ])
+        .split(inner);
+
+    frame.render_widget(Paragraph::new(status_line), chunks[0]);
+    frame.render_widget(Paragraph::new(tab_bar), chunks[1]);
+
+    // Separator
+    let sep_str = "─".repeat(inner.width as usize);
+    let sep1 = Line::from(Span::styled(
+        sep_str.clone(),
+        Style::default().fg(Color::DarkGray),
+    ));
+    frame.render_widget(Paragraph::new(sep1), chunks[2]);
+
+    // Type schema area
+    render_type_schema(frame, state, chunks[3]);
+
+    // Separator
+    let sep2 = Line::from(Span::styled(
+        sep_str,
+        Style::default().fg(Color::DarkGray),
+    ));
+    frame.render_widget(Paragraph::new(sep2), chunks[4]);
+
+    // Response body preview (read-only, using same rendering as body tab but in half height)
+    let preview_area = chunks[5];
+    render_response_body(frame, state, resp, preview_area, inner, is_focused, false, false);
+}
+
+fn render_type_schema(
+    frame: &mut Frame,
+    state: &AppState,
+    type_area: Rect,
+) {
+    let t = &state.theme;
+
+    if let Some(ref response_type) = state.response_type {
+        let is_root_array = matches!(response_type, crate::model::response_type::JsonType::Array(_));
+        let display_lines = response_type.to_display_lines(0);
+
+        let mut type_ui_lines: Vec<Line<'static>> = Vec::new();
+
+        if is_root_array {
+            type_ui_lines.push(Line::from(Span::styled(
+                " ⚠ Response is an array. Use [index] to access elements.".to_string(),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+
+        for dl in &display_lines {
+            type_ui_lines.push(colorize_type_line(dl, t));
+        }
+
+        let total_type_lines = type_ui_lines.len();
+        let visible_height = type_area.height as usize;
+        let scroll = state.type_scroll.min(total_type_lines.saturating_sub(visible_height));
+
+        let visible_lines: Vec<Line<'static>> = type_ui_lines
+            .into_iter()
+            .skip(scroll)
+            .take(visible_height)
+            .collect();
+
+        let type_paragraph = Paragraph::new(visible_lines);
+        frame.render_widget(type_paragraph, type_area);
+
+        if total_type_lines > visible_height {
+            render_scrollbar(frame, type_area, scroll, total_type_lines, visible_height, t.text_dim);
+        }
+    } else {
+        let placeholder = Paragraph::new(Line::from(Span::styled(
+            " (no type - execute a request to see the response type)".to_string(),
+            Style::default().fg(Color::DarkGray),
+        )));
+        frame.render_widget(placeholder, type_area);
+    }
+}
+
+fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let trimmed = line.trim();
+
+    // Type keywords to colorize
+    let type_keywords = ["string", "number", "boolean", "null"];
+
+    // Check if the line is a field: "  fieldname: type,"
+    if let Some(colon_pos) = trimmed.find(": ") {
+        let field_name = trimmed[..colon_pos].trim();
+        let type_part = trimmed[colon_pos + 2..].trim();
+
+        // Leading whitespace
+        let leading_ws = &line[..line.len() - line.trim_start().len()];
+        if !leading_ws.is_empty() {
+            spans.push(Span::raw(leading_ws.to_string()));
+        }
+
+        // Field name
+        spans.push(Span::styled(
+            field_name.to_string(),
+            Style::default().fg(t.accent),
+        ));
+        spans.push(Span::styled(": ", Style::default().fg(t.text_dim)));
+
+        // Type value
+        let type_no_comma = type_part.trim_end_matches(',');
+        let has_comma = type_part.ends_with(',');
+        let type_color = type_keyword_color(type_no_comma, t);
+        spans.push(Span::styled(type_no_comma.to_string(), Style::default().fg(type_color)));
+        if has_comma {
+            spans.push(Span::styled(",", Style::default().fg(t.text_dim)));
+        }
+
+        return Line::from(spans);
+    }
+
+    // Check for bracket lines or pure type lines
+    if trimmed == "{" || trimmed == "}" || trimmed.starts_with("}[]") || trimmed.ends_with("},") || trimmed.ends_with("{") {
+        let leading_ws = &line[..line.len() - line.trim_start().len()];
+        if !leading_ws.is_empty() {
+            spans.push(Span::raw(leading_ws.to_string()));
+        }
+        spans.push(Span::styled(trimmed.to_string(), Style::default().fg(t.text)));
+        return Line::from(spans);
+    }
+
+    // Pure type keyword line (e.g., top-level "string" or "number[]")
+    for kw in &type_keywords {
+        let no_comma = trimmed.trim_end_matches(',');
+        let arr_kw = format!("{}[]", kw);
+        if no_comma == *kw || no_comma == arr_kw {
+            let leading_ws = &line[..line.len() - line.trim_start().len()];
+            if !leading_ws.is_empty() {
+                spans.push(Span::raw(leading_ws.to_string()));
+            }
+            let color = type_keyword_color(no_comma, t);
+            spans.push(Span::styled(no_comma.to_string(), Style::default().fg(color)));
+            if trimmed.ends_with(',') {
+                spans.push(Span::styled(",", Style::default().fg(t.text_dim)));
+            }
+            return Line::from(spans);
+        }
+    }
+
+    // Fallback
+    Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
+}
+
+fn type_keyword_color(kw: &str, t: &crate::theme::Theme) -> Color {
+    let base = kw.trim_end_matches("[]");
+    match base {
+        "string" => t.json_string,
+        "number" => t.json_number,
+        "boolean" => t.json_bool,
+        "null" => t.text_dim,
+        "array" => t.accent,
+        "object" => t.accent,
+        _ => t.text,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_response_body(
+    frame: &mut Frame,
+    state: &AppState,
+    resp: &crate::model::response::Response,
+    body_area: Rect,
+    inner: Rect,
+    is_focused: bool,
+    is_visual: bool,
+    is_visual_block: bool,
+) {
+    let t = &state.theme;
     let body = resp.formatted_body();
     let body_lines: Vec<&str> = body.lines().collect();
     let total_lines = body_lines.len();
@@ -248,7 +623,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             gutter_area,
         );
 
-        // Content — apply horizontal scroll
+        // Content - apply horizontal scroll
         let full_line_text = body_lines.get(line_idx).copied().unwrap_or("");
         let line_text: String = if full_line_text.len() > hscroll {
             full_line_text[hscroll..].chars().take(text_area_width as usize).collect()
@@ -269,7 +644,6 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
                 is_focused && line_idx == cursor_row, hscroll)
         } else if is_focused && line_idx == cursor_row && !is_visual && !is_visual_block {
-            // Highlight current line in normal mode
             Line::from(Span::styled(
                 line_text,
                 Style::default().fg(t.text).bg(t.bg_highlight),
@@ -281,7 +655,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let content_area = Rect::new(text_area_x, y, text_area_width, 1);
         frame.render_widget(Paragraph::new(content_line), content_area);
 
-        // Bracket highlighting (both cursor bracket and matched bracket)
+        // Bracket highlighting
         if is_focused {
             let highlight_positions: [(usize, usize); 2] = [
                 (state.resp_cursor_row, state.resp_cursor_col),
@@ -322,27 +696,6 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             }
         }
     }
-
-    // Search bar
-    if has_search_bar {
-        let search_area = chunks[4];
-        let match_info = if state.search_matches.is_empty() {
-            "No matches".to_string()
-        } else {
-            format!("{}/{}", state.search_match_idx + 1, state.search_matches.len())
-        };
-        let search_line = Line::from(vec![
-            Span::styled("/", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
-            Span::styled(state.search_query.clone(), Style::default().fg(t.text)),
-            if state.search_active {
-                Span::styled("█", Style::default().fg(t.accent))
-            } else {
-                Span::raw("")
-            },
-            Span::styled(format!("  {}", match_info), Style::default().fg(t.text_dim)),
-        ]);
-        frame.render_widget(Paragraph::new(search_line), search_area);
-    }
 }
 
 fn highlight_search_line(
@@ -369,11 +722,10 @@ fn highlight_search_line(
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut pos = 0;
 
-    // Find current match position
     let current_match = state.search_matches.get(state.search_match_idx).copied();
 
     let match_bg = Color::Yellow;
-    let current_match_bg = Color::Rgb(255, 165, 0); // orange
+    let current_match_bg = Color::Rgb(255, 165, 0);
     let match_fg = Color::Black;
     let base_style = if is_cursor_line {
         Style::default().fg(t.text).bg(t.bg_highlight)
@@ -386,12 +738,10 @@ fn highlight_search_line(
             let match_start = pos + found;
             let match_end = (match_start + query_len).min(line.len());
 
-            // Text before match
             if match_start > pos {
                 spans.push(Span::styled(line[pos..match_start].to_string(), base_style));
             }
 
-            // Determine if this is the current match (adjust for hscroll)
             let is_current = current_match == Some((line_idx, match_start + hscroll));
             let bg = if is_current { current_match_bg } else { match_bg };
 
@@ -402,7 +752,6 @@ fn highlight_search_line(
 
             pos = match_end;
         } else {
-            // No more matches, rest of line
             spans.push(Span::styled(line[pos..].to_string(), base_style));
             pos = line.len();
         }

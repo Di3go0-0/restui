@@ -155,6 +155,10 @@ pub enum Action {
     OverlayBackspace,
     OverlayDelete,
 
+    // Response tabs
+    ResponseNextTab,
+    ResponsePrevTab,
+
     // SSL
     ToggleInsecureMode,
 

@@ -10,7 +10,7 @@ use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, BodyType, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
+use crate::state::{AppState, BodyType, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS};
 use crate::tui::Tui;
 use crate::ui;
 use crossterm::cursor::SetCursorStyle;
@@ -1547,6 +1547,14 @@ impl App {
                 self.state.validate_body();
             }
 
+            // === Response Tabs ===
+            Action::ResponseNextTab => {
+                self.state.response_tab = self.state.response_tab.next();
+            }
+            Action::ResponsePrevTab => {
+                self.state.response_tab = self.state.response_tab.prev();
+            }
+
             // === Request Execution ===
             Action::ExecuteRequest => {
                 self.execute_request().await;
@@ -1580,6 +1588,17 @@ impl App {
 
                 self.state.current_response = Some(*response);
                 self.state.response_scroll = (0, 0);
+
+                // Infer type from JSON response
+                if let Some(ref resp) = self.state.current_response {
+                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                        self.state.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                    } else {
+                        self.state.response_type = None;
+                    }
+                }
+                self.state.type_scroll = 0;
+
                 self.state.set_status(format!("{} - {}", status, elapsed));
             }
             Action::RequestFailed(err) => {
@@ -3577,7 +3596,13 @@ impl App {
                 self.state.collections_state.select(Some(i.min(max)));
             }
             Panel::Body => self.body_cursor_down(),
-            Panel::Response => self.resp_cursor_down(),
+            Panel::Response => {
+                if self.state.response_tab == ResponseTab::Type {
+                    self.state.type_scroll = self.state.type_scroll.saturating_add(1);
+                } else {
+                    self.resp_cursor_down();
+                }
+            }
             _ => {}
         }
     }
@@ -3589,7 +3614,13 @@ impl App {
                 self.state.collections_state.select(Some(i));
             }
             Panel::Body => self.body_cursor_up(),
-            Panel::Response => self.resp_cursor_up(),
+            Panel::Response => {
+                if self.state.response_tab == ResponseTab::Type {
+                    self.state.type_scroll = self.state.type_scroll.saturating_sub(1);
+                } else {
+                    self.resp_cursor_up();
+                }
+            }
             _ => {}
         }
     }
