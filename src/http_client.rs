@@ -7,6 +7,14 @@ use crate::model::response::Response;
 use crate::state::MAX_REDIRECTS;
 
 pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Response> {
+    let url_lower = request.url.to_lowercase();
+    if !url_lower.starts_with("http://") && !url_lower.starts_with("https://") {
+        return Err(anyhow::anyhow!(
+            "Invalid URL scheme: only http:// and https:// are allowed\n\nGot: {}",
+            request.url
+        ));
+    }
+
     let client = reqwest::Client::builder()
         .redirect(if config.follow_redirects {
             reqwest::redirect::Policy::limited(MAX_REDIRECTS)
