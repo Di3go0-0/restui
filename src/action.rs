@@ -149,6 +149,7 @@ pub enum Action {
     OverlayConfirm,
     OverlayInput(char),
     OverlayBackspace,
+    OverlayDelete,
 
     // SSL
     ToggleInsecureMode,

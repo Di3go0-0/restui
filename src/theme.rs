@@ -298,7 +298,7 @@ fn lighten_color(color: Color, amount: u8) -> Color {
     }
 }
 
-pub const THEME_NAMES: &[&str] = &["default", "catppuccin", "gruvbox", "tokyonight"];
+pub const THEME_NAMES: &[&str] = &["default", "catppuccin", "gruvbox", "tokyonight", "light"];
 
 pub fn load_theme(name: &str) -> Theme {
     Theme::load_builtin(name)

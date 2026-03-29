@@ -18,6 +18,9 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         Overlay::MoveRequest { selected } => render_move_request(frame, state, *selected),
         Overlay::SetCacheTTL { input } => render_cache_ttl(frame, state, input),
         Overlay::ThemeSelector { selected } => render_theme_selector(frame, *selected),
+        Overlay::EnvironmentEditor { selected, editing_key, new_key, new_value, cursor } => {
+            render_env_editor(frame, state, *selected, *editing_key, new_key, new_value, *cursor);
+        }
         Overlay::Help => {}
     }
 }
@@ -329,4 +332,104 @@ fn render_theme_selector(frame: &mut Frame, selected: usize) {
         .highlight_style(Style::default().bg(Color::Rgb(40, 40, 50)));
 
     frame.render_stateful_widget(list, inner, &mut list_state);
+}
+
+fn render_env_editor(
+    frame: &mut Frame,
+    state: &AppState,
+    selected: usize,
+    editing_key: bool,
+    new_key: &str,
+    new_value: &str,
+    cursor: usize,
+) {
+    let area = centered_rect(60, 70, frame.area());
+    frame.render_widget(Clear, area);
+
+    let env_name = state.environments.active_name();
+    let title = format!(" Environment: {} ", env_name);
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let is_editing = cursor > 0 || editing_key;
+
+    // Build lines
+    let mut lines: Vec<Line> = Vec::new();
+
+    if let Some(env) = state.environments.active_env() {
+        for (i, (key, val)) in env.variables.iter().enumerate() {
+            let is_selected = i == selected;
+            let marker = if is_selected { "▸ " } else { "  " };
+
+            if is_selected && !editing_key && cursor > 0 {
+                // Editing this variable's value
+                lines.push(Line::from(vec![
+                    Span::styled(marker, Style::default().fg(Color::Cyan)),
+                    Span::styled(key, Style::default().fg(Color::Yellow)),
+                    Span::styled(" = ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{}|", new_value), Style::default().fg(Color::Green)),
+                ]));
+            } else if is_selected {
+                lines.push(Line::from(vec![
+                    Span::styled(marker, Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        key,
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(" = ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(val, Style::default().fg(Color::White)),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled(marker, Style::default().fg(Color::DarkGray)),
+                    Span::styled(key, Style::default().fg(Color::Yellow)),
+                    Span::styled(" = ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(val, Style::default().fg(Color::White)),
+                ]));
+            }
+        }
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  No active environment. Press 'p' to select one.",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    // Show input for adding new variable
+    if editing_key {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  New key: ", Style::default().fg(Color::Yellow)),
+            Span::styled(format!("{}|", new_key), Style::default().fg(Color::Cyan)),
+        ]));
+    } else if cursor > 0 && !new_key.is_empty() {
+        // Editing value for a new key
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled(format!("  {} = ", new_key), Style::default().fg(Color::Yellow)),
+            Span::styled(format!("{}|", new_value), Style::default().fg(Color::Green)),
+        ]));
+    }
+
+    // Bottom hints
+    lines.push(Line::from(""));
+    if is_editing {
+        lines.push(Line::from(Span::styled(
+            "  Enter:confirm  Esc:cancel",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  e:edit  a:add  d:delete  Esc:close",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }

@@ -1517,7 +1517,21 @@ impl App {
                 }
                 self.state.overlay = Some(overlay);
             }
-            Action::CloseOverlay => { self.state.overlay = None; }
+            Action::CloseOverlay => {
+                // For EnvironmentEditor: if editing, cancel edit instead of closing
+                if let Some(Overlay::EnvironmentEditor { cursor, editing_key, .. }) = &self.state.overlay {
+                    if *cursor > 0 || *editing_key {
+                        if let Some(Overlay::EnvironmentEditor { ref mut cursor, ref mut editing_key, ref mut new_key, ref mut new_value, .. }) = self.state.overlay {
+                            *cursor = 0;
+                            *editing_key = false;
+                            *new_key = String::new();
+                            *new_value = String::new();
+                        }
+                        return Ok(());
+                    }
+                }
+                self.state.overlay = None;
+            }
             Action::OverlayUp => {
                 match &mut self.state.overlay {
                     Some(Overlay::EnvironmentSelector) => {
@@ -1527,6 +1541,9 @@ impl App {
                     Some(Overlay::HeaderAutocomplete { selected, .. }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::MoveRequest { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ThemeSelector { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
+                        *selected = selected.saturating_sub(1);
+                    }
                     _ => {}
                 }
             }
@@ -1547,6 +1564,12 @@ impl App {
                     Some(Overlay::ThemeSelector { selected }) => {
                         let max = crate::theme::THEME_NAMES.len().saturating_sub(1);
                         *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
+                        if let Some(active_idx) = self.state.environments.active {
+                            let max = self.state.environments.environments[active_idx].variables.len().saturating_sub(1);
+                            *selected = (*selected + 1).min(max);
+                        }
                     }
                     _ => {}
                 }
@@ -1691,6 +1714,51 @@ impl App {
                             self.state.set_status(format!("Theme: {}", name));
                         }
                     }
+                    Some(Overlay::EnvironmentEditor { selected, editing_key, new_key, new_value, cursor }) => {
+                        if let Some(active_idx) = self.state.environments.active {
+                            if editing_key {
+                                // Was adding a new variable: key phase done, now enter value phase
+                                if !new_key.is_empty() {
+                                    // Switch to value editing phase
+                                    self.state.overlay = Some(Overlay::EnvironmentEditor {
+                                        selected,
+                                        editing_key: false,
+                                        new_key: new_key.clone(),
+                                        new_value: String::new(),
+                                        cursor: 1, // non-zero = editing value
+                                    });
+                                    return Ok(());
+                                }
+                            } else if cursor > 0 && !new_key.is_empty() {
+                                // Adding new variable: value phase done
+                                self.state.environments.environments[active_idx].variables.insert(new_key.clone(), new_value.clone());
+                                self.state.set_status(format!("Added: {} = {}", new_key, new_value));
+                            } else if cursor > 0 {
+                                // Was editing an existing value
+                                let env = &mut self.state.environments.environments[active_idx];
+                                if let Some((key, val)) = env.variables.get_index_mut(selected) {
+                                    let key_name = key.clone();
+                                    *val = new_value.clone();
+                                    self.state.set_status(format!("Updated: {}", key_name));
+                                }
+                            } else {
+                                // Not editing yet: start editing the selected variable's value
+                                let env = &self.state.environments.environments[active_idx];
+                                if let Some((_key, val)) = env.variables.get_index(selected) {
+                                    let val_clone = val.clone();
+                                    let val_len = val_clone.len();
+                                    self.state.overlay = Some(Overlay::EnvironmentEditor {
+                                        selected,
+                                        editing_key: false,
+                                        new_key: String::new(),
+                                        new_value: val_clone,
+                                        cursor: val_len + 1, // non-zero = editing
+                                    });
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
                     Some(Overlay::SetCacheTTL { input }) => {
                         if let Ok(secs) = input.parse::<u64>() {
                             if secs > 0 {
@@ -1714,6 +1782,21 @@ impl App {
                     Some(Overlay::SetCacheTTL { ref mut input }) => {
                         if c.is_ascii_digit() { input.push(c); }
                     }
+                    Some(Overlay::EnvironmentEditor { ref mut editing_key, ref mut new_key, ref mut new_value, ref mut cursor, .. }) => {
+                        if *cursor == 0 && !*editing_key && c == 'a' {
+                            // Start adding a new variable: enter key input mode
+                            *editing_key = true;
+                            *new_key = String::new();
+                            *new_value = String::new();
+                            *cursor = 1;
+                        } else if *editing_key {
+                            // Typing the key name
+                            new_key.push(c);
+                        } else if *cursor > 0 {
+                            // Typing the value
+                            new_value.push(c);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1722,7 +1805,34 @@ impl App {
                     Some(Overlay::NewCollection { ref mut name }) => { name.pop(); }
                     Some(Overlay::RenameRequest { ref mut name }) => { name.pop(); }
                     Some(Overlay::SetCacheTTL { ref mut input }) => { input.pop(); }
+                    Some(Overlay::EnvironmentEditor { ref mut editing_key, ref mut new_key, ref mut new_value, ref mut cursor, .. }) => {
+                        if *editing_key {
+                            new_key.pop();
+                        } else if *cursor > 0 {
+                            new_value.pop();
+                        }
+                    }
                     _ => {}
+                }
+            }
+            Action::OverlayDelete => {
+                if let Some(Overlay::EnvironmentEditor { selected, .. }) = &self.state.overlay {
+                    let selected = *selected;
+                    if let Some(active_idx) = self.state.environments.active {
+                        let env = &mut self.state.environments.environments[active_idx];
+                        if selected < env.variables.len() {
+                            let key = env.variables.get_index(selected).map(|(k, _)| k.clone());
+                            if let Some(key) = key {
+                                env.variables.shift_remove(&key);
+                                self.state.set_status(format!("Deleted: {}", key));
+                                // Adjust selected index
+                                if let Some(Overlay::EnvironmentEditor { selected: ref mut sel, .. }) = self.state.overlay {
+                                    let max = self.state.environments.environments[active_idx].variables.len().saturating_sub(1);
+                                    *sel = (*sel).min(max);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

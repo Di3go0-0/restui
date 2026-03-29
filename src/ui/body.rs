@@ -75,6 +75,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let visible_height = inner.height as usize;
     let cursor_row = state.body_cursor_row;
 
+    // Compute bracket match
+    let matched_bracket = if is_focused {
+        find_matching_bracket(&body_lines, state.body_cursor_row, state.body_cursor_col)
+    } else {
+        None
+    };
+    let bracket_style = Style::default()
+        .fg(Color::Black)
+        .bg(t.accent)
+        .add_modifier(Modifier::BOLD);
+
     // Render line by line for gutter + content
     for (vi, screen_row) in (0..visible_height).enumerate() {
         let line_idx = scroll_y + vi;
@@ -146,6 +157,36 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
         let content_area = Rect::new(text_area_x, y, text_area_width, 1);
         frame.render_widget(Paragraph::new(content_line), content_area);
+
+        // Bracket highlighting (both cursor bracket and matched bracket)
+        if is_focused {
+            let highlight_positions: [(usize, usize); 2] = [
+                (state.body_cursor_row, state.body_cursor_col),
+                matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
+            ];
+            for &(br, bc) in &highlight_positions {
+                if br == line_idx {
+                    // Check if the char at (br, bc) is actually a bracket
+                    if let Some(ch) = body_lines.get(br).and_then(|l| l.as_bytes().get(bc)) {
+                        if matches!(ch, b'{' | b'}' | b'[' | b']' | b'(' | b')') {
+                            let bx = text_area_x + bc as u16;
+                            if bx < content_area.right() {
+                                let buf = frame.buffer_mut();
+                                if bx < buf.area().right() && y < buf.area().bottom() {
+                                    buf[(bx, y)].set_style(bracket_style);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Scrollbar
+    if total_lines > visible_height && text_area_width > 1 {
+        let scrollbar_area = Rect::new(text_area_x, inner.y, text_area_width, inner.height);
+        render_scrollbar(frame, scrollbar_area, scroll_y, total_lines, visible_height, t.text_dim);
     }
 
     // Cursor position
@@ -376,4 +417,85 @@ fn highlight_body_search_line<'a>(
     }
 
     Line::from(spans)
+}
+
+pub fn find_matching_bracket(lines: &[&str], row: usize, col: usize) -> Option<(usize, usize)> {
+    let line = lines.get(row)?;
+    let ch = line.as_bytes().get(col)?;
+    let (target, direction): (u8, i32) = match ch {
+        b'{' => (b'}', 1),
+        b'}' => (b'{', -1),
+        b'[' => (b']', 1),
+        b']' => (b'[', -1),
+        b'(' => (b')', 1),
+        b')' => (b'(', -1),
+        _ => return None,
+    };
+    let mut depth: i32 = 1;
+    let mut r = row;
+    let mut c = col;
+    loop {
+        if direction > 0 {
+            c += 1;
+            if c >= lines.get(r).map_or(0, |l| l.len()) {
+                r += 1;
+                c = 0;
+                if r >= lines.len() {
+                    return None;
+                }
+            }
+        } else {
+            if c == 0 {
+                if r == 0 {
+                    return None;
+                }
+                r -= 1;
+                c = lines.get(r).map_or(0, |l| l.len().saturating_sub(1));
+            } else {
+                c -= 1;
+            }
+        }
+        let b = *lines.get(r)?.as_bytes().get(c)?;
+        if b == *ch {
+            depth += 1;
+        }
+        if b == target {
+            depth -= 1;
+            if depth == 0 {
+                return Some((r, c));
+            }
+        }
+    }
+}
+
+fn render_scrollbar(frame: &mut Frame, area: Rect, scroll_y: usize, total_lines: usize, visible_height: usize, color: Color) {
+    if total_lines <= visible_height || visible_height == 0 {
+        return;
+    }
+    let x = area.right().saturating_sub(1);
+    let thumb_size = (visible_height * visible_height / total_lines).max(1);
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    let track_space = visible_height.saturating_sub(thumb_size);
+    let thumb_start = if max_scroll > 0 {
+        scroll_y * track_space / max_scroll
+    } else {
+        0
+    };
+    let thumb_end = thumb_start + thumb_size;
+
+    for vi in 0..visible_height {
+        let y = area.y + vi as u16;
+        if x < area.right() {
+            let ch = if vi >= thumb_start && vi < thumb_end { "█" } else { "▐" };
+            let style = if vi >= thumb_start && vi < thumb_end {
+                Style::default().fg(color)
+            } else {
+                Style::default().fg(color).add_modifier(Modifier::DIM)
+            };
+            let buf = frame.buffer_mut();
+            if x < buf.area().right() && y < buf.area().bottom() {
+                buf[(x, y)].set_symbol(ch).set_style(style);
+            }
+        }
+    }
 }

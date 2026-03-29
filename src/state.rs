@@ -162,6 +162,13 @@ pub enum Overlay {
     ThemeSelector {
         selected: usize,
     },
+    EnvironmentEditor {
+        selected: usize,
+        editing_key: bool,
+        new_key: String,
+        new_value: String,
+        cursor: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -366,6 +373,9 @@ pub struct AppState {
     pub collections_filter: String,
     pub collections_filter_active: bool,
 
+    // Bracket matching: (row, col) of the matching bracket, None if no match
+    pub matched_bracket: Option<(usize, usize)>,
+
     // Count prefix (vim number prefix for repeatable motions)
     pub count_prefix: Option<u32>,
 
@@ -447,6 +457,7 @@ impl AppState {
             search_match_idx: 0,
             collections_filter: String::new(),
             collections_filter_active: false,
+            matched_bracket: None,
             count_prefix: None,
             should_quit: false,
             status_message: None,

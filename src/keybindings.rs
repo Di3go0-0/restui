@@ -95,24 +95,28 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         }
     }
 
-    // Count prefix accumulation (digit keys)
-    match key.code {
-        KeyCode::Char(c @ '1'..='9') => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
-        KeyCode::Char('0') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(0)),
-        _ => {}
-    }
-
     // Global normal mode keys
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
         KeyCode::Char('T') => return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 })),
+        KeyCode::Char('E') => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
+            selected: 0,
+            editing_key: false,
+            new_key: String::new(),
+            new_value: String::new(),
+            cursor: 0,
+        })),
         KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
-        // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response
+        // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response (only without count prefix)
         KeyCode::Char('1') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Collections)),
         KeyCode::Char('2') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Request)),
         KeyCode::Char('3') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Body)),
         KeyCode::Char('4') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Response)),
+        // Count prefix accumulation (5-9 always, 1-4 when count already started, 0 when count started)
+        KeyCode::Char(c @ '1'..='9') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
+        KeyCode::Char(c @ '5'..='9') => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
+        KeyCode::Char('0') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(0)),
         _ => {}
     }
 
@@ -182,6 +186,30 @@ fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
             KeyCode::Enter => Some(Action::OverlayConfirm),
             _ => None,
+        },
+        Some(Overlay::EnvironmentEditor { cursor, editing_key, .. }) => {
+            let editing = *cursor > 0 || *editing_key;
+            if editing {
+                // In editing mode: typing into key or value
+                match key.code {
+                    KeyCode::Esc => Some(Action::CloseOverlay),  // cancel edit
+                    KeyCode::Enter => Some(Action::OverlayConfirm), // confirm edit
+                    KeyCode::Backspace => Some(Action::OverlayBackspace),
+                    KeyCode::Char(c) => Some(Action::OverlayInput(c)),
+                    _ => None,
+                }
+            } else {
+                // Navigation mode
+                match key.code {
+                    KeyCode::Esc => Some(Action::CloseOverlay),
+                    KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
+                    KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
+                    KeyCode::Char('e') | KeyCode::Enter => Some(Action::OverlayConfirm), // start editing value
+                    KeyCode::Char('a') => Some(Action::OverlayInput('a')), // add new
+                    KeyCode::Char('d') => Some(Action::OverlayDelete),     // delete
+                    _ => None,
+                }
+            }
         },
         _ => match key.code {
             KeyCode::Esc | KeyCode::Char('?') => Some(Action::CloseOverlay),
