@@ -42,6 +42,43 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let url_prefix = if is_url_focused { "▸ " } else { "  " };
 
     let method_str = format!(" {} ", req.method);
+    let prefix_display_width = UnicodeWidthStr::width(url_prefix) + UnicodeWidthStr::width(method_str.as_str()) + 1; // +1 for space after method
+
+    // Build display URL: in insert mode show raw url, otherwise show url + enabled params
+    let display_url = if is_url_focused && is_insert {
+        req.url.clone()
+    } else {
+        build_display_url(&req.url, &req.query_params)
+    };
+
+    // Horizontal scroll: derive scroll offset so cursor stays visible
+    let url_area_width = (inner.width as usize).saturating_sub(prefix_display_width);
+    let scroll = if is_url_focused && is_insert && url_area_width > 0 {
+        let cursor = state.url_cursor;
+        if cursor < url_area_width {
+            0
+        } else {
+            cursor - url_area_width + 1
+        }
+    } else {
+        // When not editing, scroll to start
+        0
+    };
+    let visible_url = if display_url.len() > scroll {
+        let start_byte = display_url.char_indices().nth(scroll).map(|(i,_)|i).unwrap_or(display_url.len());
+        &display_url[start_byte..]
+    } else {
+        ""
+    };
+    // Truncate to available width
+    let truncated_url: String = visible_url.chars().take(url_area_width).collect();
+
+    let url_style = if is_url_focused && is_insert {
+        Style::default().fg(t.text).add_modifier(Modifier::UNDERLINED)
+    } else {
+        Style::default().fg(t.text)
+    };
+
     let method_line = Line::from(vec![
         Span::styled(
             url_prefix,
@@ -55,22 +92,14 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        Span::styled(
-            &req.url,
-            if is_url_focused && is_insert {
-                Style::default().fg(t.text).add_modifier(Modifier::UNDERLINED)
-            } else {
-                Style::default().fg(t.text)
-            },
-        ),
+        Span::styled(truncated_url, url_style),
     ]);
     frame.render_widget(Paragraph::new(method_line), chunks[0]);
 
-    // Cursor when editing URL
+    // Cursor when editing URL (with scroll offset)
     if is_insert && state.request_focus == RequestFocus::Url {
-        let prefix_display = 2 + UnicodeWidthStr::width(method_str.as_str()) + 1;
-        let url_before = &req.url[..req.url.char_indices().nth(state.url_cursor).map(|(i,_)|i).unwrap_or(req.url.len())];
-        let cursor_x = inner.x + prefix_display as u16 + UnicodeWidthStr::width(url_before) as u16;
+        let cursor_visual = state.url_cursor.saturating_sub(scroll);
+        let cursor_x = inner.x + prefix_display_width as u16 + cursor_visual as u16;
         if cursor_x < area.right() {
             frame.set_cursor_position(Position::new(cursor_x, chunks[0].y));
         }
@@ -423,4 +452,26 @@ fn render_autocomplete_popup(
         .highlight_symbol("▸ ");
 
     frame.render_stateful_widget(list, popup_area, &mut list_state);
+}
+
+/// Build a display URL that includes enabled query params appended to base URL.
+/// When not in insert mode on the URL, this gives a preview of the final URL.
+fn build_display_url(base_url: &str, params: &[crate::model::request::QueryParam]) -> String {
+    let enabled: Vec<_> = params.iter().filter(|p| p.enabled && !p.key.is_empty()).collect();
+    if enabled.is_empty() {
+        return base_url.to_string();
+    }
+    let qs: Vec<String> = enabled.iter().map(|p| {
+        if p.value.is_empty() {
+            p.key.clone()
+        } else {
+            format!("{}={}", p.key, p.value)
+        }
+    }).collect();
+    // If URL already has a ?, append with &; otherwise use ?
+    if base_url.contains('?') {
+        format!("{}&{}", base_url, qs.join("&"))
+    } else {
+        format!("{}?{}", base_url, qs.join("&"))
+    }
 }
