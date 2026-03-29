@@ -150,13 +150,28 @@ pub fn resolve_path_params(url: &str, params: &[PathParam]) -> String {
     result
 }
 
+/// Escape a string for safe use inside single quotes in a shell command.
+fn shell_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
+
 pub fn to_curl(request: &Request) -> String {
     let mut parts = vec![format!("curl -X {}", request.method)];
 
     for h in &request.headers {
         if h.enabled {
-            parts.push(format!("-H '{}: {}'", h.name, h.value));
+            parts.push(format!("-H '{}: {}'", shell_escape(&h.name), shell_escape(&h.value)));
         }
+    }
+
+    // Merge cookies into a Cookie header
+    let cookie_str: String = request.cookies.iter()
+        .filter(|c| c.enabled && !c.name.is_empty())
+        .map(|c| format!("{}={}", c.name, c.value))
+        .collect::<Vec<_>>()
+        .join("; ");
+    if !cookie_str.is_empty() {
+        parts.push(format!("-H 'Cookie: {}'", shell_escape(&cookie_str)));
     }
 
     let curl_body = request.body_json.as_deref()
@@ -164,8 +179,7 @@ pub fn to_curl(request: &Request) -> String {
         .or(request.body_form.as_deref())
         .or(request.body_raw.as_deref());
     if let Some(body) = curl_body {
-        let escaped = body.replace('\'', "'\\''");
-        parts.push(format!("-d '{}'", escaped));
+        parts.push(format!("-d '{}'", shell_escape(body)));
     }
 
     let base_url = resolve_path_params(&request.url, &request.path_params);
@@ -180,7 +194,7 @@ pub fn to_curl(request: &Request) -> String {
         format!("{}?{}", base_url, qs.join("&"))
     };
 
-    parts.push(format!("'{}'", url));
+    parts.push(format!("'{}'", shell_escape(&url)));
     parts.join(" \\\n  ")
 }
 
