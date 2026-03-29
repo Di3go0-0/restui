@@ -267,6 +267,9 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 RequestFocus::Cookie(_) if state.cookie_edit_field == 0 => {
                     Some(Action::InlineTab)
                 }
+                RequestFocus::PathParam(_) if state.path_param_edit_field == 0 => {
+                    Some(Action::InlineTab)
+                }
                 _ => Some(Action::ExitInsertMode),
             },
             _ => Some(Action::ExitInsertMode),
@@ -317,6 +320,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 RequestFocus::Header(_) => Some(Action::DeleteHeader),
                 RequestFocus::Param(_) => Some(Action::DeleteParam),
                 RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
+                RequestFocus::PathParam(_) => Some(Action::DeletePathParam),
                 _ => None,
             },
             Panel::Body => Some(Action::DeleteLine),
@@ -402,6 +406,7 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             RequestTab::Headers => Some(Action::AddHeader),
             RequestTab::Queries => Some(Action::AddParam),
             RequestTab::Cookies => Some(Action::AddCookie),
+            RequestTab::Params => Some(Action::AddPathParam),
         },
         KeyCode::Char('A') => Some(Action::ShowHeaderAutocomplete),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
@@ -409,6 +414,7 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             RequestFocus::Header(_) => Some(Action::DeleteHeader),
             RequestFocus::Param(_) => Some(Action::DeleteParam),
             RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
+            RequestFocus::PathParam(_) => Some(Action::DeletePathParam),
             _ => None,
         },
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
@@ -459,6 +465,9 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
 
 fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
     match key.code {
+        // Body tab switching
+        KeyCode::Char('}') => return Some(Action::BodyNextTab),
+        KeyCode::Char('{') => return Some(Action::BodyPrevTab),
         // Vim motions
         KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),

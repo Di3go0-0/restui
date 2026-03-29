@@ -8,7 +8,7 @@ use crate::event::{AppEvent, EventHandler};
 use crate::http_client;
 use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
-use crate::model::request::{Header, QueryParam, Request};
+use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
 use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
 use crate::tui::Tui;
@@ -511,6 +511,14 @@ impl App {
                             _ => self.state.request_focus,
                         };
                     }
+                    RequestTab::Params => {
+                        let pc = self.state.current_request.path_params.len();
+                        self.state.request_focus = match self.state.request_focus {
+                            RequestFocus::Url => if pc > 0 { RequestFocus::PathParam(0) } else { RequestFocus::Url },
+                            RequestFocus::PathParam(i) => if i + 1 < pc { RequestFocus::PathParam(i + 1) } else { RequestFocus::PathParam(i) },
+                            _ => self.state.request_focus,
+                        };
+                    }
                 }
             }
             Action::RequestFocusUp => {
@@ -522,6 +530,8 @@ impl App {
                     RequestFocus::Param(i) => RequestFocus::Param(i - 1),
                     RequestFocus::Cookie(0) => RequestFocus::Url,
                     RequestFocus::Cookie(i) => RequestFocus::Cookie(i - 1),
+                    RequestFocus::PathParam(0) => RequestFocus::Url,
+                    RequestFocus::PathParam(i) => RequestFocus::PathParam(i - 1),
                 };
             }
             Action::RequestNextTab => {
@@ -547,6 +557,11 @@ impl App {
                     RequestFocus::Cookie(idx) => {
                         if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                             c.enabled = !c.enabled;
+                        }
+                    }
+                    RequestFocus::PathParam(idx) => {
+                        if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                            p.enabled = !p.enabled;
                         }
                     }
                     _ => {}
@@ -615,6 +630,28 @@ impl App {
                             RequestFocus::Cookie(idx.min(self.state.current_request.cookies.len() - 1))
                         };
                         self.state.set_status("Cookie deleted");
+                    }
+                }
+            }
+            Action::AddPathParam => {
+                self.state.current_request.path_params.push(PathParam { key: String::new(), value: String::new(), enabled: true });
+                let idx = self.state.current_request.path_params.len() - 1;
+                self.state.request_focus = RequestFocus::PathParam(idx);
+                self.state.path_param_edit_field = 0;
+                self.state.path_param_edit_cursor = 0;
+                self.state.mode = InputMode::Insert;
+            }
+            Action::DeletePathParam => {
+                self.state.pending_key = None;
+                if let RequestFocus::PathParam(idx) = self.state.request_focus {
+                    if idx < self.state.current_request.path_params.len() {
+                        self.state.current_request.path_params.remove(idx);
+                        self.state.request_focus = if self.state.current_request.path_params.is_empty() {
+                            RequestFocus::Url
+                        } else {
+                            RequestFocus::PathParam(idx.min(self.state.current_request.path_params.len() - 1))
+                        };
+                        self.state.set_status("Path param deleted");
                     }
                 }
             }
@@ -1388,6 +1425,7 @@ impl App {
                             RequestFocus::Header(_) => self.state.header_edit_field,
                             RequestFocus::Param(_) => self.state.param_edit_field,
                             RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+                            RequestFocus::PathParam(_) => self.state.path_param_edit_field,
                             RequestFocus::Url => 0,
                         };
                         self.state.request_redo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
@@ -1421,6 +1459,7 @@ impl App {
                             RequestFocus::Header(_) => self.state.header_edit_field,
                             RequestFocus::Param(_) => self.state.param_edit_field,
                             RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+                            RequestFocus::PathParam(_) => self.state.path_param_edit_field,
                             RequestFocus::Url => 0,
                         };
                         self.state.request_undo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
@@ -1456,6 +1495,14 @@ impl App {
                 self.state.body_type = self.state.body_type.next();
                 self.state.validate_body();
                 self.state.set_status(format!("Body: {}", self.state.body_type.label()));
+            }
+            Action::BodyNextTab => {
+                self.state.body_type = self.state.body_type.next();
+                self.state.validate_body();
+            }
+            Action::BodyPrevTab => {
+                self.state.body_type = self.state.body_type.prev();
+                self.state.validate_body();
             }
 
             // === Request Execution ===
@@ -2112,6 +2159,7 @@ impl App {
             RequestFocus::Header(_) => self.state.header_edit_field,
             RequestFocus::Param(_) => self.state.param_edit_field,
             RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+            RequestFocus::PathParam(_) => self.state.path_param_edit_field,
             RequestFocus::Url => 0,
         };
         let text = self.get_request_field_text();
@@ -2140,6 +2188,11 @@ impl App {
             RequestFocus::Cookie(idx) => {
                 if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                     if edit_field == 0 { c.name = text; } else { c.value = text; }
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    if edit_field == 0 { p.key = text; } else { p.value = text; }
                 }
             }
         }
@@ -2315,6 +2368,14 @@ impl App {
                         self.state.cookie_edit_cursor = cursor + 1;
                     }
                 }
+                RequestFocus::PathParam(idx) => {
+                    if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                        let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                        let cursor = self.state.path_param_edit_cursor.min(field.len());
+                        field.insert(cursor, c);
+                        self.state.path_param_edit_cursor = cursor + 1;
+                    }
+                }
             },
             _ => {}
         }
@@ -2403,6 +2464,17 @@ impl App {
                         }
                     }
                 }
+                RequestFocus::PathParam(idx) => {
+                    if self.state.path_param_edit_cursor > 0 {
+                        if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                            let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                            self.state.path_param_edit_cursor -= 1;
+                            if self.state.path_param_edit_cursor < field.len() {
+                                field.remove(self.state.path_param_edit_cursor);
+                            }
+                        }
+                    }
+                }
             },
             _ => {}
         }
@@ -2437,6 +2509,12 @@ impl App {
                     if let Some(ck) = self.state.current_request.cookies.get_mut(idx) {
                         let field = if self.state.cookie_edit_field == 0 { &mut ck.name } else { &mut ck.value };
                         if self.state.cookie_edit_cursor < field.len() { field.remove(self.state.cookie_edit_cursor); }
+                    }
+                }
+                RequestFocus::PathParam(idx) => {
+                    if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                        let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                        if self.state.path_param_edit_cursor < field.len() { field.remove(self.state.path_param_edit_cursor); }
                     }
                 }
             },
@@ -2485,6 +2563,7 @@ impl App {
                 RequestFocus::Header(_) => { self.state.header_edit_cursor = self.state.header_edit_cursor.saturating_sub(1); }
                 RequestFocus::Param(_) => { self.state.param_edit_cursor = self.state.param_edit_cursor.saturating_sub(1); }
                 RequestFocus::Cookie(_) => { self.state.cookie_edit_cursor = self.state.cookie_edit_cursor.saturating_sub(1); }
+                RequestFocus::PathParam(_) => { self.state.path_param_edit_cursor = self.state.path_param_edit_cursor.saturating_sub(1); }
             },
             Panel::Response => {
                 self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
@@ -2564,6 +2643,7 @@ impl App {
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
                 RequestFocus::Param(_) => self.state.param_edit_cursor = 0,
                 RequestFocus::Cookie(_) => self.state.cookie_edit_cursor = 0,
+                RequestFocus::PathParam(_) => self.state.path_param_edit_cursor = 0,
             },
             _ => {}
         }
@@ -2612,6 +2692,7 @@ impl App {
                     RequestFocus::Header(_) => self.state.header_edit_field = (self.state.header_edit_field + 1) % 2,
                     RequestFocus::Param(_) => self.state.param_edit_field = (self.state.param_edit_field + 1) % 2,
                     RequestFocus::Cookie(_) => self.state.cookie_edit_field = (self.state.cookie_edit_field + 1) % 2,
+                    RequestFocus::PathParam(_) => self.state.path_param_edit_field = (self.state.path_param_edit_field + 1) % 2,
                     _ => {}
                 }
                 // Position cursor at end of new sub-field
@@ -2747,6 +2828,7 @@ impl App {
             RequestFocus::Header(_) => self.state.header_edit_cursor,
             RequestFocus::Param(_) => self.state.param_edit_cursor,
             RequestFocus::Cookie(_) => self.state.cookie_edit_cursor,
+            RequestFocus::PathParam(_) => self.state.path_param_edit_cursor,
         }
     }
 
@@ -2756,6 +2838,7 @@ impl App {
             RequestFocus::Header(_) => self.state.header_edit_cursor = pos,
             RequestFocus::Param(_) => self.state.param_edit_cursor = pos,
             RequestFocus::Cookie(_) => self.state.cookie_edit_cursor = pos,
+            RequestFocus::PathParam(_) => self.state.path_param_edit_cursor = pos,
         }
     }
 
@@ -2781,6 +2864,11 @@ impl App {
                     if self.state.cookie_edit_field == 0 { c.name.clone() } else { c.value.clone() }
                 }).unwrap_or_default()
             }
+            RequestFocus::PathParam(idx) => {
+                self.state.current_request.path_params.get(idx).map(|p| {
+                    if self.state.path_param_edit_field == 0 { p.key.clone() } else { p.value.clone() }
+                }).unwrap_or_default()
+            }
         }
     }
 
@@ -2800,6 +2888,11 @@ impl App {
             RequestFocus::Cookie(idx) => {
                 if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                     if self.state.cookie_edit_field == 0 { c.name.clear(); } else { c.value.clear(); }
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    if self.state.path_param_edit_field == 0 { p.key.clear(); } else { p.value.clear(); }
                 }
             }
         }
@@ -2825,6 +2918,12 @@ impl App {
             RequestFocus::Cookie(idx) => {
                 if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                     let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.drain(start..end);
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
                     field.drain(start..end);
                 }
             }
@@ -2865,6 +2964,12 @@ impl App {
                     field.drain(start..end);
                 }
             }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
+                    field.drain(start..end);
+                }
+            }
         }
         self.set_request_cursor(start);
     }
@@ -2890,6 +2995,12 @@ impl App {
             RequestFocus::Cookie(idx) => {
                 if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                     let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.remove(cursor);
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
                     field.remove(cursor);
                 }
             }
@@ -2922,6 +3033,12 @@ impl App {
             RequestFocus::Cookie(idx) => {
                 if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
                     let field = if self.state.cookie_edit_field == 0 { &mut c.name } else { &mut c.value };
+                    field.insert_str(cursor, &clean);
+                }
+            }
+            RequestFocus::PathParam(idx) => {
+                if let Some(p) = self.state.current_request.path_params.get_mut(idx) {
+                    let field = if self.state.path_param_edit_field == 0 { &mut p.key } else { &mut p.value };
                     field.insert_str(cursor, &clean);
                 }
             }
@@ -3099,6 +3216,9 @@ impl App {
             }
         }
 
+        // Resolve path params in URL
+        resolved.url = http_client::resolve_path_params(&resolved.url, &resolved.path_params);
+
         // Auto-inject Content-Type if body exists and no Content-Type header set
         let body_text = resolved.body.as_deref().unwrap_or("").trim();
         if !body_text.is_empty() {
@@ -3138,6 +3258,7 @@ impl App {
             headers: req.headers.iter().map(|h| Header { name: h.name.clone(), value: env.resolve(&h.value), enabled: h.enabled }).collect(),
             query_params: req.query_params.iter().map(|p| crate::model::request::QueryParam { key: p.key.clone(), value: env.resolve(&p.value), enabled: p.enabled }).collect(),
             cookies: req.cookies.iter().map(|c| crate::model::request::Cookie { name: c.name.clone(), value: env.resolve(&c.value), enabled: c.enabled }).collect(),
+            path_params: req.path_params.iter().map(|p| crate::model::request::PathParam { key: p.key.clone(), value: env.resolve(&p.value), enabled: p.enabled }).collect(),
             body: req.body.as_ref().map(|b| env.resolve(b)),
             source_file: req.source_file.clone(),
             source_line: req.source_line,
@@ -3180,6 +3301,10 @@ impl App {
         for i in 0..req.cookies.len() {
             let val = req.cookies[i].value.clone();
             req.cookies[i].value = self.resolve_chains_in_str(&val, resolving).await?;
+        }
+        for i in 0..req.path_params.len() {
+            let val = req.path_params[i].value.clone();
+            req.path_params[i].value = self.resolve_chains_in_str(&val, resolving).await?;
         }
         if let Some(ref body) = req.body.clone() {
             req.body = Some(self.resolve_chains_in_str(body, resolving).await?);

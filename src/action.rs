@@ -44,6 +44,8 @@ pub enum Action {
     DeleteParam,
     AddCookie,
     DeleteCookie,
+    AddPathParam,
+    DeletePathParam,
 
     // Collections
     SelectRequest,
@@ -120,6 +122,8 @@ pub enum Action {
 
     // Body type cycling
     CycleBodyType,
+    BodyNextTab,
+    BodyPrevTab,
 
     // Theme
     #[allow(dead_code)]

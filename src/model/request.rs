@@ -86,6 +86,13 @@ pub struct Cookie {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathParam {
+    pub key: String,
+    pub value: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub name: Option<String>,
     pub method: HttpMethod,
@@ -93,6 +100,7 @@ pub struct Request {
     pub headers: Vec<Header>,
     pub query_params: Vec<QueryParam>,
     pub cookies: Vec<Cookie>,
+    pub path_params: Vec<PathParam>,
     pub body: Option<String>,
     #[serde(skip)]
     pub source_file: Option<PathBuf>,
@@ -109,6 +117,7 @@ impl Default for Request {
             headers: Vec::new(),
             query_params: Vec::new(),
             cookies: Vec::new(),
+            path_params: Vec::new(),
             body: None,
             source_file: None,
             source_line: None,

@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::time::{Duration, Instant};
 
 use crate::config::GeneralConfig;
-use crate::model::request::Request;
+use crate::model::request::{PathParam, Request};
 use crate::model::response::Response;
 
 pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Response> {
@@ -135,6 +135,15 @@ fn classify_error(err: &reqwest::Error) -> String {
     format!("Request Error: {}", raw)
 }
 
+pub fn resolve_path_params(url: &str, params: &[PathParam]) -> String {
+    let mut result = url.to_string();
+    for param in params.iter().filter(|p| p.enabled && !p.key.is_empty()) {
+        result = result.replace(&format!(":{}", param.key), &param.value);
+        result = result.replace(&format!("{{{}}}", param.key), &param.value);
+    }
+    result
+}
+
 pub fn to_curl(request: &Request) -> String {
     let mut parts = vec![format!("curl -X {}", request.method)];
 
@@ -149,15 +158,16 @@ pub fn to_curl(request: &Request) -> String {
         parts.push(format!("-d '{}'", escaped));
     }
 
+    let base_url = resolve_path_params(&request.url, &request.path_params);
     let enabled_params: Vec<_> = request.query_params.iter().filter(|p| p.enabled && !p.key.is_empty()).collect();
     let url = if enabled_params.is_empty() {
-        request.url.clone()
+        base_url
     } else {
         let qs: Vec<String> = enabled_params
             .iter()
             .map(|p| format!("{}={}", percent_encode(&p.key), percent_encode(&p.value)))
             .collect();
-        format!("{}?{}", request.url, qs.join("&"))
+        format!("{}?{}", base_url, qs.join("&"))
     };
 
     parts.push(format!("'{}'", url));

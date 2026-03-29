@@ -134,8 +134,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let content_area = chunks[3];
     match state.request_tab {
         RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
-        RequestTab::Queries => render_params_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
         RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
+        RequestTab::Queries => render_queries_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
+        RequestTab::Params => render_path_params_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
     }
 }
 
@@ -309,7 +310,7 @@ fn render_headers_tab(
     }
 }
 
-fn render_params_tab(
+fn render_queries_tab(
     frame: &mut Frame,
     state: &AppState,
     content_area: Rect,
@@ -547,6 +548,125 @@ fn render_cookies_tab(
     }
 }
 
+
+fn render_path_params_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    content_area: Rect,
+    bounds: Rect,
+    is_focused: bool,
+    is_insert: bool,
+    is_editing: bool,
+    is_visual: bool,
+) {
+    let t = &state.theme;
+    let req = &state.current_request;
+    let mut y_offset: u16 = 0;
+
+    if req.path_params.is_empty() {
+        if content_area.height > 0 {
+            let hint = Line::from(Span::styled(
+                "   (none) 'a' to add a path parameter",
+                Style::default().fg(t.text_dim),
+            ));
+            frame.render_widget(
+                Paragraph::new(hint),
+                Rect::new(content_area.x, content_area.y, content_area.width, 1),
+            );
+        }
+        return;
+    }
+
+    for (i, param) in req.path_params.iter().enumerate() {
+        if y_offset >= content_area.height {
+            break;
+        }
+
+        let is_param_focused = is_focused && state.request_focus == RequestFocus::PathParam(i);
+        let prefix = if is_param_focused { "▸" } else { " " };
+        let style = if param.enabled {
+            Style::default().fg(t.text)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+        let toggle = if param.enabled { "●" } else { "○" };
+
+        let row_y = content_area.y + y_offset;
+        let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
+
+        if is_param_focused && (is_editing || is_visual) {
+            let key_style = if state.path_param_edit_field == 0 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style.add_modifier(Modifier::BOLD)
+            };
+            let value_style = if state.path_param_edit_field == 1 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style
+            };
+
+            let active_style = if state.path_param_edit_field == 0 { key_style } else { value_style };
+            let (key_spans, value_spans) = if !is_insert && state.path_param_edit_field == 0 {
+                (build_field_spans(&param.key, state.path_param_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.path_param_edit_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(&param.value, value_style)])
+            } else if !is_insert && state.path_param_edit_field == 1 {
+                (vec![Span::styled(&param.key, key_style)],
+                 build_field_spans(&param.value, state.path_param_edit_cursor,
+                    if is_visual { Some((state.request_visual_anchor, state.path_param_edit_cursor)) } else { None },
+                    active_style, t))
+            } else {
+                (vec![Span::styled(&param.key, key_style)], vec![Span::styled(&param.value, value_style)])
+            };
+
+            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            spans.extend(key_spans);
+            spans.push(Span::styled(" = ", style));
+            spans.extend(value_spans);
+            frame.render_widget(
+                Paragraph::new(Line::from(spans)),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+
+            // Position cursor (only in insert mode)
+            if is_insert {
+                let key_display_width = UnicodeWidthStr::width(param.key.as_str());
+                let cursor_before = if state.path_param_edit_field == 0 {
+                    &param.key[..param.key.char_indices().nth(state.path_param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
+                } else {
+                    &param.value[..param.value.char_indices().nth(state.path_param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
+                };
+                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let cursor_x = if state.path_param_edit_field == 0 {
+                    content_area.x + prefix_width as u16 + cursor_text_width
+                } else {
+                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width
+                };
+                if cursor_x < bounds.right() {
+                    frame.set_cursor_position(Position::new(cursor_x, row_y));
+                }
+            }
+        } else {
+            let prefix_style = Style::default().fg(
+                if is_param_focused { t.accent } else { t.text_dim },
+            );
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
+                Span::styled(" = ", style),
+                Span::styled(&param.value, style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+        }
+
+        y_offset += 1;
+    }
+}
 
 fn render_autocomplete_popup(
     frame: &mut Frame,

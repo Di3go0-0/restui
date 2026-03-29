@@ -60,6 +60,7 @@ pub fn parse(input: &str) -> Result<Vec<Request>> {
                 headers,
                 query_params,
                 cookies: Vec::new(),
+                path_params: Vec::new(),
                 body,
                 source_file: None,
                 source_line: None,

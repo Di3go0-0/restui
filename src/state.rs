@@ -111,6 +111,15 @@ impl BodyType {
         }
     }
 
+    pub fn prev(self) -> Self {
+        match self {
+            BodyType::Json => BodyType::Plain,
+            BodyType::Xml => BodyType::Json,
+            BodyType::FormUrlEncoded => BodyType::Xml,
+            BodyType::Plain => BodyType::FormUrlEncoded,
+        }
+    }
+
     pub fn validate(self, body: &str) -> Option<String> {
         if body.trim().is_empty() {
             return None;
@@ -221,22 +230,25 @@ impl Autocomplete {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestTab {
     Headers,
-    Queries,
     Cookies,
+    Queries,
+    Params,
 }
 
 impl RequestTab {
     pub const ALL: &'static [RequestTab] = &[
         RequestTab::Headers,
-        RequestTab::Queries,
         RequestTab::Cookies,
+        RequestTab::Queries,
+        RequestTab::Params,
     ];
 
     pub fn label(self) -> &'static str {
         match self {
             RequestTab::Headers => "Headers",
-            RequestTab::Queries => "Queries",
             RequestTab::Cookies => "Cookies",
+            RequestTab::Queries => "Queries",
+            RequestTab::Params => "Params",
         }
     }
 
@@ -259,6 +271,7 @@ pub enum RequestFocus {
     Header(usize),
     Param(usize),
     Cookie(usize),
+    PathParam(usize),
 }
 
 pub struct AppState {
@@ -298,6 +311,8 @@ pub struct AppState {
     pub param_edit_field: u8, // 0=key, 1=value
     pub cookie_edit_cursor: usize,
     pub cookie_edit_field: u8, // 0=name, 1=value
+    pub path_param_edit_cursor: usize,
+    pub path_param_edit_field: u8, // 0=key, 1=value
     pub request_field_editing: bool,   // true = vim normal mode inside a field
     pub request_visual_anchor: usize,  // visual selection anchor for request fields
 
@@ -374,6 +389,7 @@ pub struct AppState {
     pub collections_filter_active: bool,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
+    #[allow(dead_code)]
     pub matched_bracket: Option<(usize, usize)>,
 
     // Count prefix (vim number prefix for repeatable motions)
@@ -416,6 +432,8 @@ impl AppState {
             param_edit_field: 0,
             cookie_edit_cursor: 0,
             cookie_edit_field: 0,
+            path_param_edit_cursor: 0,
+            path_param_edit_field: 0,
             request_field_editing: false,
             request_visual_anchor: 0,
             body_cursor_row: 0,

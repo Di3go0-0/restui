@@ -135,6 +135,7 @@ fn parse_block(block: &str, line_offset: usize) -> Option<Request> {
         headers,
         query_params,
         cookies: Vec::new(),
+        path_params: Vec::new(),
         body,
         source_file: None,
         source_line: Some(line_offset),

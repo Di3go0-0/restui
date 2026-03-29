@@ -1,10 +1,10 @@
 use ratatui::Frame;
-use ratatui::layout::{Position, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::state::{AppState, InputMode, Panel};
+use crate::state::{AppState, BodyType, InputMode, Panel};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Body;
@@ -15,11 +15,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
-    let body_type_label = state.body_type.label();
     let title = if let Some(ref err) = state.body_validation_error {
-        format!(" [3] Body [{}] ⚠ {} ", body_type_label, err)
+        format!(" [3] Body ⚠ {} ", err)
     } else {
-        format!(" [3] Body [{}] ", body_type_label)
+        " [3] Body ".to_string()
     };
     let title_style = if state.body_validation_error.is_some() {
         Style::default().fg(Color::Red)
@@ -36,9 +35,24 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let outer_inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if outer_inner.width < 4 || outer_inner.height < 1 {
+    if outer_inner.width < 4 || outer_inner.height < 2 {
         return;
     }
+
+    // Tab bar + content layout
+    let body_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Tab bar
+            Constraint::Min(1),   // Body content
+        ])
+        .split(outer_inner);
+
+    // Render tab bar
+    let tab_bar = render_body_tab_bar(state, is_focused);
+    frame.render_widget(Paragraph::new(tab_bar), body_chunks[0]);
+
+    let outer_inner = body_chunks[1];
 
     // Reserve space for search bar if needed
     let has_search_bar = (state.search_active && state.active_panel == Panel::Body)
@@ -226,6 +240,36 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         ]);
         frame.render_widget(Paragraph::new(search_line), search_area);
     }
+}
+
+fn render_body_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
+    let t = &state.theme;
+    let mut spans = Vec::new();
+    spans.push(Span::raw(" "));
+    let tabs = [BodyType::Json, BodyType::Xml, BodyType::FormUrlEncoded, BodyType::Plain];
+    for (i, tab) in tabs.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ", Style::default().fg(t.text_dim)));
+        }
+        let is_active = state.body_type == *tab;
+        if is_active {
+            spans.push(Span::styled(
+                format!("[{}]", tab.label()),
+                Style::default()
+                    .fg(if is_focused { t.accent } else { t.text })
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            spans.push(Span::styled(
+                tab.label().to_string(),
+                Style::default().fg(t.text_dim),
+            ));
+        }
+    }
+    if is_focused {
+        spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
+    }
+    Line::from(spans)
 }
 
 fn visual_range(state: &AppState) -> (usize, usize, usize, usize) {
