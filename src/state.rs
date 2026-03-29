@@ -316,6 +316,23 @@ impl RequestTab {
     }
 }
 
+// ── Grouped sub-states ──────────────────────────────────────────────────────
+
+#[derive(Debug, Default)]
+pub struct SearchState {
+    pub query: String,
+    pub active: bool,
+    pub matches: Vec<(usize, usize)>,
+    pub match_idx: usize,
+}
+
+#[derive(Debug, Default)]
+pub struct CommandPaletteState {
+    pub open: bool,
+    pub input: String,
+    pub selected: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestFocus {
     Url,
@@ -416,9 +433,7 @@ pub struct AppState {
     pub expanded_collections: std::collections::HashSet<usize>,
 
     // Command Palette
-    pub command_palette_open: bool,
-    pub command_palette_input: String,
-    pub command_palette_selected: usize,
+    pub command_palette: CommandPaletteState,
 
     // Overlays
     pub overlay: Option<Overlay>,
@@ -435,10 +450,7 @@ pub struct AppState {
     pub response_headers_scroll: usize,
 
     // Search
-    pub search_query: String,
-    pub search_active: bool,
-    pub search_matches: Vec<(usize, usize)>,
-    pub search_match_idx: usize,
+    pub search: SearchState,
 
     // Collections filter
     pub collections_filter: String,
@@ -529,19 +541,14 @@ impl AppState {
                 s.insert(0); // expand first collection by default
                 s
             },
-            command_palette_open: false,
-            command_palette_input: String::new(),
-            command_palette_selected: 0,
+            command_palette: CommandPaletteState::default(),
             overlay: None,
             env_selector_state: ListState::default(),
             theme: crate::theme::Theme::default(),
             config,
             response_headers_expanded: false,
             response_headers_scroll: 0,
-            search_query: String::new(),
-            search_active: false,
-            search_matches: Vec::new(),
-            search_match_idx: 0,
+            search: SearchState::default(),
             collections_filter: String::new(),
             collections_filter_active: false,
             response_type: None,

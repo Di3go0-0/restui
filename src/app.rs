@@ -2036,40 +2036,40 @@ impl App {
 
             // === Command Palette ===
             Action::OpenCommandPalette => {
-                self.state.command_palette_open = true;
-                self.state.command_palette_input.clear();
-                self.state.command_palette_selected = 0;
+                self.state.command_palette.open = true;
+                self.state.command_palette.input.clear();
+                self.state.command_palette.selected = 0;
             }
             Action::CommandPaletteClose => {
-                self.state.command_palette_open = false;
+                self.state.command_palette.open = false;
             }
             Action::CommandPaletteInput(c) => {
-                self.state.command_palette_input.push(c);
-                self.state.command_palette_selected = 0;
+                self.state.command_palette.input.push(c);
+                self.state.command_palette.selected = 0;
             }
             Action::CommandPaletteBackspace => {
-                self.state.command_palette_input.pop();
-                self.state.command_palette_selected = 0;
+                self.state.command_palette.input.pop();
+                self.state.command_palette.selected = 0;
             }
             Action::CommandPaletteUp => {
-                self.state.command_palette_selected =
-                    self.state.command_palette_selected.saturating_sub(1);
+                self.state.command_palette.selected =
+                    self.state.command_palette.selected.saturating_sub(1);
             }
             Action::CommandPaletteDown => {
                 let count = crate::ui::command_palette::filtered_commands(
-                    &self.state.command_palette_input,
+                    &self.state.command_palette.input,
                 ).len();
                 if count > 0 {
-                    self.state.command_palette_selected =
-                        (self.state.command_palette_selected + 1).min(count - 1);
+                    self.state.command_palette.selected =
+                        (self.state.command_palette.selected + 1).min(count - 1);
                 }
             }
             Action::CommandPaletteConfirm => {
                 let matches = crate::ui::command_palette::filtered_commands(
-                    &self.state.command_palette_input,
+                    &self.state.command_palette.input,
                 );
-                let selected = self.state.command_palette_selected;
-                self.state.command_palette_open = false;
+                let selected = self.state.command_palette.selected;
+                self.state.command_palette.open = false;
                 if let Some(cmd) = matches.get(selected) {
                     let action = cmd.action.clone();
                     Box::pin(self.update(action)).await?;
@@ -2084,41 +2084,41 @@ impl App {
 
             // === Search ===
             Action::StartSearch => {
-                self.state.search_active = true;
-                self.state.search_query.clear();
-                self.state.search_matches.clear();
-                self.state.search_match_idx = 0;
+                self.state.search.active = true;
+                self.state.search.query.clear();
+                self.state.search.matches.clear();
+                self.state.search.match_idx = 0;
             }
             Action::SearchInput(c) => {
-                self.state.search_query.push(c);
+                self.state.search.query.push(c);
                 self.recalculate_search_matches();
             }
             Action::SearchBackspace => {
-                self.state.search_query.pop();
+                self.state.search.query.pop();
                 self.recalculate_search_matches();
             }
             Action::SearchConfirm => {
-                self.state.search_active = false;
+                self.state.search.active = false;
                 // Keep matches highlighted and current position
             }
             Action::SearchCancel => {
-                self.state.search_active = false;
-                self.state.search_query.clear();
-                self.state.search_matches.clear();
-                self.state.search_match_idx = 0;
+                self.state.search.active = false;
+                self.state.search.query.clear();
+                self.state.search.matches.clear();
+                self.state.search.match_idx = 0;
             }
             Action::SearchNext => {
-                if !self.state.search_matches.is_empty() {
-                    self.state.search_match_idx =
-                        (self.state.search_match_idx + 1) % self.state.search_matches.len();
+                if !self.state.search.matches.is_empty() {
+                    self.state.search.match_idx =
+                        (self.state.search.match_idx + 1) % self.state.search.matches.len();
                     self.jump_to_current_search_match();
                 }
             }
             Action::SearchPrev => {
-                if !self.state.search_matches.is_empty() {
-                    let len = self.state.search_matches.len();
-                    self.state.search_match_idx =
-                        (self.state.search_match_idx + len - 1) % len;
+                if !self.state.search.matches.is_empty() {
+                    let len = self.state.search.matches.len();
+                    self.state.search.match_idx =
+                        (self.state.search.match_idx + len - 1) % len;
                     self.jump_to_current_search_match();
                 }
             }
@@ -2456,12 +2456,12 @@ impl App {
     // === Helpers ===
 
     fn recalculate_search_matches(&mut self) {
-        self.state.search_matches.clear();
-        self.state.search_match_idx = 0;
-        if self.state.search_query.is_empty() {
+        self.state.search.matches.clear();
+        self.state.search.match_idx = 0;
+        if self.state.search.query.is_empty() {
             return;
         }
-        let query = self.state.search_query.to_lowercase();
+        let query = self.state.search.query.to_lowercase();
         let text = match self.state.active_panel {
             Panel::Response => {
                 if let Some(ref resp) = self.state.current_response {
@@ -2479,18 +2479,18 @@ impl App {
             let line_lower = line.to_lowercase();
             let mut start = 0;
             while let Some(pos) = line_lower[start..].find(&query) {
-                self.state.search_matches.push((row, start + pos));
+                self.state.search.matches.push((row, start + pos));
                 start += pos + 1;
             }
         }
         // Jump to first match
-        if !self.state.search_matches.is_empty() {
+        if !self.state.search.matches.is_empty() {
             self.jump_to_current_search_match();
         }
     }
 
     fn jump_to_current_search_match(&mut self) {
-        if let Some(&(row, col)) = self.state.search_matches.get(self.state.search_match_idx) {
+        if let Some(&(row, col)) = self.state.search.matches.get(self.state.search.match_idx) {
             match self.state.active_panel {
                 Panel::Response => {
                     self.state.resp_cursor_row = row;

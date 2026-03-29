@@ -70,7 +70,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     }
 
     // Command palette renders on top of everything
-    if state.command_palette_open {
+    if state.command_palette.open {
         command_palette::render(frame, state);
     }
     // Overlays render on top

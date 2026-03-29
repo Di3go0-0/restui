@@ -5,12 +5,12 @@ use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus,
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 0. Command Palette consumes all input when open
-    if state.command_palette_open {
+    if state.command_palette.open {
         return map_command_palette_key(key);
     }
 
     // 0.5. Search mode consumes input when active
-    if state.search_active {
+    if state.search.active {
         return map_search_key(key);
     }
 

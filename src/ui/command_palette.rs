@@ -62,7 +62,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     let input_line = Line::from(vec![
         Span::styled(" > ", Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)),
         Span::styled(
-            &state.command_palette_input,
+            &state.command_palette.input,
             Style::default().fg(t.text),
         ),
         Span::styled("▌", Style::default().fg(t.gutter_active)),
@@ -77,14 +77,14 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     frame.render_widget(Paragraph::new(sep), chunks[1]);
 
     // Filtered results
-    let matches = filtered_commands(&state.command_palette_input);
+    let matches = filtered_commands(&state.command_palette.input);
     let visible_count = matches.len();
 
     let items: Vec<ListItem> = matches
         .iter()
         .enumerate()
         .map(|(i, cmd)| {
-            let is_selected = i == state.command_palette_selected;
+            let is_selected = i == state.command_palette.selected;
             let name_style = if is_selected {
                 Style::default()
                     .fg(t.gutter_active)
@@ -111,7 +111,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
 
     let mut list_state = ListState::default();
     if visible_count > 0 {
-        list_state.select(Some(state.command_palette_selected.min(visible_count - 1)));
+        list_state.select(Some(state.command_palette.selected.min(visible_count - 1)));
     }
 
     let list = List::new(items)
@@ -125,7 +125,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     frame.render_stateful_widget(list, chunks[2], &mut list_state);
 
     // Position cursor at end of input
-    let cursor_x = chunks[0].x + 3 + state.command_palette_input.len() as u16;
+    let cursor_x = chunks[0].x + 3 + state.command_palette.input.len() as u16;
     let cursor_y = chunks[0].y;
     if cursor_x < area.right() {
         frame.set_cursor_position(Position::new(cursor_x, cursor_y));

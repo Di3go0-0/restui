@@ -55,8 +55,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let outer_inner = body_chunks[1];
 
     // Reserve space for search bar if needed
-    let has_search_bar = (state.search_active && state.active_panel == Panel::Body)
-        || (is_focused && !state.search_query.is_empty() && !state.search_matches.is_empty()
+    let has_search_bar = (state.search.active && state.active_panel == Panel::Body)
+        || (is_focused && !state.search.query.is_empty() && !state.search.matches.is_empty()
             && state.active_panel == Panel::Body);
     let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
 
@@ -148,9 +148,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let adj_cursor_col = state.body_cursor_col.saturating_sub(hscroll);
 
         // Prepare search info
-        let search_query_lower = state.search_query.to_lowercase();
+        let search_query_lower = state.search.query.to_lowercase();
         let has_body_search = !search_query_lower.is_empty()
-            && !state.search_matches.is_empty()
+            && !state.search.matches.is_empty()
             && state.active_panel == Panel::Body;
 
         let content_line = if is_visual {
@@ -237,15 +237,15 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             outer_inner.width,
             1,
         );
-        let match_info = if state.search_matches.is_empty() {
+        let match_info = if state.search.matches.is_empty() {
             "No matches".to_string()
         } else {
-            format!("{}/{}", state.search_match_idx + 1, state.search_matches.len())
+            format!("{}/{}", state.search.match_idx + 1, state.search.matches.len())
         };
         let search_line = Line::from(vec![
             Span::styled("/", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
-            Span::styled(state.search_query.clone(), Style::default().fg(t.text)),
-            if state.search_active {
+            Span::styled(state.search.query.clone(), Style::default().fg(t.text)),
+            if state.search.active {
                 Span::styled("█", Style::default().fg(t.accent))
             } else {
                 Span::raw("")
@@ -436,7 +436,7 @@ fn highlight_body_search_line(
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut pos = 0;
 
-    let current_match = state.search_matches.get(state.search_match_idx).copied();
+    let current_match = state.search.matches.get(state.search.match_idx).copied();
 
     let match_bg = Color::Yellow;
     let current_match_bg = Color::Rgb(255, 165, 0);
