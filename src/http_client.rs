@@ -94,18 +94,39 @@ pub fn to_curl(request: &Request) -> String {
         parts.push(format!("-d '{}'", escaped));
     }
 
-    let url = if request.query_params.is_empty() {
+    let enabled_params: Vec<_> = request.query_params.iter().filter(|p| p.enabled && !p.key.is_empty()).collect();
+    let url = if enabled_params.is_empty() {
         request.url.clone()
     } else {
-        let qs: Vec<String> = request
-            .query_params
+        let qs: Vec<String> = enabled_params
             .iter()
-            .filter(|p| p.enabled)
-            .map(|p| format!("{}={}", p.key, p.value))
+            .map(|p| format!("{}={}", percent_encode(&p.key), percent_encode(&p.value)))
             .collect();
         format!("{}?{}", request.url, qs.join("&"))
     };
 
     parts.push(format!("'{}'", url));
     parts.join(" \\\n  ")
+}
+
+/// Minimal percent-encoding for query string values in curl output.
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            ' ' => out.push_str("%20"),
+            '&' => out.push_str("%26"),
+            '=' => out.push_str("%3D"),
+            '+' => out.push_str("%2B"),
+            '#' => out.push_str("%23"),
+            '%' => out.push_str("%25"),
+            _ if c.is_ascii_alphanumeric() || "-._~".contains(c) => out.push(c),
+            _ => {
+                for b in c.to_string().as_bytes() {
+                    out.push_str(&format!("%{:02X}", b));
+                }
+            }
+        }
+    }
+    out
 }
