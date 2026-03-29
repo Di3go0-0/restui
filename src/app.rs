@@ -13,6 +13,7 @@ use crate::parser;
 use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
 use crate::tui::Tui;
 use crate::ui;
+use crossterm::cursor::SetCursorStyle;
 
 pub struct App {
     pub state: AppState,
@@ -119,6 +120,16 @@ impl App {
             terminal.draw(|frame| {
                 ui::layout::render(frame, &self.state);
             })?;
+
+            // Set terminal cursor shape: Bar for insert, Block for normal/visual
+            crossterm::execute!(
+                std::io::stdout(),
+                if self.state.mode == InputMode::Insert {
+                    SetCursorStyle::SteadyBar
+                } else {
+                    SetCursorStyle::SteadyBlock
+                }
+            )?;
 
             tokio::select! {
                 event = events.next() => {
@@ -297,9 +308,25 @@ impl App {
                 self.state.mode = InputMode::Normal;
                 self.state.autocomplete = None;
                 self.state.validate_body();
-                // Return to field-edit normal mode (not panel navigation) in Request panel
-                if self.state.active_panel == Panel::Request {
-                    self.state.request_field_editing = true;
+                // Clamp cursor to last char (normal mode can't be past end)
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let lines: Vec<&str> = body.lines().collect();
+                        let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        if line_len > 0 {
+                            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len - 1);
+                        }
+                    }
+                    Panel::Request => {
+                        self.state.request_field_editing = true;
+                        let len = self.get_request_field_len();
+                        if len > 0 {
+                            let cursor = self.get_request_cursor();
+                            self.set_request_cursor(cursor.min(len - 1));
+                        }
+                    }
+                    _ => {}
                 }
             }
             Action::EnterRequestFieldEdit => {
@@ -1377,27 +1404,12 @@ impl App {
     }
 
     fn position_request_cursor_at_end(&mut self) {
-        match self.state.request_focus {
-            RequestFocus::Url => {
-                self.state.url_cursor = self.state.current_request.url.len();
-            }
-            RequestFocus::Header(idx) => {
-                if let Some(h) = self.state.current_request.headers.get(idx) {
-                    self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
-                }
-            }
-            RequestFocus::Param(idx) => {
-                if let Some(p) = self.state.current_request.query_params.get(idx) {
-                    self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
-                }
-            }
-            RequestFocus::Cookie(idx) => {
-                if let Some(c) = self.state.current_request.cookies.get(idx) {
-                    self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { c.name.len() } else { c.value.len() };
-                }
-            }
-        }
+        let len = self.get_request_field_len();
+        // In normal mode, cursor sits on last char; in insert mode, after last char
+        let end = if self.state.mode == InputMode::Insert { len } else { len.saturating_sub(1) };
+        self.set_request_cursor(end);
     }
+
 
     fn paste_text_at_cursor(&mut self, text: &str) {
         if text.is_empty() { return; }
@@ -1714,45 +1726,34 @@ impl App {
     }
 
     fn inline_cursor_right(&mut self) {
+        let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
                 let body = self.state.current_request.body.as_deref().unwrap_or("");
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-                if self.state.body_cursor_col < line_len {
+                // In normal mode, cursor stays on last char (max = len-1)
+                let max = if is_insert { line_len } else { line_len.saturating_sub(1) };
+                if self.state.body_cursor_col < max {
                     self.state.body_cursor_col += 1;
-                } else if self.state.body_cursor_row + 1 < lines.len() {
+                } else if is_insert && self.state.body_cursor_row + 1 < lines.len() {
                     self.state.body_cursor_row += 1;
                     self.state.body_cursor_col = 0;
                 }
             }
-            Panel::Request => match self.state.request_focus {
-                RequestFocus::Url => {
-                    if self.state.url_cursor < self.state.current_request.url.len() { self.state.url_cursor += 1; }
+            Panel::Request => {
+                let len = self.get_request_field_len();
+                let max = if is_insert { len } else { len.saturating_sub(1) };
+                let cursor = self.get_request_cursor();
+                if cursor < max {
+                    self.set_request_cursor(cursor + 1);
                 }
-                RequestFocus::Header(idx) => {
-                    if let Some(h) = self.state.current_request.headers.get(idx) {
-                        let len = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
-                        if self.state.header_edit_cursor < len { self.state.header_edit_cursor += 1; }
-                    }
-                }
-                RequestFocus::Param(idx) => {
-                    if let Some(p) = self.state.current_request.query_params.get(idx) {
-                        let len = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
-                        if self.state.param_edit_cursor < len { self.state.param_edit_cursor += 1; }
-                    }
-                }
-                RequestFocus::Cookie(idx) => {
-                    if let Some(ck) = self.state.current_request.cookies.get(idx) {
-                        let len = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
-                        if self.state.cookie_edit_cursor < len { self.state.cookie_edit_cursor += 1; }
-                    }
-                }
-            },
+            }
             Panel::Response => {
                 let lines = self.get_response_lines();
                 let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
-                if self.state.resp_cursor_col < line_len {
+                let max = line_len.saturating_sub(1); // response is always "normal mode"
+                if self.state.resp_cursor_col < max {
                     self.state.resp_cursor_col += 1;
                 }
             }
@@ -1766,7 +1767,8 @@ impl App {
             let body = self.state.current_request.body.as_deref().unwrap_or("");
             let lines: Vec<&str> = body.lines().collect();
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
+            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            self.state.body_cursor_col = self.state.body_cursor_col.min(max);
         }
         self.sync_body_scroll();
     }
@@ -1778,7 +1780,9 @@ impl App {
             self.state.body_cursor_row += 1;
             let lines: Vec<&str> = body.lines().collect();
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
+            // In normal mode, clamp to last char; in insert mode, allow end position
+            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            self.state.body_cursor_col = self.state.body_cursor_col.min(max);
         }
         self.sync_body_scroll();
     }
@@ -1798,34 +1802,24 @@ impl App {
     }
 
     fn inline_cursor_end(&mut self) {
+        let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
                 let body = self.state.current_request.body.as_deref().unwrap_or("");
                 let lines: Vec<&str> = body.lines().collect();
-                self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
-                self.state.resp_cursor_col = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+                let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.resp_cursor_col = line_len.saturating_sub(1);
             }
-            Panel::Request => match self.state.request_focus {
-                RequestFocus::Url => self.state.url_cursor = self.state.current_request.url.len(),
-                RequestFocus::Header(idx) => {
-                    if let Some(h) = self.state.current_request.headers.get(idx) {
-                        self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
-                    }
-                }
-                RequestFocus::Param(idx) => {
-                    if let Some(p) = self.state.current_request.query_params.get(idx) {
-                        self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
-                    }
-                }
-                RequestFocus::Cookie(idx) => {
-                    if let Some(ck) = self.state.current_request.cookies.get(idx) {
-                        self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
-                    }
-                }
-            },
+            Panel::Request => {
+                let len = self.get_request_field_len();
+                let end = if is_insert { len } else { len.saturating_sub(1) };
+                self.set_request_cursor(end);
+            }
             _ => {}
         }
     }
@@ -1845,27 +1839,15 @@ impl App {
                     }
                 }
                 self.state.autocomplete = None;
+                // Toggle between name/value sub-field
                 match self.state.request_focus {
-                    RequestFocus::Header(idx) => {
-                        self.state.header_edit_field = (self.state.header_edit_field + 1) % 2;
-                        if let Some(h) = self.state.current_request.headers.get(idx) {
-                            self.state.header_edit_cursor = if self.state.header_edit_field == 0 { h.name.len() } else { h.value.len() };
-                        }
-                    }
-                    RequestFocus::Param(idx) => {
-                        self.state.param_edit_field = (self.state.param_edit_field + 1) % 2;
-                        if let Some(p) = self.state.current_request.query_params.get(idx) {
-                            self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
-                        }
-                    }
-                    RequestFocus::Cookie(idx) => {
-                        self.state.cookie_edit_field = (self.state.cookie_edit_field + 1) % 2;
-                        if let Some(ck) = self.state.current_request.cookies.get(idx) {
-                            self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
-                        }
-                    }
+                    RequestFocus::Header(_) => self.state.header_edit_field = (self.state.header_edit_field + 1) % 2,
+                    RequestFocus::Param(_) => self.state.param_edit_field = (self.state.param_edit_field + 1) % 2,
+                    RequestFocus::Cookie(_) => self.state.cookie_edit_field = (self.state.cookie_edit_field + 1) % 2,
                     _ => {}
                 }
+                // Position cursor at end of new sub-field
+                self.position_request_cursor_at_end();
             }
             Panel::Body => {
                 let body = self.state.current_request.body.get_or_insert_with(String::new);

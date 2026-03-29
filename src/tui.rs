@@ -22,6 +22,6 @@ pub fn init() -> Result<Tui> {
 
 pub fn restore() -> Result<()> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen, cursor::Show)?;
+    execute!(io::stdout(), LeaveAlternateScreen, cursor::Show, cursor::SetCursorStyle::DefaultUserShape)?;
     Ok(())
 }
