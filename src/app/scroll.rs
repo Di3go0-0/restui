@@ -13,7 +13,7 @@ impl App {
             Panel::Body => self.body_cursor_down(),
             Panel::Response => {
                 if self.state.response_tab == ResponseTab::Type {
-                    self.state.type_buf.scroll.0 = self.state.type_buf.scroll.0.saturating_add(1);
+                    self.type_cursor_down();
                 } else {
                     self.resp_cursor_down();
                 }
@@ -31,7 +31,7 @@ impl App {
             Panel::Body => self.body_cursor_up(),
             Panel::Response => {
                 if self.state.response_tab == ResponseTab::Type {
-                    self.state.type_buf.scroll.0 = self.state.type_buf.scroll.0.saturating_sub(1);
+                    self.type_cursor_up();
                 } else {
                     self.resp_cursor_up();
                 }
@@ -44,6 +44,11 @@ impl App {
         match self.state.active_panel {
             Panel::Collections => self.state.collections_state.select(Some(0)),
             Panel::Body => { self.state.body_buf.scroll = (0, 0); self.state.body_buf.cursor_row = 0; self.state.body_buf.cursor_col = 0; }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                self.state.type_buf.cursor_row = 0;
+                self.state.type_buf.cursor_col = 0;
+                self.state.type_buf.scroll = (0, 0);
+            }
             Panel::Response => {
                 self.state.resp_buf.cursor_row = 0;
                 self.state.resp_buf.cursor_col = 0;
@@ -65,6 +70,12 @@ impl App {
                 self.state.body_buf.cursor_row = lines.len().saturating_sub(1);
                 self.state.body_buf.cursor_col = 0;
                 self.sync_body_scroll(); self.sync_body_hscroll();
+            }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let line_count = self.state.response_type_text.lines().count();
+                self.state.type_buf.cursor_row = line_count.saturating_sub(1);
+                self.state.type_buf.cursor_col = 0;
+                self.state.type_buf.sync_scroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
@@ -133,6 +144,11 @@ impl App {
                 self.state.body_buf.cursor_row = (self.state.body_buf.cursor_row + half).min(max);
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let max = self.state.response_type_text.lines().count().saturating_sub(1);
+                self.state.type_buf.cursor_row = (self.state.type_buf.cursor_row + half).min(max);
+                self.state.type_buf.sync_scroll();
+            }
             Panel::Response => {
                 let max = self.get_response_lines().len().saturating_sub(1);
                 self.state.resp_buf.cursor_row = (self.state.resp_buf.cursor_row + half).min(max);
@@ -148,6 +164,10 @@ impl App {
             Panel::Body => {
                 self.state.body_buf.cursor_row = self.state.body_buf.cursor_row.saturating_sub(half);
                 self.sync_body_scroll(); self.sync_body_hscroll();
+            }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                self.state.type_buf.cursor_row = self.state.type_buf.cursor_row.saturating_sub(half);
+                self.state.type_buf.sync_scroll();
             }
             Panel::Response => {
                 self.state.resp_buf.cursor_row = self.state.resp_buf.cursor_row.saturating_sub(half);

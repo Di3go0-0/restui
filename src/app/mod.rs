@@ -3313,14 +3313,16 @@ impl App {
                 RequestFocus::Cookie(_) => { self.state.cookie_edit_cursor = self.state.cookie_edit_cursor.saturating_sub(1); }
                 RequestFocus::PathParam(_) => { self.state.path_param_edit_cursor = self.state.path_param_edit_cursor.saturating_sub(1); }
             },
-            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
                 if self.state.type_buf.cursor_col > 0 {
                     self.state.type_buf.cursor_col -= 1;
-                } else if self.state.type_buf.cursor_row > 0 {
+                } else if self.state.mode == InputMode::Insert && self.state.type_buf.cursor_row > 0 {
+                    // Wrap to previous line only in insert mode
                     self.state.type_buf.cursor_row -= 1;
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     self.state.type_buf.cursor_col = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 }
+                self.state.type_buf.sync_hscroll();
             }
             Panel::Response => {
                 self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.saturating_sub(1);
@@ -3330,7 +3332,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_tab != ResponseTab::Type => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }
@@ -3359,15 +3361,17 @@ impl App {
                     self.set_request_cursor(cursor + 1);
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
                 let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                 let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
-                if self.state.type_buf.cursor_col < line_len {
+                let max = if is_insert { line_len } else { line_len.saturating_sub(1) };
+                if self.state.type_buf.cursor_col < max {
                     self.state.type_buf.cursor_col += 1;
-                } else if self.state.type_buf.cursor_row + 1 < lines.len() {
+                } else if is_insert && self.state.type_buf.cursor_row + 1 < lines.len() {
                     self.state.type_buf.cursor_row += 1;
                     self.state.type_buf.cursor_col = 0;
                 }
+                self.state.type_buf.sync_hscroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
@@ -3382,7 +3386,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_tab != ResponseTab::Type => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }
