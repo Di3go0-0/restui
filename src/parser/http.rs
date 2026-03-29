@@ -188,6 +188,7 @@ pub fn serialize(requests: &[Request]) -> String {
         // Separator + name
         if let Some(ref name) = req.name {
             output.push_str(&format!("### {}\n", name));
+            output.push_str(&format!("# @name {}\n", name));
         } else {
             output.push_str(&format!("### {} {}\n", req.method, req.url));
         }
