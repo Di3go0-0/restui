@@ -69,10 +69,15 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         builder = builder.body(body.to_string());
     }
 
-    let resp = builder.send().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
+    tracing::debug!(method = %request.method, url = %request.url, "Sending HTTP request");
+    let resp = builder.send().await.map_err(|e| {
+        tracing::warn!(error = %e, url = %request.url, "HTTP request failed");
+        anyhow::anyhow!(classify_error(&e))
+    })?;
     let elapsed = start.elapsed();
 
     let status = resp.status().as_u16();
+    tracing::debug!(status, elapsed_ms = elapsed.as_millis() as u64, url = %request.url, "HTTP response received");
     let status_text = resp
         .status()
         .canonical_reason()

@@ -39,6 +39,7 @@ impl App {
         self.state.request_started_at = Some(std::time::Instant::now());
         self.state.last_error = None;
         self.state.set_status("Sending request...");
+        tracing::debug!(method = %self.state.current_request.method, url = %self.state.current_request.url, "Executing request");
 
         let mut resolved = self.resolve_env_vars(&self.state.current_request);
 

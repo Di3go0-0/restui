@@ -17,6 +17,7 @@ mod ui;
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(name = "restui", version, about = "A lazygit-style TUI HTTP client")]
@@ -37,6 +38,10 @@ struct Cli {
     /// Format: "bg=#1e1e2e,fg=#cdd6f4,accent=#89b4fa,..."
     #[arg(long)]
     colors: Option<String>,
+
+    /// Enable debug logging to ~/.local/share/restui/restui.log
+    #[arg(long)]
+    debug: bool,
 }
 
 #[tokio::main]
@@ -49,6 +54,26 @@ async fn main() -> Result<()> {
     }));
 
     let cli = Cli::parse();
+
+    // Set up file-based logging (only when --debug is passed)
+    let _log_guard = if cli.debug {
+        let log_dir = config::data_dir();
+        let _ = std::fs::create_dir_all(&log_dir);
+        let file_appender = tracing_appender::rolling::never(&log_dir, "restui.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("restui=debug")),
+            )
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+        tracing::info!("restui v{} started with --debug", env!("CARGO_PKG_VERSION"));
+        Some(guard)
+    } else {
+        None
+    };
 
     let config = config::AppConfig::load().unwrap_or_default();
     let mut app = app::App::new(config.clone());
