@@ -10,7 +10,7 @@ use crate::keybindings;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
+use crate::state::{AppState, BodyType, InputMode, Overlay, Panel, RequestFocus, RequestTab, COMMON_HEADERS};
 use crate::tui::Tui;
 use crate::ui;
 use crossterm::cursor::SetCursorStyle;
@@ -28,6 +28,26 @@ impl App {
             state: AppState::new(config),
             action_tx,
             action_rx,
+        }
+    }
+
+    fn active_body(&self) -> &str {
+        let req = &self.state.current_request;
+        match self.state.body_type {
+            BodyType::Json => req.body_json.as_deref().unwrap_or(""),
+            BodyType::Xml => req.body_xml.as_deref().unwrap_or(""),
+            BodyType::FormUrlEncoded => req.body_form.as_deref().unwrap_or(""),
+            BodyType::Plain => req.body_raw.as_deref().unwrap_or(""),
+        }
+    }
+
+    fn set_active_body(&mut self, value: Option<String>) {
+        let req = &mut self.state.current_request;
+        match self.state.body_type {
+            BodyType::Json => req.body_json = value,
+            BodyType::Xml => req.body_xml = value,
+            BodyType::FormUrlEncoded => req.body_form = value,
+            BodyType::Plain => req.body_raw = value,
         }
     }
 
@@ -285,7 +305,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
@@ -306,7 +326,7 @@ impl App {
                     Panel::Body => {
                         self.push_body_undo();
                         self.state.mode = InputMode::Insert;
-                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_cursor_col = line_len;
@@ -324,7 +344,7 @@ impl App {
             Action::OpenLineBelow => {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
                     let line_end_offset = if self.state.body_cursor_row < lines.len() {
                         let mut off = 0;
@@ -346,7 +366,7 @@ impl App {
             Action::OpenLineAbove => {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let line_start = row_col_to_offset(body, self.state.body_cursor_row, 0);
                     body.insert(line_start, '\n');
                     self.state.body_cursor_col = 0;
@@ -364,7 +384,7 @@ impl App {
                 // Clamp cursor to last char (normal mode can't be past end)
                 match self.state.active_panel {
                     Panel::Body => {
-                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                         let lines: Vec<&str> = body.lines().collect();
                         let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                         if line_len > 0 {
@@ -916,8 +936,8 @@ impl App {
                             text
                         };
                         // If body is empty, replace entirely
-                        if self.state.current_request.body.as_deref().unwrap_or("").is_empty() {
-                            self.state.current_request.body = Some(text.clone());
+                        if self.active_body().is_empty() {
+                            self.set_active_body(Some(text.clone()));
                             self.state.body_cursor_row = 0;
                             self.state.body_cursor_col = 0;
                         } else {
@@ -938,7 +958,7 @@ impl App {
                         self.state.set_status("Yanked field");
                     }
                     Panel::Body => {
-                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                         let lines: Vec<&str> = body.lines().collect();
                         if let Some(line) = lines.get(self.state.body_cursor_row) {
                             let line_text = line.to_string();
@@ -964,7 +984,7 @@ impl App {
             Action::DeleteLine => {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
-                    let body = self.state.current_request.body.as_deref().unwrap_or("");
+                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                     let lines: Vec<&str> = body.lines().collect();
                     if let Some(line) = lines.get(self.state.body_cursor_row) {
                         self.state.yank_buffer = format!("{}\n", line);
@@ -987,7 +1007,7 @@ impl App {
             Action::DeleteCharUnderCursor => {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                     if pos < body.len() {
                         let ch = body.as_bytes()[pos];
@@ -1008,7 +1028,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                     if pos < body.len() && body.as_bytes()[pos] != b'\n' {
                         body.remove(pos);
@@ -1020,7 +1040,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_cursor_row;
                     if row < lines.len() {
@@ -1048,7 +1068,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1067,7 +1087,7 @@ impl App {
                         let deleted = &line[col..end_col];
                         self.state.yank_buffer = deleted.to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
                         body.drain(start..end);
@@ -1098,7 +1118,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1117,7 +1137,7 @@ impl App {
                         let deleted = &line[start_col..col];
                         self.state.yank_buffer = deleted.to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
                         body.drain(start..end);
@@ -1149,7 +1169,7 @@ impl App {
             Action::ChangeToEnd => {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_cursor_row;
                     let col = self.state.body_cursor_col;
@@ -1180,7 +1200,7 @@ impl App {
             Action::Substitute => {
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                     if pos < body.len() && body.as_bytes()[pos] != b'\n' {
                         let ch = body.remove(pos);
@@ -1203,7 +1223,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1220,7 +1240,7 @@ impl App {
                         }
                         self.state.yank_buffer = line[col..end_col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
                         body.drain(start..end);
@@ -1254,7 +1274,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1279,7 +1299,7 @@ impl App {
                         }
                         self.state.yank_buffer = line[col..end_col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
                         body.drain(start..end);
@@ -1318,7 +1338,7 @@ impl App {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let body_text = self.state.current_request.body.clone().unwrap_or_default();
+                    let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1336,7 +1356,7 @@ impl App {
                         }
                         self.state.yank_buffer = line[start_col..col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let body = self.state.current_request.body.get_or_insert_with(String::new);
+                        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
                         body.drain(start..end);
@@ -1366,7 +1386,7 @@ impl App {
             Action::YankWord => {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
-                    let body = self.state.current_request.body.as_deref().unwrap_or("");
+                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_cursor_row;
                     if let Some(line) = lines.get(row) {
@@ -1406,9 +1426,9 @@ impl App {
             Action::Undo => {
                 if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
-                        let current_body = self.state.current_request.body.clone().unwrap_or_default();
+                        let current_body = self.active_body().to_string();
                         self.state.body_redo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
-                        self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
+                        self.set_active_body(if snapshot.is_empty() { None } else { Some(snapshot) });
                         self.state.body_cursor_row = row;
                         self.state.body_cursor_col = col;
                         self.state.set_status("Undo");
@@ -1441,9 +1461,9 @@ impl App {
             Action::Redo => {
                 if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_redo_stack.pop() {
-                        let current_body = self.state.current_request.body.clone().unwrap_or_default();
+                        let current_body = self.active_body().to_string();
                         self.state.body_undo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
-                        self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
+                        self.set_active_body(if snapshot.is_empty() { None } else { Some(snapshot) });
                         self.state.body_cursor_row = row;
                         self.state.body_cursor_col = col;
                         self.state.set_status("Redo");
@@ -1498,10 +1518,18 @@ impl App {
             }
             Action::BodyNextTab => {
                 self.state.body_type = self.state.body_type.next();
+                self.state.body_cursor_row = 0;
+                self.state.body_cursor_col = 0;
+                self.state.body_undo_stack.clear();
+                self.state.body_redo_stack.clear();
                 self.state.validate_body();
             }
             Action::BodyPrevTab => {
                 self.state.body_type = self.state.body_type.prev();
+                self.state.body_cursor_row = 0;
+                self.state.body_cursor_col = 0;
+                self.state.body_undo_stack.clear();
+                self.state.body_redo_stack.clear();
                 self.state.validate_body();
             }
 
@@ -2094,7 +2122,7 @@ impl App {
                 }
             }
             Panel::Body => {
-                self.state.current_request.body.clone().unwrap_or_default()
+                self.active_body().to_string()
             }
             _ => return,
         };
@@ -2143,7 +2171,7 @@ impl App {
 
     /// Save a snapshot of the body for undo. Call before any body mutation.
     fn push_body_undo(&mut self) {
-        let body = self.state.current_request.body.clone().unwrap_or_default();
+        let body = self.active_body().to_string();
         self.state.body_undo_stack.push((body, self.state.body_cursor_row, self.state.body_cursor_col));
         self.state.body_redo_stack.clear(); // new edit clears redo history
         // Cap undo history at 100 entries
@@ -2199,7 +2227,7 @@ impl App {
     }
 
     fn position_body_cursor_at_end(&mut self) {
-        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let lines: Vec<&str> = body.lines().collect();
         if lines.is_empty() {
             self.state.body_cursor_row = 0;
@@ -2220,7 +2248,7 @@ impl App {
 
     fn paste_text_at_cursor(&mut self, text: &str) {
         if text.is_empty() { return; }
-        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
         body.insert_str(pos, text);
         // Move cursor to end of pasted text
@@ -2323,7 +2351,7 @@ impl App {
     fn inline_input(&mut self, c: char) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.get_or_insert_with(String::new);
+                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                 let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                 body.insert(pos, c);
                 self.state.body_cursor_col += 1;
@@ -2397,7 +2425,7 @@ impl App {
     fn inline_backspace(&mut self) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.get_or_insert_with(String::new);
+                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                 let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                 if pos > 0 {
                     let ch = body.as_bytes()[pos - 1];
@@ -2483,7 +2511,7 @@ impl App {
     fn inline_delete(&mut self) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.get_or_insert_with(String::new);
+                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                 let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                 if pos < body.len() { body.remove(pos); }
             }
@@ -2524,7 +2552,7 @@ impl App {
 
     fn inline_newline(&mut self) {
         if self.state.active_panel == Panel::Body {
-            let body = self.state.current_request.body.get_or_insert_with(String::new);
+            let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
             let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
 
             // Determine indent: copy leading whitespace from current line
@@ -2553,7 +2581,7 @@ impl App {
                     self.state.body_cursor_col -= 1;
                 } else if self.state.body_cursor_row > 0 {
                     self.state.body_cursor_row -= 1;
-                    let body = self.state.current_request.body.as_deref().unwrap_or("");
+                    let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                     let lines: Vec<&str> = body.lines().collect();
                     self.state.body_cursor_col = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 }
@@ -2576,7 +2604,7 @@ impl App {
         let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 // In normal mode, cursor stays on last char (max = len-1)
@@ -2611,7 +2639,7 @@ impl App {
     fn body_cursor_up(&mut self) {
         if self.state.body_cursor_row > 0 {
             self.state.body_cursor_row -= 1;
-            let body = self.state.current_request.body.as_deref().unwrap_or("");
+            let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
             let lines: Vec<&str> = body.lines().collect();
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
@@ -2621,7 +2649,7 @@ impl App {
     }
 
     fn body_cursor_down(&mut self) {
-        let body = self.state.current_request.body.as_deref().unwrap_or("");
+        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
         let line_count = body.lines().count().max(1);
         if self.state.body_cursor_row + 1 < line_count {
             self.state.body_cursor_row += 1;
@@ -2653,7 +2681,7 @@ impl App {
         let is_insert = self.state.mode == InputMode::Insert;
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
@@ -2699,7 +2727,7 @@ impl App {
                 self.position_request_cursor_at_end();
             }
             Panel::Body => {
-                let body = self.state.current_request.body.get_or_insert_with(String::new);
+                let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                 let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
                 body.insert_str(pos, "  ");
                 self.state.body_cursor_col += 2;
@@ -2715,7 +2743,7 @@ impl App {
                 (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
             }
             _ => {
-                let t = self.state.current_request.body.as_deref().unwrap_or("").to_string();
+                let t = self.active_body().to_string();
                 (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
             }
         }
@@ -3096,7 +3124,7 @@ impl App {
     }
 
     fn get_visual_selection(&self) -> String {
-        let body = self.state.current_request.body.as_deref().unwrap_or("");
+        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
         let (sr, sc, er, ec) = self.visual_range();
         let start = row_col_to_offset(body, sr, sc);
         let end = row_col_to_offset(body, er, ec).min(body.len());
@@ -3105,7 +3133,7 @@ impl App {
 
     fn delete_visual_selection(&mut self) {
         let (sr, sc, er, ec) = self.visual_range();
-        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let start = row_col_to_offset(body, sr, sc);
         let end = row_col_to_offset(body, er, ec).min(body.len());
         if start < end { body.drain(start..end); }
@@ -3121,7 +3149,7 @@ impl App {
 
     /// Get block (rectangle) selection text from body — each line's column slice joined by newlines.
     fn get_block_selection(&self) -> String {
-        let body = self.state.current_request.body.as_deref().unwrap_or("");
+        let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
         let lines: Vec<&str> = body.lines().collect();
         let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
         let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
@@ -3143,7 +3171,7 @@ impl App {
         let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
         let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
 
-        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let mut lines: Vec<String> = body.lines().map(|l| l.to_string()).collect();
         for row in min_row..=max_row {
             if let Some(line) = lines.get_mut(row) {
@@ -3176,7 +3204,7 @@ impl App {
     }
 
     fn delete_body_line(&mut self, row: usize) {
-        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
         let mut lines: Vec<String> = body.lines().map(|l| l.to_string()).collect();
         if row < lines.len() {
             lines.remove(row);
@@ -3219,9 +3247,17 @@ impl App {
         // Resolve path params in URL
         resolved.url = http_client::resolve_path_params(&resolved.url, &resolved.path_params);
 
+        // Pick the active body based on body_type
+        let active_body_ref = match self.state.body_type {
+            BodyType::Json => &resolved.body_json,
+            BodyType::Xml => &resolved.body_xml,
+            BodyType::FormUrlEncoded => &resolved.body_form,
+            BodyType::Plain => &resolved.body_raw,
+        };
+        let body_text_trimmed = active_body_ref.as_deref().unwrap_or("").trim().to_string();
+
         // Auto-inject Content-Type if body exists and no Content-Type header set
-        let body_text = resolved.body.as_deref().unwrap_or("").trim();
-        if !body_text.is_empty() {
+        if !body_text_trimmed.is_empty() {
             let has_ct = resolved.headers.iter().any(|h| h.enabled && h.name.eq_ignore_ascii_case("content-type"));
             if !has_ct {
                 resolved.headers.push(Header {
@@ -3232,10 +3268,18 @@ impl App {
             }
         }
 
-        // Trim body — don't send empty
-        let body_text = resolved.body.as_deref().unwrap_or("").trim();
-        if body_text.is_empty() {
-            resolved.body = None;
+        // Clear all body fields, then set only the active one (trimmed, non-empty)
+        resolved.body_json = None;
+        resolved.body_xml = None;
+        resolved.body_form = None;
+        resolved.body_raw = None;
+        if !body_text_trimmed.is_empty() {
+            match self.state.body_type {
+                BodyType::Json => resolved.body_json = Some(body_text_trimmed),
+                BodyType::Xml => resolved.body_xml = Some(body_text_trimmed),
+                BodyType::FormUrlEncoded => resolved.body_form = Some(body_text_trimmed),
+                BodyType::Plain => resolved.body_raw = Some(body_text_trimmed),
+            }
         }
 
         let config = self.state.config.general.clone();
@@ -3259,7 +3303,10 @@ impl App {
             query_params: req.query_params.iter().map(|p| crate::model::request::QueryParam { key: p.key.clone(), value: env.resolve(&p.value), enabled: p.enabled }).collect(),
             cookies: req.cookies.iter().map(|c| crate::model::request::Cookie { name: c.name.clone(), value: env.resolve(&c.value), enabled: c.enabled }).collect(),
             path_params: req.path_params.iter().map(|p| crate::model::request::PathParam { key: p.key.clone(), value: env.resolve(&p.value), enabled: p.enabled }).collect(),
-            body: req.body.as_ref().map(|b| env.resolve(b)),
+            body_json: req.body_json.as_ref().map(|b| env.resolve(b)),
+            body_xml: req.body_xml.as_ref().map(|b| env.resolve(b)),
+            body_form: req.body_form.as_ref().map(|b| env.resolve(b)),
+            body_raw: req.body_raw.as_ref().map(|b| env.resolve(b)),
             source_file: req.source_file.clone(),
             source_line: req.source_line,
         }
@@ -3280,7 +3327,10 @@ impl App {
             || req.headers.iter().any(|h| has_refs(&h.value))
             || req.query_params.iter().any(|p| has_refs(&p.value))
             || req.cookies.iter().any(|c| has_refs(&c.value))
-            || req.body.as_deref().map(|b| has_refs(b)).unwrap_or(false);
+            || req.body_json.as_deref().map(|b| has_refs(b)).unwrap_or(false)
+            || req.body_xml.as_deref().map(|b| has_refs(b)).unwrap_or(false)
+            || req.body_form.as_deref().map(|b| has_refs(b)).unwrap_or(false)
+            || req.body_raw.as_deref().map(|b| has_refs(b)).unwrap_or(false);
 
         if !need_resolve {
             return Ok(());
@@ -3306,8 +3356,17 @@ impl App {
             let val = req.path_params[i].value.clone();
             req.path_params[i].value = self.resolve_chains_in_str(&val, resolving).await?;
         }
-        if let Some(ref body) = req.body.clone() {
-            req.body = Some(self.resolve_chains_in_str(body, resolving).await?);
+        if let Some(ref body) = req.body_json.clone() {
+            req.body_json = Some(self.resolve_chains_in_str(body, resolving).await?);
+        }
+        if let Some(ref body) = req.body_xml.clone() {
+            req.body_xml = Some(self.resolve_chains_in_str(body, resolving).await?);
+        }
+        if let Some(ref body) = req.body_form.clone() {
+            req.body_form = Some(self.resolve_chains_in_str(body, resolving).await?);
+        }
+        if let Some(ref body) = req.body_raw.clone() {
+            req.body_raw = Some(self.resolve_chains_in_str(body, resolving).await?);
         }
 
         Ok(())
@@ -3372,7 +3431,11 @@ impl App {
                 let mut resolved_dep = self.resolve_env_vars(&dep_request_clone);
 
                 // Auto-inject Content-Type for dependency if it has a body
-                let dep_body = resolved_dep.body.as_deref().unwrap_or("").trim();
+                let dep_body = resolved_dep.body_json.as_deref()
+                    .or(resolved_dep.body_xml.as_deref())
+                    .or(resolved_dep.body_form.as_deref())
+                    .or(resolved_dep.body_raw.as_deref())
+                    .unwrap_or("").trim();
                 if !dep_body.is_empty() {
                     let has_ct = resolved_dep.headers.iter().any(|h| h.enabled && h.name.eq_ignore_ascii_case("content-type"));
                     if !has_ct {
@@ -3523,7 +3586,7 @@ impl App {
                 self.state.collections_state.select(Some(max));
             }
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let lines: Vec<&str> = body.lines().collect();
                 self.state.body_cursor_row = lines.len().saturating_sub(1);
                 self.state.body_cursor_col = 0;
@@ -3569,7 +3632,7 @@ impl App {
         let half = 15usize;
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let max = body.lines().count().saturating_sub(1);
                 self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
                 self.sync_body_scroll();
@@ -3662,7 +3725,7 @@ impl App {
     fn find_char_forward(&mut self, target: char, before: bool) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let lines: Vec<&str> = body.lines().collect();
                 if let Some(line) = lines.get(self.state.body_cursor_row) {
                     let bytes = line.as_bytes();
@@ -3710,7 +3773,7 @@ impl App {
     fn find_char_backward(&mut self, target: char, after: bool) {
         match self.state.active_panel {
             Panel::Body => {
-                let body = self.state.current_request.body.as_deref().unwrap_or("");
+                let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let lines: Vec<&str> = body.lines().collect();
                 if let Some(line) = lines.get(self.state.body_cursor_row) {
                     let bytes = line.as_bytes();

@@ -136,7 +136,10 @@ fn parse_block(block: &str, line_offset: usize) -> Option<Request> {
         query_params,
         cookies: Vec::new(),
         path_params: Vec::new(),
-        body,
+        body_json: body,
+        body_xml: None,
+        body_form: None,
+        body_raw: None,
         source_file: None,
         source_line: Some(line_offset),
     })
@@ -218,8 +221,12 @@ pub fn serialize(requests: &[Request]) -> String {
             }
         }
 
-        // Body
-        if let Some(ref body) = req.body {
+        // Body — output the first non-empty body field
+        let body = req.body_json.as_deref()
+            .or(req.body_xml.as_deref())
+            .or(req.body_form.as_deref())
+            .or(req.body_raw.as_deref());
+        if let Some(body) = body {
             let trimmed = body.trim();
             if !trimmed.is_empty() {
                 output.push_str("\n");
@@ -258,7 +265,7 @@ Authorization: Bearer token123
         assert_eq!(requests[0].method, HttpMethod::POST);
         assert_eq!(requests[0].headers.len(), 2);
         assert_eq!(requests[0].headers[0].name, "Content-Type");
-        assert!(requests[0].body.is_some());
+        assert!(requests[0].body_json.is_some());
     }
 
     #[test]

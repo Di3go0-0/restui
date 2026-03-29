@@ -101,7 +101,14 @@ pub struct Request {
     pub query_params: Vec<QueryParam>,
     pub cookies: Vec<Cookie>,
     pub path_params: Vec<PathParam>,
-    pub body: Option<String>,
+    #[serde(alias = "body", default)]
+    pub body_json: Option<String>,
+    #[serde(default)]
+    pub body_xml: Option<String>,
+    #[serde(default)]
+    pub body_form: Option<String>,
+    #[serde(default)]
+    pub body_raw: Option<String>,
     #[serde(skip)]
     pub source_file: Option<PathBuf>,
     #[serde(skip)]
@@ -118,7 +125,10 @@ impl Default for Request {
             query_params: Vec::new(),
             cookies: Vec::new(),
             path_params: Vec::new(),
-            body: None,
+            body_json: None,
+            body_xml: None,
+            body_form: None,
+            body_raw: None,
             source_file: None,
             source_line: None,
         }

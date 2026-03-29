@@ -488,7 +488,12 @@ impl AppState {
     }
 
     pub fn validate_body(&mut self) {
-        let body = self.current_request.body.as_deref().unwrap_or("");
+        let body = match self.body_type {
+            BodyType::Json => self.current_request.body_json.as_deref().unwrap_or(""),
+            BodyType::Xml => self.current_request.body_xml.as_deref().unwrap_or(""),
+            BodyType::FormUrlEncoded => self.current_request.body_form.as_deref().unwrap_or(""),
+            BodyType::Plain => self.current_request.body_raw.as_deref().unwrap_or(""),
+        };
         self.body_validation_error = self.body_type.validate(body);
     }
 }

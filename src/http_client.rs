@@ -55,8 +55,13 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         builder = builder.header("Cookie", &cookie_str);
     }
 
-    if let Some(ref body) = request.body {
-        builder = builder.body(body.clone());
+    // Try each body field in priority order: json, xml, form, raw
+    let body = request.body_json.as_deref()
+        .or(request.body_xml.as_deref())
+        .or(request.body_form.as_deref())
+        .or(request.body_raw.as_deref());
+    if let Some(body) = body {
+        builder = builder.body(body.to_string());
     }
 
     let resp = builder.send().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
@@ -153,7 +158,11 @@ pub fn to_curl(request: &Request) -> String {
         }
     }
 
-    if let Some(ref body) = request.body {
+    let curl_body = request.body_json.as_deref()
+        .or(request.body_xml.as_deref())
+        .or(request.body_form.as_deref())
+        .or(request.body_raw.as_deref());
+    if let Some(body) = curl_body {
         let escaped = body.replace('\'', "'\\''");
         parts.push(format!("-d '{}'", escaped));
     }
