@@ -587,7 +587,7 @@ pub const COMMON_HEADERS: &[(&str, &str)] = &[
     ("Host", ""),
     ("Origin", ""),
     ("Referer", ""),
-    ("User-Agent", "restui/0.1"),
+    ("User-Agent", concat!("restui/", env!("CARGO_PKG_VERSION"))),
     ("X-API-Key", ""),
     ("X-Request-ID", ""),
 ];
