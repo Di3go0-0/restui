@@ -111,10 +111,19 @@ fn estimate_cursor_screen_pos(state: &AppState, right_area: Rect) -> (u16, u16) 
             (x.min(right_area.right()), y.min(right_area.bottom()))
         }
         Panel::Request => {
-            // Request panel is at the top of right_area
-            let x = right_area.x + border + 10; // rough offset for field label
-            let y = right_area.y + border + 2; // header area
-            (x, y)
+            // Request panel: URL field is at top, headers below
+            let url_label_width = 12u16; // "GET https://" etc
+            let cursor = state.url_cursor as u16;
+            let field_row = match state.request_focus {
+                crate::state::RequestFocus::Url => 0,
+                crate::state::RequestFocus::Header(i) => 2 + i as u16,
+                crate::state::RequestFocus::Param(i) => 2 + i as u16,
+                crate::state::RequestFocus::Cookie(i) => 2 + i as u16,
+                crate::state::RequestFocus::PathParam(i) => 2 + i as u16,
+            };
+            let x = right_area.x + border + url_label_width + cursor;
+            let y = right_area.y + border + field_row;
+            (x.min(right_area.right()), y.min(right_area.bottom()))
         }
         _ => {
             (right_area.x + 2, right_area.y + 2)
