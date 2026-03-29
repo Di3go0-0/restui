@@ -328,6 +328,11 @@ pub struct AppState {
     pub body_undo_stack: Vec<(String, usize, usize)>, // (body_snapshot, cursor_row, cursor_col)
     pub body_redo_stack: Vec<(String, usize, usize)>,
 
+    // Undo/Redo history for request field editing
+    // (focus, edit_field, field_text, cursor_pos)
+    pub request_undo_stack: Vec<(RequestFocus, u8, String, usize)>,
+    pub request_redo_stack: Vec<(RequestFocus, u8, String, usize)>,
+
     // Pending replace mode (r + next char)
     pub pending_replace: bool,
 
@@ -408,6 +413,8 @@ impl AppState {
             yanked_request: None,
             body_undo_stack: Vec::new(),
             body_redo_stack: Vec::new(),
+            request_undo_stack: Vec::new(),
+            request_redo_stack: Vec::new(),
             pending_replace: false,
             response_cache: HashMap::new(),
             expanded_collections: {

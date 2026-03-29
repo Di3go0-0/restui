@@ -18,8 +18,13 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('r') => {
-                // Ctrl+R: Redo in normal mode on Body panel, otherwise execute request
-                if state.mode == InputMode::Normal && state.active_panel == Panel::Body {
+                // Ctrl+R: Redo when in any vim editing context, execute request otherwise
+                let in_vim_edit = match state.active_panel {
+                    Panel::Body => state.mode == InputMode::Normal,
+                    Panel::Request => state.request_field_editing,
+                    _ => false,
+                };
+                if in_vim_edit {
                     return Some(Action::Redo);
                 }
                 return Some(Action::ExecuteRequest);
@@ -246,6 +251,7 @@ fn map_visual_mode_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Char('w') => Some(Action::BodyWordForward),
         KeyCode::Char('b') => Some(Action::BodyWordBackward),
+        KeyCode::Char('e') => Some(Action::BodyWordEnd),
         KeyCode::Char('g') => Some(Action::ScrollTop),
         KeyCode::Char('G') => Some(Action::ScrollBottom),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
@@ -350,6 +356,7 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Char('w') => Some(Action::BodyWordForward),
         KeyCode::Char('b') => Some(Action::BodyWordBackward),
+        KeyCode::Char('e') => Some(Action::BodyWordEnd),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::InlineCursorHome),
         KeyCode::Char('$') | KeyCode::End => Some(Action::InlineCursorEnd),
         // Enter insert mode
@@ -363,6 +370,7 @@ fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
+        KeyCode::Char('u') => Some(Action::Undo),
         KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
         // Tab to switch between name/value sub-fields
         KeyCode::Tab => Some(Action::InlineTab),
@@ -381,6 +389,7 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('G') => Some(Action::ScrollBottom),
         KeyCode::Char('w') => Some(Action::BodyWordForward),
         KeyCode::Char('b') => Some(Action::BodyWordBackward),
+        KeyCode::Char('e') => Some(Action::BodyWordEnd),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
         KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
         // Enter modes
@@ -414,6 +423,7 @@ fn map_response_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('G') => Some(Action::ScrollBottom),
         KeyCode::Char('w') => Some(Action::BodyWordForward),
         KeyCode::Char('b') => Some(Action::BodyWordBackward),
+        KeyCode::Char('e') => Some(Action::BodyWordEnd),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
         KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
         KeyCode::Char('v') => Some(Action::EnterVisualMode),

@@ -76,6 +76,7 @@ pub enum Action {
     // Body-specific normal mode motions
     BodyWordForward,  // w
     BodyWordBackward, // b
+    BodyWordEnd,      // e — move to end of current/next word
     BodyLineHome,     // 0
     BodyLineEnd,      // $
 

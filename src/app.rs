@@ -189,6 +189,7 @@ impl App {
                         self.position_body_cursor_at_end();
                     }
                     Panel::Request => {
+                        self.push_request_undo();
                         self.state.mode = InputMode::Insert;
                         // If already in field-edit mode, keep cursor position; otherwise go to end
                         if !self.state.request_field_editing {
@@ -207,6 +208,7 @@ impl App {
                         self.state.body_cursor_col = 0;
                     }
                     Panel::Request => {
+                        self.push_request_undo();
                         self.state.mode = InputMode::Insert;
                         self.state.request_field_editing = true;
                         self.set_request_cursor(0);
@@ -225,6 +227,7 @@ impl App {
                         self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
                     }
                     Panel::Request => {
+                        self.push_request_undo();
                         self.state.mode = InputMode::Insert;
                         self.state.request_field_editing = true;
                         let cursor = self.get_request_cursor();
@@ -245,6 +248,7 @@ impl App {
                         self.state.body_cursor_col = line_len;
                     }
                     Panel::Request => {
+                        self.push_request_undo();
                         self.state.mode = InputMode::Insert;
                         self.state.request_field_editing = true;
                         let len = self.get_request_field_len();
@@ -704,6 +708,13 @@ impl App {
                     self.body_word_backward();
                 }
             }
+            Action::BodyWordEnd => {
+                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.request_word_end();
+                } else {
+                    self.body_word_end();
+                }
+            }
             Action::BodyLineHome => {
                 if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.set_request_cursor(0);
@@ -748,6 +759,7 @@ impl App {
                         self.state.mode = InputMode::Normal;
                     }
                     Panel::Request if self.state.request_field_editing => {
+                        self.push_request_undo();
                         let text = self.get_request_visual_selection();
                         self.state.yank_buffer = text;
                         self.delete_request_visual_selection();
@@ -762,6 +774,7 @@ impl App {
                     let paste = self.state.yank_buffer.clone();
                     self.paste_text_at_cursor(&paste);
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
                     let paste = self.state.yank_buffer.clone();
                     self.paste_request_text(&paste);
                 }
@@ -839,6 +852,7 @@ impl App {
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     // dd in request field edit: clear the field
+                    self.push_request_undo();
                     let text = self.get_request_field_text();
                     self.state.yank_buffer = text;
                     let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
@@ -863,6 +877,7 @@ impl App {
                         }
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    self.push_request_undo();
                     self.delete_request_char_under_cursor();
                 }
             }
@@ -881,7 +896,6 @@ impl App {
             Action::Undo => {
                 if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
-                        // Push current state to redo stack
                         let current_body = self.state.current_request.body.clone().unwrap_or_default();
                         self.state.body_redo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
                         self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
@@ -891,17 +905,55 @@ impl App {
                     } else {
                         self.state.set_status("Already at oldest change");
                     }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    if let Some((focus, edit_field, text, cursor)) = self.state.request_undo_stack.pop() {
+                        // Push current state to redo
+                        let cur_text = self.get_request_field_text();
+                        let cur_cursor = self.get_request_cursor();
+                        let cur_focus = self.state.request_focus;
+                        let cur_ef = match cur_focus {
+                            RequestFocus::Header(_) => self.state.header_edit_field,
+                            RequestFocus::Param(_) => self.state.param_edit_field,
+                            RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+                            RequestFocus::Url => 0,
+                        };
+                        self.state.request_redo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
+                        self.set_request_field_text(focus, edit_field, text);
+                        self.state.request_focus = focus;
+                        self.set_request_cursor(cursor);
+                        self.state.set_status("Undo");
+                    } else {
+                        self.state.set_status("Already at oldest change");
+                    }
                 }
             }
             Action::Redo => {
                 if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_redo_stack.pop() {
-                        // Push current state to undo stack
                         let current_body = self.state.current_request.body.clone().unwrap_or_default();
                         self.state.body_undo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
                         self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
                         self.state.body_cursor_row = row;
                         self.state.body_cursor_col = col;
+                        self.state.set_status("Redo");
+                    } else {
+                        self.state.set_status("Already at newest change");
+                    }
+                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    if let Some((focus, edit_field, text, cursor)) = self.state.request_redo_stack.pop() {
+                        let cur_text = self.get_request_field_text();
+                        let cur_cursor = self.get_request_cursor();
+                        let cur_focus = self.state.request_focus;
+                        let cur_ef = match cur_focus {
+                            RequestFocus::Header(_) => self.state.header_edit_field,
+                            RequestFocus::Param(_) => self.state.param_edit_field,
+                            RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+                            RequestFocus::Url => 0,
+                        };
+                        self.state.request_undo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
+                        self.set_request_field_text(focus, edit_field, text);
+                        self.state.request_focus = focus;
+                        self.set_request_cursor(cursor);
                         self.state.set_status("Redo");
                     } else {
                         self.state.set_status("Already at newest change");
@@ -1269,6 +1321,46 @@ impl App {
         // Cap undo history at 100 entries
         if self.state.body_undo_stack.len() > 100 {
             self.state.body_undo_stack.remove(0);
+        }
+    }
+
+    /// Save a snapshot of the current request field for undo.
+    fn push_request_undo(&mut self) {
+        let focus = self.state.request_focus;
+        let edit_field = match focus {
+            RequestFocus::Header(_) => self.state.header_edit_field,
+            RequestFocus::Param(_) => self.state.param_edit_field,
+            RequestFocus::Cookie(_) => self.state.cookie_edit_field,
+            RequestFocus::Url => 0,
+        };
+        let text = self.get_request_field_text();
+        let cursor = self.get_request_cursor();
+        self.state.request_undo_stack.push((focus, edit_field, text, cursor));
+        self.state.request_redo_stack.clear();
+        if self.state.request_undo_stack.len() > 100 {
+            self.state.request_undo_stack.remove(0);
+        }
+    }
+
+    /// Restore a request field from an undo/redo snapshot.
+    fn set_request_field_text(&mut self, focus: RequestFocus, edit_field: u8, text: String) {
+        match focus {
+            RequestFocus::Url => self.state.current_request.url = text,
+            RequestFocus::Header(idx) => {
+                if let Some(h) = self.state.current_request.headers.get_mut(idx) {
+                    if edit_field == 0 { h.name = text; } else { h.value = text; }
+                }
+            }
+            RequestFocus::Param(idx) => {
+                if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
+                    if edit_field == 0 { p.key = text; } else { p.value = text; }
+                }
+            }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                    if edit_field == 0 { c.name = text; } else { c.value = text; }
+                }
+            }
         }
     }
 
@@ -1785,8 +1877,8 @@ impl App {
         }
     }
 
-    fn body_word_forward(&mut self) {
-        let (text, cursor_row, cursor_col) = match self.state.active_panel {
+    fn body_cursor_ptrs(&mut self) -> (String, *mut usize, *mut usize) {
+        match self.state.active_panel {
             Panel::Response => {
                 let t = self.get_response_body_text();
                 (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
@@ -1795,15 +1887,27 @@ impl App {
                 let t = self.state.current_request.body.as_deref().unwrap_or("").to_string();
                 (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
             }
-        };
+        }
+    }
+
+    fn body_word_forward(&mut self) {
+        let (text, cursor_row, cursor_col) = self.body_cursor_ptrs();
         let lines: Vec<&str> = text.lines().collect();
-        // SAFETY: we're just using raw pointers to avoid borrow issues within the same struct
+        // SAFETY: raw pointers to avoid borrow issues within the same struct
         unsafe {
             if let Some(line) = lines.get(*cursor_row) {
                 let bytes = line.as_bytes();
                 let mut col = *cursor_col;
-                while col < bytes.len() && !bytes[col].is_ascii_whitespace() { col += 1; }
-                while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+                if col < bytes.len() {
+                    // Skip current word class
+                    if is_word_char(bytes[col]) {
+                        while col < bytes.len() && is_word_char(bytes[col]) { col += 1; }
+                    } else if is_punct_char(bytes[col]) {
+                        while col < bytes.len() && is_punct_char(bytes[col]) { col += 1; }
+                    }
+                    // Skip whitespace
+                    while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+                }
                 if col >= bytes.len() && *cursor_row + 1 < lines.len() {
                     *cursor_row += 1;
                     *cursor_col = 0;
@@ -1815,16 +1919,7 @@ impl App {
     }
 
     fn body_word_backward(&mut self) {
-        let (text, cursor_row, cursor_col) = match self.state.active_panel {
-            Panel::Response => {
-                let t = self.get_response_body_text();
-                (t, &mut self.state.resp_cursor_row as *mut usize, &mut self.state.resp_cursor_col as *mut usize)
-            }
-            _ => {
-                let t = self.state.current_request.body.as_deref().unwrap_or("").to_string();
-                (t, &mut self.state.body_cursor_row as *mut usize, &mut self.state.body_cursor_col as *mut usize)
-            }
-        };
+        let (text, cursor_row, cursor_col) = self.body_cursor_ptrs();
         let lines: Vec<&str> = text.lines().collect();
         unsafe {
             if let Some(line) = lines.get(*cursor_row) {
@@ -1838,8 +1933,57 @@ impl App {
                     return;
                 }
                 col = col.saturating_sub(1);
+                // Skip whitespace backwards
                 while col > 0 && bytes[col].is_ascii_whitespace() { col -= 1; }
-                while col > 0 && !bytes[col - 1].is_ascii_whitespace() { col -= 1; }
+                // Skip current word class backwards
+                if col > 0 && is_word_char(bytes[col]) {
+                    while col > 0 && is_word_char(bytes[col - 1]) { col -= 1; }
+                } else if col > 0 && is_punct_char(bytes[col]) {
+                    while col > 0 && is_punct_char(bytes[col - 1]) { col -= 1; }
+                }
+                *cursor_col = col;
+            }
+        }
+    }
+
+    fn body_word_end(&mut self) {
+        let (text, cursor_row, cursor_col) = self.body_cursor_ptrs();
+        let lines: Vec<&str> = text.lines().collect();
+        unsafe {
+            if let Some(line) = lines.get(*cursor_row) {
+                let bytes = line.as_bytes();
+                let mut col = *cursor_col;
+                if col + 1 >= bytes.len() {
+                    // At or past end of line, move to next line
+                    if *cursor_row + 1 < lines.len() {
+                        *cursor_row += 1;
+                        let next_line = lines[*cursor_row].as_bytes();
+                        let mut c = 0;
+                        // Skip whitespace at start of next line
+                        while c < next_line.len() && next_line[c].is_ascii_whitespace() { c += 1; }
+                        // Skip word class to find end
+                        if c < next_line.len() && is_word_char(next_line[c]) {
+                            while c + 1 < next_line.len() && is_word_char(next_line[c + 1]) { c += 1; }
+                        } else if c < next_line.len() && is_punct_char(next_line[c]) {
+                            while c + 1 < next_line.len() && is_punct_char(next_line[c + 1]) { c += 1; }
+                        }
+                        *cursor_col = c;
+                    }
+                    return;
+                }
+                col += 1;
+                // Skip whitespace
+                while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+                if col >= bytes.len() {
+                    *cursor_col = bytes.len().saturating_sub(1);
+                    return;
+                }
+                // Skip word class to find end
+                if is_word_char(bytes[col]) {
+                    while col + 1 < bytes.len() && is_word_char(bytes[col + 1]) { col += 1; }
+                } else if is_punct_char(bytes[col]) {
+                    while col + 1 < bytes.len() && is_punct_char(bytes[col + 1]) { col += 1; }
+                }
                 *cursor_col = col;
             }
         }
@@ -2013,10 +2157,14 @@ impl App {
         let text = self.get_request_field_text();
         let bytes = text.as_bytes();
         let mut col = self.get_request_cursor();
-        // Skip non-whitespace
-        while col < bytes.len() && !bytes[col].is_ascii_whitespace() { col += 1; }
-        // Skip whitespace
-        while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+        if col < bytes.len() {
+            if is_word_char(bytes[col]) {
+                while col < bytes.len() && is_word_char(bytes[col]) { col += 1; }
+            } else if is_punct_char(bytes[col]) {
+                while col < bytes.len() && is_punct_char(bytes[col]) { col += 1; }
+            }
+            while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+        }
         self.set_request_cursor(col.min(bytes.len()));
     }
 
@@ -2026,10 +2174,31 @@ impl App {
         let mut col = self.get_request_cursor();
         if col == 0 { return; }
         col = col.saturating_sub(1);
-        // Skip whitespace
         while col > 0 && bytes[col].is_ascii_whitespace() { col -= 1; }
-        // Skip non-whitespace
-        while col > 0 && !bytes[col - 1].is_ascii_whitespace() { col -= 1; }
+        if col > 0 && is_word_char(bytes[col]) {
+            while col > 0 && is_word_char(bytes[col - 1]) { col -= 1; }
+        } else if col > 0 && is_punct_char(bytes[col]) {
+            while col > 0 && is_punct_char(bytes[col - 1]) { col -= 1; }
+        }
+        self.set_request_cursor(col);
+    }
+
+    fn request_word_end(&mut self) {
+        let text = self.get_request_field_text();
+        let bytes = text.as_bytes();
+        let mut col = self.get_request_cursor();
+        if col + 1 >= bytes.len() { return; }
+        col += 1;
+        while col < bytes.len() && bytes[col].is_ascii_whitespace() { col += 1; }
+        if col >= bytes.len() {
+            self.set_request_cursor(bytes.len().saturating_sub(1));
+            return;
+        }
+        if is_word_char(bytes[col]) {
+            while col + 1 < bytes.len() && is_word_char(bytes[col + 1]) { col += 1; }
+        } else if is_punct_char(bytes[col]) {
+            while col + 1 < bytes.len() && is_punct_char(bytes[col + 1]) { col += 1; }
+        }
         self.set_request_cursor(col);
     }
 
@@ -2576,6 +2745,10 @@ impl App {
         }
     }
 }
+
+// Vim word-class helpers
+fn is_word_char(b: u8) -> bool { b.is_ascii_alphanumeric() || b == b'_' }
+fn is_punct_char(b: u8) -> bool { !b.is_ascii_whitespace() && !is_word_char(b) }
 
 fn row_col_to_offset(text: &str, row: usize, col: usize) -> usize {
     let mut offset = 0;
