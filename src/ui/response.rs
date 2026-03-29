@@ -442,7 +442,7 @@ fn render_type_editor(
     let text_lines: Vec<&str> = if text.is_empty() { vec![""] } else { text.lines().collect() };
     let total_lines = text_lines.len();
     let visible_height = type_area.height as usize;
-    let scroll = state.type_scroll.min(total_lines.saturating_sub(visible_height));
+    let scroll = (state.type_buf.scroll.0 as usize).min(total_lines.saturating_sub(visible_height));
 
     let gutter_width: u16 = 4;
     let text_area_x = type_area.x + gutter_width;
@@ -458,7 +458,7 @@ fn render_type_editor(
         let y = type_area.y + vi as u16;
 
         // Gutter (line number)
-        let is_cursor_line = is_focused && line_idx == state.type_cursor_row;
+        let is_cursor_line = is_focused && line_idx == state.type_buf.cursor_row;
         let gutter_style = if is_cursor_line {
             Style::default().fg(t.gutter_active)
         } else {
@@ -477,8 +477,8 @@ fn render_type_editor(
         frame.render_widget(Paragraph::new(colored_line), line_area);
 
         // Cursor rendering
-        if is_focused && line_idx == state.type_cursor_row {
-            let col = state.type_cursor_col;
+        if is_focused && line_idx == state.type_buf.cursor_row {
+            let col = state.type_buf.cursor_col;
             if col < text_area_width as usize {
                 let cursor_x = text_area_x + col as u16;
                 if is_insert {

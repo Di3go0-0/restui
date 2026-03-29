@@ -1,4 +1,4 @@
-use crate::state::{InputMode, Panel, ResponseTab};
+use crate::state::{Panel, ResponseTab};
 
 use super::App;
 
@@ -13,7 +13,7 @@ impl App {
             Panel::Body => self.body_cursor_down(),
             Panel::Response => {
                 if self.state.response_tab == ResponseTab::Type {
-                    self.state.type_scroll = self.state.type_scroll.saturating_add(1);
+                    self.state.type_buf.scroll.0 = self.state.type_buf.scroll.0.saturating_add(1);
                 } else {
                     self.resp_cursor_down();
                 }
@@ -31,7 +31,7 @@ impl App {
             Panel::Body => self.body_cursor_up(),
             Panel::Response => {
                 if self.state.response_tab == ResponseTab::Type {
-                    self.state.type_scroll = self.state.type_scroll.saturating_sub(1);
+                    self.state.type_buf.scroll.0 = self.state.type_buf.scroll.0.saturating_sub(1);
                 } else {
                     self.resp_cursor_up();
                 }
@@ -192,30 +192,16 @@ impl App {
     }
 
     pub(super) fn type_cursor_up(&mut self) {
-        if self.state.type_cursor_row > 0 {
-            self.state.type_cursor_row -= 1;
-            let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-            let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
-            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
-            self.state.type_cursor_col = self.state.type_cursor_col.min(max);
-        }
-        if self.state.type_cursor_row < self.state.type_scroll {
-            self.state.type_scroll = self.state.type_cursor_row;
-        }
+        let mode = self.state.mode;
+        let text = &self.state.response_type_text;
+        self.state.type_buf.move_up(text, mode);
+        self.state.type_buf.sync_scroll();
     }
 
     pub(super) fn type_cursor_down(&mut self) {
-        let line_count = self.state.response_type_text.lines().count().max(1);
-        if self.state.type_cursor_row + 1 < line_count {
-            self.state.type_cursor_row += 1;
-            let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-            let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
-            let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
-            self.state.type_cursor_col = self.state.type_cursor_col.min(max);
-        }
-        let visible = self.state.resp_visible_height as usize;
-        if visible > 0 && self.state.type_cursor_row >= self.state.type_scroll + visible {
-            self.state.type_scroll = self.state.type_cursor_row.saturating_sub(visible - 1);
-        }
+        let mode = self.state.mode;
+        let text = &self.state.response_type_text;
+        self.state.type_buf.move_down(text, mode);
+        self.state.type_buf.sync_scroll();
     }
 }

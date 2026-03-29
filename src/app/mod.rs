@@ -300,6 +300,7 @@ impl App {
                         self.state.request_field_editing = true;
                     }
                     Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
                         self.state.mode = InputMode::Insert;
                     }
                     _ => {}
@@ -317,6 +318,11 @@ impl App {
                         self.state.mode = InputMode::Insert;
                         self.state.request_field_editing = true;
                         self.set_request_cursor(0);
+                    }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        self.state.type_buf.home();
+                        self.state.mode = InputMode::Insert;
                     }
                     _ => {}
                 }
@@ -339,6 +345,12 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor((cursor + 1).min(len));
                     }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        let text = &self.state.response_type_text;
+                        self.state.type_buf.move_right(text, InputMode::Normal);
+                        self.state.mode = InputMode::Insert;
+                    }
                     _ => {}
                 }
             }
@@ -359,11 +371,23 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor(len);
                     }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.type_buf.push_undo(&self.state.response_type_text);
+                        let text = &self.state.response_type_text;
+                        self.state.type_buf.end(text, InputMode::Insert);
+                        self.state.mode = InputMode::Insert;
+                    }
                     _ => {}
                 }
             }
             Action::OpenLineBelow => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    self.state.type_buf.open_line_below(&mut self.state.response_type_text);
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                    self.state.type_buf.sync_scroll();
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
@@ -385,7 +409,13 @@ impl App {
                 }
             }
             Action::OpenLineAbove => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    self.state.type_buf.open_line_above(&mut self.state.response_type_text);
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                    self.state.type_buf.sync_scroll();
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let line_start = row_col_to_offset(body, self.state.body_cursor_row, 0);
@@ -424,9 +454,9 @@ impl App {
                     Panel::Response if self.state.response_tab == ResponseTab::Type => {
                         // Clamp cursor for type editor
                         let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                        let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                        let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                         if line_len > 0 {
-                            self.state.type_cursor_col = self.state.type_cursor_col.min(line_len - 1);
+                            self.state.type_buf.cursor_col = self.state.type_buf.cursor_col.min(line_len - 1);
                         }
                         // Validate after editing
                         self.validate_response_type();
@@ -453,6 +483,10 @@ impl App {
                         self.state.mode = InputMode::Visual;
                         self.state.visual_anchor_row = self.state.body_cursor_row;
                         self.state.visual_anchor_col = self.state.body_cursor_col;
+                    }
+                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                        self.state.mode = InputMode::Visual;
+                        self.state.type_buf.start_visual();
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::Visual;
@@ -884,11 +918,15 @@ impl App {
             Action::InlineCursorEnd => self.inline_cursor_end(),
             Action::InlineTab => self.inline_tab(),
 
-            // === Body/Request Vim Motions ===
+            // === Body/Request/Type Vim Motions ===
             Action::BodyWordForward => {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_forward();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                        let text = &self.state.response_type_text;
+                        self.state.type_buf.word_forward(text);
+                        self.state.type_buf.sync_scroll();
                     } else {
                         self.body_word_forward();
                     }
@@ -898,6 +936,10 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_backward();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                        let text = &self.state.response_type_text;
+                        self.state.type_buf.word_backward(text);
+                        self.state.type_buf.sync_scroll();
                     } else {
                         self.body_word_backward();
                     }
@@ -907,6 +949,10 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_end();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                        let text = &self.state.response_type_text;
+                        self.state.type_buf.word_end(text);
+                        self.state.type_buf.sync_scroll();
                     } else {
                         self.body_word_end();
                     }
@@ -915,6 +961,8 @@ impl App {
             Action::BodyLineHome => {
                 if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.set_request_cursor(0);
+                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.home();
                 } else {
                     self.state.body_cursor_col = 0;
                 }
@@ -1064,6 +1112,14 @@ impl App {
                             self.state.set_status("Line deleted");
                         }
                     }
+                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let yanked = self.state.type_buf.delete_line(&mut self.state.response_type_text);
+                    self.state.yank_buffer = format!("{}\n", yanked);
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.state.response_type_locked = true;
+                    self.state.type_buf.sync_scroll();
+                    self.state.set_status("Line deleted");
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     // dd in request field edit: clear the field
                     self.push_request_undo();
@@ -1076,7 +1132,11 @@ impl App {
                 }
             }
             Action::DeleteCharUnderCursor => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    self.state.type_buf.delete_char(&mut self.state.response_type_text);
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
@@ -1097,7 +1157,11 @@ impl App {
             }
             Action::ReplaceChar(c) => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    self.state.type_buf.replace_char(&mut self.state.response_type_text, c);
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
@@ -1116,7 +1180,14 @@ impl App {
             }
             Action::ChangeLine => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let yanked = self.state.type_buf.change_line(&mut self.state.response_type_text);
+                    self.state.yank_buffer = yanked;
+                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let bt = self.state.body_type; let body = match bt { BodyType::Json => self.state.current_request.body_json.get_or_insert_with(String::new), BodyType::Xml => self.state.current_request.body_xml.get_or_insert_with(String::new), BodyType::FormUrlEncoded => self.state.current_request.body_form.get_or_insert_with(String::new), BodyType::Plain => self.state.current_request.body_raw.get_or_insert_with(String::new) };
                     let lines: Vec<&str> = body.lines().collect();
@@ -1502,7 +1573,14 @@ impl App {
                 }
             }
             Action::Undo => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    if self.state.type_buf.undo(&mut self.state.response_type_text) {
+                        self.state.response_type_locked = true;
+                        self.state.set_status("Undo");
+                    } else {
+                        self.state.set_status("Already at oldest change");
+                    }
+                } else if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
                         let current_body = self.active_body().to_string();
                         self.state.body_redo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
@@ -1537,7 +1615,14 @@ impl App {
                 }
             }
             Action::Redo => {
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    if self.state.type_buf.redo(&mut self.state.response_type_text) {
+                        self.state.response_type_locked = true;
+                        self.state.set_status("Redo");
+                    } else {
+                        self.state.set_status("Already at newest change");
+                    }
+                } else if self.state.active_panel == Panel::Body {
                     if let Some((snapshot, row, col)) = self.state.body_redo_stack.pop() {
                         let current_body = self.active_body().to_string();
                         self.state.body_undo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
@@ -1628,8 +1713,8 @@ impl App {
                     }
                 }
                 self.state.type_validation_errors.clear();
-                self.state.type_cursor_row = 0;
-                self.state.type_cursor_col = 0;
+                self.state.type_buf.cursor_row = 0;
+                self.state.type_buf.cursor_col = 0;
                 self.state.set_status("Type regenerated from response");
             }
 
@@ -1669,7 +1754,7 @@ impl App {
                         self.state.response_type = None;
                     }
                 }
-                self.state.type_scroll = 0;
+                self.state.type_buf.scroll.0 = 0;
 
                 // Auto-generate type text (unless user has locked it)
                 if !self.state.response_type_locked {
@@ -2716,9 +2801,9 @@ impl App {
             },
             Panel::Response if self.state.response_tab == ResponseTab::Type => {
                 let text = &mut self.state.response_type_text;
-                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 text.insert(pos, c);
-                self.state.type_cursor_col += 1;
+                self.state.type_buf.cursor_col += 1;
                 self.state.response_type_locked = true;
             }
             _ => {}
@@ -3050,18 +3135,18 @@ impl App {
             },
             Panel::Response if self.state.response_tab == ResponseTab::Type => {
                 let text = &mut self.state.response_type_text;
-                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 if pos > 0 {
                     let ch = text.as_bytes()[pos - 1];
                     text.remove(pos - 1);
                     if ch == b'\n' {
-                        if self.state.type_cursor_row > 0 {
-                            self.state.type_cursor_row -= 1;
+                        if self.state.type_buf.cursor_row > 0 {
+                            self.state.type_buf.cursor_row -= 1;
                             let lines: Vec<&str> = text.lines().collect();
-                            self.state.type_cursor_col = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.type_buf.cursor_col = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                         }
                     } else {
-                        self.state.type_cursor_col = self.state.type_cursor_col.saturating_sub(1);
+                        self.state.type_buf.cursor_col = self.state.type_buf.cursor_col.saturating_sub(1);
                     }
                     self.state.response_type_locked = true;
                 }
@@ -3110,7 +3195,7 @@ impl App {
             },
             Panel::Response if self.state.response_tab == ResponseTab::Type => {
                 let text = &mut self.state.response_type_text;
-                let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+                let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 if pos < text.len() {
                     text.remove(pos);
                     self.state.response_type_locked = true;
@@ -3123,10 +3208,10 @@ impl App {
     fn inline_newline(&mut self) {
         if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
             let text = &mut self.state.response_type_text;
-            let pos = row_col_to_offset(text, self.state.type_cursor_row, self.state.type_cursor_col);
+            let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
 
             let lines: Vec<&str> = text.lines().collect();
-            let current_line = lines.get(self.state.type_cursor_row).copied().unwrap_or("");
+            let current_line = lines.get(self.state.type_buf.cursor_row).copied().unwrap_or("");
             let leading_ws: String = current_line.chars().take_while(|c| c.is_whitespace()).collect();
 
             let char_before = if pos > 0 { text.as_bytes().get(pos - 1).copied() } else { None };
@@ -3137,8 +3222,8 @@ impl App {
 
             let indent = format!("\n{}{}", leading_ws, extra_indent);
             text.insert_str(pos, &indent);
-            self.state.type_cursor_row += 1;
-            self.state.type_cursor_col = leading_ws.len() + extra_indent.len();
+            self.state.type_buf.cursor_row += 1;
+            self.state.type_buf.cursor_col = leading_ws.len() + extra_indent.len();
             self.state.response_type_locked = true;
             return;
         }
@@ -3185,12 +3270,12 @@ impl App {
                 RequestFocus::PathParam(_) => { self.state.path_param_edit_cursor = self.state.path_param_edit_cursor.saturating_sub(1); }
             },
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
-                if self.state.type_cursor_col > 0 {
-                    self.state.type_cursor_col -= 1;
-                } else if self.state.type_cursor_row > 0 {
-                    self.state.type_cursor_row -= 1;
+                if self.state.type_buf.cursor_col > 0 {
+                    self.state.type_buf.cursor_col -= 1;
+                } else if self.state.type_buf.cursor_row > 0 {
+                    self.state.type_buf.cursor_row -= 1;
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    self.state.type_cursor_col = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
+                    self.state.type_buf.cursor_col = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 }
             }
             Panel::Response => {
@@ -3232,12 +3317,12 @@ impl App {
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
                 let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
-                if self.state.type_cursor_col < line_len {
-                    self.state.type_cursor_col += 1;
-                } else if self.state.type_cursor_row + 1 < lines.len() {
-                    self.state.type_cursor_row += 1;
-                    self.state.type_cursor_col = 0;
+                let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                if self.state.type_buf.cursor_col < line_len {
+                    self.state.type_buf.cursor_col += 1;
+                } else if self.state.type_buf.cursor_row + 1 < lines.len() {
+                    self.state.type_buf.cursor_row += 1;
+                    self.state.type_buf.cursor_col = 0;
                 }
             }
             Panel::Response => {
@@ -3288,7 +3373,7 @@ impl App {
         match self.state.active_panel {
             Panel::Body => { self.state.body_cursor_col = 0; self.sync_body_hscroll(); },
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
-                self.state.type_cursor_col = 0;
+                self.state.type_buf.cursor_col = 0;
             },
             Panel::Response => { self.state.resp_cursor_col = 0; self.sync_resp_hscroll(); },
             Panel::Request => match self.state.request_focus {
@@ -3314,8 +3399,8 @@ impl App {
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
                 let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                let line_len = lines.get(self.state.type_cursor_row).map(|l| l.len()).unwrap_or(0);
-                self.state.type_cursor_col = line_len;
+                let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
+                self.state.type_buf.cursor_col = line_len;
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
@@ -3972,6 +4057,10 @@ impl App {
                     }
                 }
             }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let text = &self.state.response_type_text;
+                self.state.type_buf.find_char_forward(text, target, before);
+            }
             Panel::Response => {
                 let text = self.get_response_body_text();
                 let lines: Vec<&str> = text.lines().collect();
@@ -4022,6 +4111,10 @@ impl App {
                         }
                     }
                 }
+            }
+            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                let text = &self.state.response_type_text;
+                self.state.type_buf.find_char_backward(text, target, after);
             }
             Panel::Response => {
                 let text = self.get_response_body_text();

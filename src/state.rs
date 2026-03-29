@@ -8,6 +8,7 @@ use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::request::Request;
 use crate::model::response::Response;
+use crate::vim_buffer::VimBuffer;
 
 // ── Application-wide constants ──────────────────────────────────────────────
 pub const RESPONSE_CACHE_MAX: usize = 50;
@@ -461,12 +462,10 @@ pub struct AppState {
     // Response type inference
     pub response_type: Option<crate::model::response_type::JsonType>,
     pub response_tab: ResponseTab,
-    pub type_scroll: usize,
     pub response_type_text: String,
     pub response_type_locked: bool,
-    pub type_cursor_row: usize,
-    pub type_cursor_col: usize,
     pub type_validation_errors: Vec<String>,
+    pub type_buf: VimBuffer,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -557,12 +556,10 @@ impl AppState {
             collections_filter_active: false,
             response_type: None,
             response_tab: ResponseTab::Body,
-            type_scroll: 0,
             response_type_text: String::new(),
             response_type_locked: false,
-            type_cursor_row: 0,
-            type_cursor_col: 0,
             type_validation_errors: Vec::new(),
+            type_buf: VimBuffer::default(),
             matched_bracket: None,
             count_prefix: None,
             should_quit: false,

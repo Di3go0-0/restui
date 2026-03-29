@@ -55,7 +55,7 @@ impl Default for VimBuffer {
 impl VimBuffer {
     // ── Cursor movement ─────────────────────────────────────────────────
 
-    pub fn move_left(&mut self, _text: &str, _mode: InputMode) {
+    pub fn move_left(&mut self, _text: &str, mode: InputMode) {
         if self.cursor_col > 0 {
             self.cursor_col -= 1;
         } else if mode == InputMode::Normal && self.cursor_row > 0 {
