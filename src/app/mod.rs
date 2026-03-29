@@ -17,6 +17,7 @@ use crate::parser;
 use crate::state::{AppState, BodyType, ChainAutocomplete, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, UNDO_STACK_MAX, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
 use crate::tui::Tui;
 use crate::ui;
+use crate::vim_buffer::row_col_to_offset as vim_row_col_to_offset;
 use crossterm::cursor::SetCursorStyle;
 
 pub struct App {
@@ -1244,7 +1245,23 @@ impl App {
             }
             Action::ChangeWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        let deleted = &line[col..end_col];
+                        self.state.yank_buffer = deleted.to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
+                        self.state.response_type_text.drain(start..end);
+                    }
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
@@ -1294,7 +1311,24 @@ impl App {
             }
             Action::ChangeWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
+                        let deleted = &line[start_col..col];
+                        self.state.yank_buffer = deleted.to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, start_col);
+                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, col);
+                        self.state.response_type_text.drain(start..end);
+                        self.state.type_buf.cursor_col = start_col;
+                    }
+                    self.state.response_type_locked = true;
+                    self.state.mode = InputMode::Insert;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
@@ -1411,7 +1445,21 @@ impl App {
             }
             Action::DeleteWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
+                        self.state.response_type_text.drain(start..end);
+                    }
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
@@ -1462,7 +1510,21 @@ impl App {
             }
             Action::DeleteWordEnd => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
+                        self.state.response_type_text.drain(start..end);
+                    }
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
@@ -1526,7 +1588,22 @@ impl App {
             }
             Action::DeleteWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    self.state.type_buf.push_undo(&self.state.response_type_text);
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
+                        self.state.yank_buffer = line[start_col..col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, start_col);
+                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, col);
+                        self.state.response_type_text.drain(start..end);
+                        self.state.type_buf.cursor_col = start_col;
+                    }
+                    self.state.response_type_locked = true;
+                } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
                     let lines: Vec<&str> = body_text.lines().collect();
@@ -1575,7 +1652,17 @@ impl App {
             }
             Action::YankWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Body {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
+                    let row = self.state.type_buf.cursor_row;
+                    let col = self.state.type_buf.cursor_col;
+                    if let Some(line) = lines.get(row) {
+                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        self.state.yank_buffer = line[col..end_col].to_string();
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.state.set_status("Yanked word");
+                    }
+                } else if self.state.active_panel == Panel::Body {
                     let body = self.state.current_request.get_body(self.state.body_type);
                     let lines: Vec<&str> = body.lines().collect();
                     let row = self.state.body_buf.cursor_row;
