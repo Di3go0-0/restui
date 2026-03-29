@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::Action;
-use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus};
+use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 0. Command Palette consumes all input when open
@@ -72,8 +72,6 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
         KeyCode::Char('r') => return Some(Action::ExecuteRequest),
-        KeyCode::Char(']') => return Some(Action::NextMethod),
-        KeyCode::Char('[') => return Some(Action::PrevMethod),
         KeyCode::Char('T') => return Some(Action::CycleTheme),
         KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
         _ => {}
@@ -110,6 +108,15 @@ fn map_command_palette_key(key: KeyEvent) -> Option<Action> {
 }
 
 fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    // Ctrl+N / Ctrl+P for cmp-style navigation in all overlays
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return match key.code {
+            KeyCode::Char('n') | KeyCode::Char('j') => Some(Action::OverlayDown),
+            KeyCode::Char('p') | KeyCode::Char('k') => Some(Action::OverlayUp),
+            _ => None,
+        };
+    }
+
     match &state.overlay {
         Some(Overlay::HeaderAutocomplete { .. }) => match key.code {
             KeyCode::Esc => Some(Action::CloseOverlay),
@@ -175,6 +182,9 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 RequestFocus::Header(_) if state.header_edit_field == 0 => {
                     Some(Action::InlineTab)
                 }
+                RequestFocus::Param(_) if state.param_edit_field == 0 => {
+                    Some(Action::InlineTab)
+                }
                 _ => Some(Action::ExitInsertMode),
             },
             _ => Some(Action::ExitInsertMode),
@@ -217,6 +227,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
         ('d', KeyCode::Char('d')) => match state.active_panel {
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) => Some(Action::DeleteHeader),
+                RequestFocus::Param(_) => Some(Action::DeleteParam),
                 _ => None,
             },
             Panel::Body => Some(Action::YankLine),
@@ -251,12 +262,22 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     match key.code {
         KeyCode::Char('j') | KeyCode::Down => Some(Action::RequestFocusDown),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::RequestFocusUp),
+        KeyCode::Char(']') => Some(Action::NextMethod),
+        KeyCode::Char('[') => Some(Action::PrevMethod),
+        KeyCode::Char('}') => Some(Action::RequestNextTab),
+        KeyCode::Char('{') => Some(Action::RequestPrevTab),
+        KeyCode::Char(' ') => Some(Action::ToggleItemEnabled),
         KeyCode::Char('i') | KeyCode::Char('e') => Some(Action::EnterInsertMode),
-        KeyCode::Char('a') => Some(Action::AddHeader),
+        KeyCode::Char('a') => match state.request_tab {
+            RequestTab::Headers => Some(Action::AddHeader),
+            RequestTab::Params => Some(Action::AddParam),
+            _ => None,
+        },
         KeyCode::Char('A') => Some(Action::ShowHeaderAutocomplete),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('x') => match state.request_focus {
             RequestFocus::Header(_) => Some(Action::DeleteHeader),
+            RequestFocus::Param(_) => Some(Action::DeleteParam),
             _ => None,
         },
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
