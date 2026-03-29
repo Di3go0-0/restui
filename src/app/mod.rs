@@ -2880,14 +2880,17 @@ impl App {
         if !has_path {
             // Suggest request names matching prefix
             let prefix = request_name_raw.to_lowercase();
+            let prefix_len = request_name_raw.len();
             let mut items: Vec<(String, String)> = Vec::new();
             for coll in &self.state.collections {
                 for req in &coll.requests {
                     if let Some(ref name) = req.name {
                         if name.to_lowercase().starts_with(&prefix) || prefix.is_empty() {
+                            // insert_text is only the suffix (what's missing after what the user already typed)
+                            let suffix = &name[prefix_len..];
                             items.push((
                                 format!("{} ({})", name, coll.name),
-                                name.clone(),
+                                suffix.to_string(),
                             ));
                         }
                     }
@@ -2950,15 +2953,18 @@ impl App {
             // Build suggestions from current_type's fields
             let mut items: Vec<(String, String)> = Vec::new();
 
+            let prefix_len = current_prefix.len();
             match &current_type {
                 crate::model::response_type::JsonType::Object(fields) => {
                     let prefix_lower = current_prefix.to_lowercase();
                     for (key, val_type) in fields {
                         if key.to_lowercase().starts_with(&prefix_lower) || current_prefix.is_empty() {
                             let type_label = val_type.label();
+                            // insert_text is only the suffix
+                            let suffix = &key[prefix_len..];
                             items.push((
                                 format!("{}: {}", key, type_label),
-                                key.clone(),
+                                suffix.to_string(),
                             ));
                         }
                     }
