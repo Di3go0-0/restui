@@ -182,6 +182,7 @@ impl App {
             Action::EnterInsertMode => {
                 match self.state.active_panel {
                     Panel::Body => {
+                        self.push_body_undo();
                         self.state.mode = InputMode::Insert;
                         self.position_body_cursor_at_end();
                     }
@@ -194,13 +195,27 @@ impl App {
             }
             Action::EnterInsertModeStart => {
                 if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
                     self.state.mode = InputMode::Insert;
                     self.state.body_cursor_col = 0;
                 }
             }
             Action::EnterAppendMode => {
                 if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
                     self.state.mode = InputMode::Insert;
+                    // 'a' — move cursor one right (append after cursor)
+                    let body = self.state.current_request.body.as_deref().unwrap_or("");
+                    let lines: Vec<&str> = body.lines().collect();
+                    let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                    self.state.body_cursor_col = (self.state.body_cursor_col + 1).min(line_len);
+                }
+            }
+            Action::EnterAppendModeEnd => {
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    self.state.mode = InputMode::Insert;
+                    // 'A' — move cursor to end of line
                     let body = self.state.current_request.body.as_deref().unwrap_or("");
                     let lines: Vec<&str> = body.lines().collect();
                     let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
@@ -209,6 +224,7 @@ impl App {
             }
             Action::OpenLineBelow => {
                 if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
                     let body = self.state.current_request.body.get_or_insert_with(String::new);
                     let lines: Vec<&str> = body.lines().collect();
                     let line_end_offset = if self.state.body_cursor_row < lines.len() {
@@ -230,6 +246,7 @@ impl App {
             }
             Action::OpenLineAbove => {
                 if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
                     let body = self.state.current_request.body.get_or_insert_with(String::new);
                     let line_start = row_col_to_offset(body, self.state.body_cursor_row, 0);
                     body.insert(line_start, '\n');
@@ -255,6 +272,21 @@ impl App {
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::Visual;
+                        self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
+                        self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
+                    }
+                    _ => {}
+                }
+            }
+            Action::EnterVisualBlockMode => {
+                match self.state.active_panel {
+                    Panel::Body => {
+                        self.state.mode = InputMode::VisualBlock;
+                        self.state.visual_anchor_row = self.state.body_cursor_row;
+                        self.state.visual_anchor_col = self.state.body_cursor_col;
+                    }
+                    Panel::Response => {
+                        self.state.mode = InputMode::VisualBlock;
                         self.state.resp_visual_anchor_row = self.state.resp_cursor_row;
                         self.state.resp_visual_anchor_col = self.state.resp_cursor_col;
                     }
@@ -607,74 +639,167 @@ impl App {
 
             // === Visual Mode ===
             Action::VisualYank => {
+                let is_block = self.state.mode == InputMode::VisualBlock;
                 let text = match self.state.active_panel {
+                    Panel::Body if is_block => Some(self.get_block_selection()),
                     Panel::Body => Some(self.get_visual_selection()),
+                    Panel::Response if is_block => Some(self.get_response_block_selection()),
                     Panel::Response => Some(self.get_response_visual_selection()),
                     _ => None,
                 };
                 if let Some(text) = text {
                     self.state.yank_buffer = text.clone();
-                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                        let _ = clipboard.set_text(&text);
+                    match crate::clipboard::copy_to_clipboard(&text) {
+                        Ok(()) => self.state.set_status("Yanked"),
+                        Err(e) => self.state.set_status(e),
                     }
                     self.state.mode = InputMode::Normal;
-                    self.state.set_status("Yanked");
                 }
             }
             Action::VisualDelete => {
                 if self.state.active_panel == Panel::Body {
-                    let text = self.get_visual_selection();
+                    let is_block = self.state.mode == InputMode::VisualBlock;
+                    let text = if is_block { self.get_block_selection() } else { self.get_visual_selection() };
                     self.state.yank_buffer = text;
-                    self.delete_visual_selection();
+                    self.push_body_undo();
+                    if is_block {
+                        self.delete_block_selection();
+                    } else {
+                        self.delete_visual_selection();
+                    }
                     self.state.mode = InputMode::Normal;
                 }
             }
             Action::Paste => {
                 if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
                     let paste = self.state.yank_buffer.clone();
                     self.paste_text_at_cursor(&paste);
                 }
             }
             Action::PasteFromClipboard => {
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    if let Ok(text) = clipboard.get_text() {
-                        if self.state.active_panel == Panel::Body {
-                            // Auto-format JSON if body type is JSON
-                            let text = if self.state.body_type == crate::state::BodyType::Json {
-                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    serde_json::to_string_pretty(&val).unwrap_or(text)
-                                } else {
-                                    text
-                                }
+                if let Ok(text) = crate::clipboard::read_clipboard() {
+                    if self.state.active_panel == Panel::Body {
+                        // Auto-format JSON if body type is JSON
+                        let text = if self.state.body_type == crate::state::BodyType::Json {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                                serde_json::to_string_pretty(&val).unwrap_or(text)
                             } else {
                                 text
-                            };
-                            // If body is empty, replace entirely
-                            if self.state.current_request.body.as_deref().unwrap_or("").is_empty() {
-                                self.state.current_request.body = Some(text.clone());
-                                self.state.body_cursor_row = 0;
-                                self.state.body_cursor_col = 0;
-                            } else {
-                                self.paste_text_at_cursor(&text);
                             }
-                            self.state.validate_body();
-                            self.state.set_status("Pasted from clipboard");
+                        } else {
+                            text
+                        };
+                        // If body is empty, replace entirely
+                        if self.state.current_request.body.as_deref().unwrap_or("").is_empty() {
+                            self.state.current_request.body = Some(text.clone());
+                            self.state.body_cursor_row = 0;
+                            self.state.body_cursor_col = 0;
+                        } else {
+                            self.paste_text_at_cursor(&text);
                         }
+                        self.state.validate_body();
+                        self.state.set_status("Pasted from clipboard");
                     }
                 }
             }
             Action::YankLine => {
+                self.state.pending_key = None;
+                match self.state.active_panel {
+                    Panel::Body => {
+                        let body = self.state.current_request.body.as_deref().unwrap_or("");
+                        let lines: Vec<&str> = body.lines().collect();
+                        if let Some(line) = lines.get(self.state.body_cursor_row) {
+                            let line_text = line.to_string();
+                            self.state.yank_buffer = format!("{}\n", line_text);
+                            let _ = crate::clipboard::copy_to_clipboard(&line_text);
+                            self.state.set_status("Yanked line");
+                        }
+                    }
+                    Panel::Response => {
+                        // yy on response: copy the current line
+                        let text = self.get_response_body_text();
+                        let lines: Vec<&str> = text.lines().collect();
+                        if let Some(line) = lines.get(self.state.resp_cursor_row) {
+                            let line_text = line.to_string();
+                            self.state.yank_buffer = format!("{}\n", line_text);
+                            let _ = crate::clipboard::copy_to_clipboard(&line_text);
+                            self.state.set_status("Yanked line");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::DeleteLine => {
                 self.state.pending_key = None;
                 if self.state.active_panel == Panel::Body {
                     let body = self.state.current_request.body.as_deref().unwrap_or("");
                     let lines: Vec<&str> = body.lines().collect();
                     if let Some(line) = lines.get(self.state.body_cursor_row) {
                         self.state.yank_buffer = format!("{}\n", line);
-                        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                            let _ = clipboard.set_text(&self.state.yank_buffer);
-                        }
+                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        self.push_body_undo();
                         self.delete_body_line(self.state.body_cursor_row);
                         self.state.set_status("Line deleted");
+                    }
+                }
+            }
+            Action::DeleteCharUnderCursor => {
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    if pos < body.len() {
+                        let ch = body.as_bytes()[pos];
+                        if ch != b'\n' {
+                            body.remove(pos);
+                            // Clamp cursor if at end of line now
+                            let lines: Vec<&str> = body.lines().collect();
+                            let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
+                            self.state.body_cursor_col = self.state.body_cursor_col.min(line_len.saturating_sub(1).max(0));
+                        }
+                    }
+                }
+            }
+            Action::ReplaceChar(c) => {
+                self.state.pending_key = None;
+                if self.state.active_panel == Panel::Body {
+                    self.push_body_undo();
+                    let body = self.state.current_request.body.get_or_insert_with(String::new);
+                    let pos = row_col_to_offset(body, self.state.body_cursor_row, self.state.body_cursor_col);
+                    if pos < body.len() && body.as_bytes()[pos] != b'\n' {
+                        body.remove(pos);
+                        body.insert(pos, c);
+                    }
+                }
+            }
+            Action::Undo => {
+                if self.state.active_panel == Panel::Body {
+                    if let Some((snapshot, row, col)) = self.state.body_undo_stack.pop() {
+                        // Push current state to redo stack
+                        let current_body = self.state.current_request.body.clone().unwrap_or_default();
+                        self.state.body_redo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
+                        self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
+                        self.state.body_cursor_row = row;
+                        self.state.body_cursor_col = col;
+                        self.state.set_status("Undo");
+                    } else {
+                        self.state.set_status("Already at oldest change");
+                    }
+                }
+            }
+            Action::Redo => {
+                if self.state.active_panel == Panel::Body {
+                    if let Some((snapshot, row, col)) = self.state.body_redo_stack.pop() {
+                        // Push current state to undo stack
+                        let current_body = self.state.current_request.body.clone().unwrap_or_default();
+                        self.state.body_undo_stack.push((current_body, self.state.body_cursor_row, self.state.body_cursor_col));
+                        self.state.current_request.body = if snapshot.is_empty() { None } else { Some(snapshot) };
+                        self.state.body_cursor_row = row;
+                        self.state.body_cursor_col = col;
+                        self.state.set_status("Redo");
+                    } else {
+                        self.state.set_status("Already at newest change");
                     }
                 }
             }
@@ -712,6 +837,17 @@ impl App {
                 self.state.last_error = None;
                 let status = response.status;
                 let elapsed = response.elapsed_display();
+
+                // Cache response for request chaining
+                if let Some(ref name) = self.state.current_request.name {
+                    let collection_name = self.state.collections
+                        .get(self.state.active_collection)
+                        .map(|c| c.name.as_str())
+                        .unwrap_or("_");
+                    let key = format!("{}/{}", collection_name, name);
+                    self.state.response_cache.insert(key, ((*response).clone(), std::time::Instant::now()));
+                }
+
                 self.state.current_response = Some(*response);
                 self.state.response_scroll = (0, 0);
                 self.state.set_status(format!("{} - {}", status, elapsed));
@@ -924,18 +1060,18 @@ impl App {
             // === Clipboard ===
             Action::CopyResponseBody => {
                 if let Some(ref resp) = self.state.current_response {
-                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                        let _ = clipboard.set_text(resp.formatted_body());
-                        self.state.set_status("Response body copied");
+                    match crate::clipboard::copy_to_clipboard(&resp.formatted_body()) {
+                        Ok(()) => self.state.set_status("Response body copied"),
+                        Err(e) => self.state.set_status(e),
                     }
                 }
             }
             Action::CopyAsCurl => {
-                let resolved = self.resolve_request(&self.state.current_request);
+                let resolved = self.resolve_env_vars(&self.state.current_request);
                 let curl = http_client::to_curl(&resolved);
-                if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    let _ = clipboard.set_text(curl);
-                    self.state.set_status("Curl command copied");
+                match crate::clipboard::copy_to_clipboard(&curl) {
+                    Ok(()) => self.state.set_status("Curl command copied"),
+                    Err(e) => self.state.set_status(e),
                 }
             }
 
@@ -943,6 +1079,11 @@ impl App {
             Action::SetTheme(name) => {
                 self.state.theme = crate::theme::load_theme(&name);
                 self.state.set_status(format!("Theme: {}", self.state.theme.name));
+            }
+            Action::SetChainCacheTTL(secs) => {
+                self.state.config.general.chain_cache_ttl = secs;
+                self.state.response_cache.clear();
+                self.state.set_status(format!("Chain cache TTL: {}s", secs));
             }
 
             // === Command Palette ===
@@ -991,6 +1132,17 @@ impl App {
     }
 
     // === Helpers ===
+
+    /// Save a snapshot of the body for undo. Call before any body mutation.
+    fn push_body_undo(&mut self) {
+        let body = self.state.current_request.body.clone().unwrap_or_default();
+        self.state.body_undo_stack.push((body, self.state.body_cursor_row, self.state.body_cursor_col));
+        self.state.body_redo_stack.clear(); // new edit clears redo history
+        // Cap undo history at 100 entries
+        if self.state.body_undo_stack.len() > 100 {
+            self.state.body_undo_stack.remove(0);
+        }
+    }
 
     fn position_body_cursor_at_end(&mut self) {
         let body = self.state.current_request.body.get_or_insert_with(String::new);
@@ -1396,10 +1548,7 @@ impl App {
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
         }
-        // Scroll follow: keep cursor in viewport
-        if (self.state.body_cursor_row as u16) < self.state.body_scroll.0 {
-            self.state.body_scroll.0 = self.state.body_cursor_row as u16;
-        }
+        self.sync_body_scroll();
     }
 
     fn body_cursor_down(&mut self) {
@@ -1411,12 +1560,7 @@ impl App {
             let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.body_cursor_col = self.state.body_cursor_col.min(line_len);
         }
-        // Scroll follow: keep cursor in viewport
-        let visible = self.state.body_visible_height as usize;
-        let scroll = self.state.body_scroll.0 as usize;
-        if visible > 0 && self.state.body_cursor_row >= scroll + visible {
-            self.state.body_scroll.0 = (self.state.body_cursor_row - visible + 1) as u16;
-        }
+        self.sync_body_scroll();
     }
 
     fn inline_cursor_home(&mut self) {
@@ -1597,6 +1741,62 @@ impl App {
         if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) }
     }
 
+    /// Get block (rectangle) selection text from body — each line's column slice joined by newlines.
+    fn get_block_selection(&self) -> String {
+        let body = self.state.current_request.body.as_deref().unwrap_or("");
+        let lines: Vec<&str> = body.lines().collect();
+        let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
+        let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
+        let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
+        let mut result = Vec::new();
+        for row in min_row..=max_row {
+            if let Some(line) = lines.get(row) {
+                let start = min_col.min(line.len());
+                let end = max_col.min(line.len());
+                result.push(&line[start..end]);
+            }
+        }
+        result.join("\n")
+    }
+
+    /// Delete the block (rectangle) selection from body.
+    fn delete_block_selection(&mut self) {
+        let (ar, ac) = (self.state.visual_anchor_row, self.state.visual_anchor_col);
+        let (cr, cc) = (self.state.body_cursor_row, self.state.body_cursor_col);
+        let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
+
+        let body = self.state.current_request.body.get_or_insert_with(String::new);
+        let mut lines: Vec<String> = body.lines().map(|l| l.to_string()).collect();
+        for row in min_row..=max_row {
+            if let Some(line) = lines.get_mut(row) {
+                let start = min_col.min(line.len());
+                let end = max_col.min(line.len());
+                line.drain(start..end);
+            }
+        }
+        *body = lines.join("\n");
+        self.state.body_cursor_row = min_row;
+        self.state.body_cursor_col = min_col;
+    }
+
+    /// Get block selection from response (read-only, for yank).
+    fn get_response_block_selection(&self) -> String {
+        let body = self.get_response_body_text();
+        let lines: Vec<&str> = body.lines().collect();
+        let (ar, ac) = (self.state.resp_visual_anchor_row, self.state.resp_visual_anchor_col);
+        let (cr, cc) = (self.state.resp_cursor_row, self.state.resp_cursor_col);
+        let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
+        let mut result = Vec::new();
+        for row in min_row..=max_row {
+            if let Some(line) = lines.get(row) {
+                let start = min_col.min(line.len());
+                let end = max_col.min(line.len());
+                result.push(&line[start..end]);
+            }
+        }
+        result.join("\n")
+    }
+
     fn delete_body_line(&mut self, row: usize) {
         let body = self.state.current_request.body.get_or_insert_with(String::new);
         let mut lines: Vec<String> = body.lines().map(|l| l.to_string()).collect();
@@ -1616,7 +1816,27 @@ impl App {
         self.state.last_error = None;
         self.state.set_status("Sending request...");
 
-        let mut resolved = self.resolve_request(&self.state.current_request);
+        let mut resolved = self.resolve_env_vars(&self.state.current_request);
+
+        // Resolve chain references {{@request_name.json.path}}
+        let mut resolving_stack = Vec::new();
+        if let Some(ref name) = self.state.current_request.name {
+            let coll_name = self.state.collections
+                .get(self.state.active_collection)
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            resolving_stack.push(format!("{}/{}", coll_name, name));
+        }
+
+        match self.resolve_chains_in_request(&mut resolved, &mut resolving_stack).await {
+            Ok(()) => {}
+            Err(err) => {
+                self.state.request_in_flight = false;
+                self.state.last_error = Some(err.clone());
+                self.state.set_status(format!("Error: {}", err));
+                return;
+            }
+        }
 
         // Auto-inject Content-Type if body exists and no Content-Type header set
         let body_text = resolved.body.as_deref().unwrap_or("").trim();
@@ -1632,6 +1852,7 @@ impl App {
         }
 
         // Trim body — don't send empty
+        let body_text = resolved.body.as_deref().unwrap_or("").trim();
         if body_text.is_empty() {
             resolved.body = None;
         }
@@ -1647,7 +1868,7 @@ impl App {
         });
     }
 
-    fn resolve_request(&self, req: &Request) -> Request {
+    fn resolve_env_vars(&self, req: &Request) -> Request {
         let env = &self.state.environments;
         Request {
             name: req.name.clone(),
@@ -1660,6 +1881,204 @@ impl App {
             source_file: req.source_file.clone(),
             source_line: req.source_line,
         }
+    }
+
+    /// Resolve all `{{@...}}` chain references in a request's fields.
+    fn resolve_chains_in_request<'a>(
+        &'a mut self,
+        req: &'a mut Request,
+        resolving: &'a mut Vec<String>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + 'a>> {
+        Box::pin(async move {
+        use crate::model::chain::find_chain_refs;
+
+        // Check if any field has chain refs before doing work
+        let has_refs = |s: &str| !find_chain_refs(s).is_empty();
+        let need_resolve = has_refs(&req.url)
+            || req.headers.iter().any(|h| has_refs(&h.value))
+            || req.query_params.iter().any(|p| has_refs(&p.value))
+            || req.cookies.iter().any(|c| has_refs(&c.value))
+            || req.body.as_deref().map(|b| has_refs(b)).unwrap_or(false);
+
+        if !need_resolve {
+            return Ok(());
+        }
+
+        self.state.set_status("Resolving dependencies...");
+
+        req.url = self.resolve_chains_in_str(&req.url, resolving).await?;
+
+        for i in 0..req.headers.len() {
+            let val = req.headers[i].value.clone();
+            req.headers[i].value = self.resolve_chains_in_str(&val, resolving).await?;
+        }
+        for i in 0..req.query_params.len() {
+            let val = req.query_params[i].value.clone();
+            req.query_params[i].value = self.resolve_chains_in_str(&val, resolving).await?;
+        }
+        for i in 0..req.cookies.len() {
+            let val = req.cookies[i].value.clone();
+            req.cookies[i].value = self.resolve_chains_in_str(&val, resolving).await?;
+        }
+        if let Some(ref body) = req.body.clone() {
+            req.body = Some(self.resolve_chains_in_str(body, resolving).await?);
+        }
+
+        Ok(())
+        }) // Box::pin
+    }
+
+    /// Resolve all `{{@...}}` references in a single string value.
+    async fn resolve_chains_in_str(
+        &mut self,
+        value: &str,
+        resolving: &mut Vec<String>,
+    ) -> Result<String, String> {
+        use crate::model::chain::{find_chain_refs, parse_chain_ref, extract_json_value, ChainError};
+
+        let refs = find_chain_refs(value);
+        if refs.is_empty() {
+            return Ok(value.to_string());
+        }
+
+        let mut result = value.to_string();
+
+        // Process in reverse order to preserve byte offsets
+        for (start, end, inner) in refs.into_iter().rev() {
+            let chain_ref = parse_chain_ref(&inner).ok_or_else(|| {
+                format!("Chain error: invalid reference syntax '{{{{@{}}}}}'", inner)
+            })?;
+
+            // Build cache key
+            // Find and clone the dependency request (clone early to avoid borrow issues)
+            let (coll_idx, dep_request_clone) = {
+                let (ci, req) = self.find_request_by_name(
+                    &chain_ref.request_name,
+                    chain_ref.collection.as_deref(),
+                ).ok_or_else(|| {
+                    ChainError::RequestNotFound { name: chain_ref.request_name.clone() }.to_string()
+                })?;
+                (ci, req.clone())
+            };
+
+            let coll_name = self.state.collections[coll_idx].name.clone();
+            let cache_key = format!("{}/{}", coll_name, chain_ref.request_name);
+
+            // Check for circular dependency
+            if resolving.contains(&cache_key) {
+                let mut chain = resolving.clone();
+                chain.push(cache_key);
+                return Err(ChainError::CircularDependency { chain }.to_string());
+            }
+
+            // Check cache with TTL
+            let ttl = std::time::Duration::from_secs(self.state.config.general.chain_cache_ttl);
+            let cached_valid = self.state.response_cache.get(&cache_key)
+                .is_some_and(|(_, cached_at)| cached_at.elapsed() < ttl);
+
+            if !cached_valid {
+                // Remove stale cache entry if expired
+                self.state.response_cache.remove(&cache_key);
+
+                // Need to execute the dependency
+                self.state.set_status(format!("Resolving: {}...", chain_ref.request_name));
+
+                let mut resolved_dep = self.resolve_env_vars(&dep_request_clone);
+
+                // Auto-inject Content-Type for dependency if it has a body
+                let dep_body = resolved_dep.body.as_deref().unwrap_or("").trim();
+                if !dep_body.is_empty() {
+                    let has_ct = resolved_dep.headers.iter().any(|h| h.enabled && h.name.eq_ignore_ascii_case("content-type"));
+                    if !has_ct {
+                        resolved_dep.headers.push(crate::model::request::Header {
+                            name: "Content-Type".to_string(),
+                            value: "application/json".to_string(),
+                            enabled: true,
+                        });
+                    }
+                }
+
+                // Recursively resolve chains in the dependency
+                resolving.push(cache_key.clone());
+                self.resolve_chains_in_request(&mut resolved_dep, resolving).await?;
+                resolving.pop();
+
+                // Execute the dependency
+                let config = self.state.config.general.clone();
+                let resp = http_client::execute(&resolved_dep, &config).await
+                    .map_err(|e| ChainError::DependencyFailed {
+                        request_name: chain_ref.request_name.clone(),
+                        error: e.to_string(),
+                    }.to_string())?;
+
+                // Only cache successful responses (2xx)
+                if resp.status >= 200 && resp.status < 300 {
+                    self.state.response_cache.insert(cache_key.clone(), (resp, std::time::Instant::now()));
+                } else {
+                    return Err(format!(
+                        "Chain error: dependency '{}' returned {} {}",
+                        chain_ref.request_name, resp.status, resp.status_text
+                    ));
+                }
+            }
+
+            // Extract value from cached response
+            let (resp, _) = self.state.response_cache.get(&cache_key).unwrap();
+            let extracted = extract_json_value(&resp.body, &chain_ref.json_path)
+                .map_err(|e| match e {
+                    ChainError::JsonPathNotFound { .. } => {
+                        format!("Chain error: path '{}' not found in response from '{}'",
+                            chain_ref.json_path, chain_ref.request_name)
+                    }
+                    other => other.to_string(),
+                })?;
+
+            result.replace_range(start..end, &extracted);
+        }
+
+        Ok(result)
+    }
+
+    /// Find a request by name across collections.
+    /// If `collection` is Some, search only that collection.
+    /// Otherwise, search active collection first, then all others.
+    fn find_request_by_name(&self, name: &str, collection: Option<&str>) -> Option<(usize, &Request)> {
+        if let Some(coll_name) = collection {
+            // Search specific collection
+            for (ci, coll) in self.state.collections.iter().enumerate() {
+                if coll.name == coll_name {
+                    for req in &coll.requests {
+                        if req.name.as_deref() == Some(name) {
+                            return Some((ci, req));
+                        }
+                    }
+                }
+            }
+            return None;
+        }
+
+        // Search active collection first
+        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
+            for req in &coll.requests {
+                if req.name.as_deref() == Some(name) {
+                    return Some((self.state.active_collection, req));
+                }
+            }
+        }
+
+        // Search all other collections
+        for (ci, coll) in self.state.collections.iter().enumerate() {
+            if ci == self.state.active_collection {
+                continue;
+            }
+            for req in &coll.requests {
+                if req.name.as_deref() == Some(name) {
+                    return Some((ci, req));
+                }
+            }
+        }
+
+        None
     }
 
     fn scroll_down(&mut self) {
@@ -1710,14 +2129,42 @@ impl App {
                 let body = self.state.current_request.body.as_deref().unwrap_or("");
                 let lines: Vec<&str> = body.lines().collect();
                 self.state.body_cursor_row = lines.len().saturating_sub(1);
-                self.state.body_cursor_col = lines.last().map(|l| l.len()).unwrap_or(0);
+                self.state.body_cursor_col = 0;
+                self.sync_body_scroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
                 self.state.resp_cursor_row = lines.len().saturating_sub(1);
                 self.state.resp_cursor_col = 0;
+                self.sync_resp_scroll();
             }
             _ => {}
+        }
+    }
+
+    /// Ensure body_scroll keeps cursor visible (scrolloff-like behavior).
+    fn sync_body_scroll(&mut self) {
+        let visible = self.state.body_visible_height as usize;
+        if visible == 0 { return; }
+        let scroll = self.state.body_scroll.0 as usize;
+        let row = self.state.body_cursor_row;
+        if row < scroll {
+            self.state.body_scroll.0 = row as u16;
+        } else if row >= scroll + visible {
+            self.state.body_scroll.0 = (row - visible + 1) as u16;
+        }
+    }
+
+    /// Ensure response_scroll keeps cursor visible.
+    fn sync_resp_scroll(&mut self) {
+        let visible = self.state.resp_visible_height as usize;
+        if visible == 0 { return; }
+        let scroll = self.state.response_scroll.0 as usize;
+        let row = self.state.resp_cursor_row;
+        if row < scroll {
+            self.state.response_scroll.0 = row as u16;
+        } else if row >= scroll + visible {
+            self.state.response_scroll.0 = (row - visible + 1) as u16;
         }
     }
 
@@ -1728,12 +2175,12 @@ impl App {
                 let body = self.state.current_request.body.as_deref().unwrap_or("");
                 let max = body.lines().count().saturating_sub(1);
                 self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
-                self.state.body_scroll.0 = self.state.body_scroll.0.saturating_add(half as u16);
+                self.sync_body_scroll();
             }
             Panel::Response => {
                 let max = self.get_response_lines().len().saturating_sub(1);
                 self.state.resp_cursor_row = (self.state.resp_cursor_row + half).min(max);
-                self.state.response_scroll.0 = self.state.response_scroll.0.saturating_add(half as u16);
+                self.sync_resp_scroll();
             }
             _ => {}
         }
@@ -1744,11 +2191,11 @@ impl App {
         match self.state.active_panel {
             Panel::Body => {
                 self.state.body_cursor_row = self.state.body_cursor_row.saturating_sub(half);
-                self.state.body_scroll.0 = self.state.body_scroll.0.saturating_sub(half as u16);
+                self.sync_body_scroll();
             }
             Panel::Response => {
                 self.state.resp_cursor_row = self.state.resp_cursor_row.saturating_sub(half);
-                self.state.response_scroll.0 = self.state.response_scroll.0.saturating_sub(half as u16);
+                self.sync_resp_scroll();
             }
             _ => {}
         }
@@ -1775,12 +2222,7 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        // Keep cursor in viewport (scroll follows cursor)
-        let scroll = self.state.response_scroll.0 as usize;
-        let visible = self.state.resp_visible_height as usize;
-        if visible > 0 && self.state.resp_cursor_row >= scroll + visible {
-            self.state.response_scroll.0 = (self.state.resp_cursor_row - visible + 1) as u16;
-        }
+        self.sync_resp_scroll();
     }
 
     fn resp_cursor_up(&mut self) {
@@ -1790,10 +2232,7 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        // Keep cursor in viewport
-        if (self.state.resp_cursor_row as u16) < self.state.response_scroll.0 {
-            self.state.response_scroll.0 = self.state.resp_cursor_row as u16;
-        }
+        self.sync_resp_scroll();
     }
 
     fn get_response_visual_selection(&self) -> String {

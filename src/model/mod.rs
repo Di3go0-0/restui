@@ -1,3 +1,4 @@
+pub mod chain;
 pub mod collection;
 pub mod environment;
 pub mod history;

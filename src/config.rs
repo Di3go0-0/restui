@@ -24,6 +24,8 @@ pub struct GeneralConfig {
     pub timeout_secs: u64,
     #[serde(default = "default_true")]
     pub verify_ssl: bool,
+    #[serde(default = "default_chain_cache_ttl")]
+    pub chain_cache_ttl: u64,
 }
 
 impl Default for GeneralConfig {
@@ -35,6 +37,7 @@ impl Default for GeneralConfig {
             follow_redirects: true,
             timeout_secs: default_timeout(),
             verify_ssl: true,
+            chain_cache_ttl: default_chain_cache_ttl(),
         }
     }
 }
@@ -105,4 +108,8 @@ fn default_timeout() -> u64 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_chain_cache_ttl() -> u64 {
+    10
 }

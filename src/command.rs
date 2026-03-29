@@ -151,6 +151,50 @@ pub fn all_commands() -> Vec<Command> {
             action: Action::FocusPanel(crate::state::Panel::Response),
         },
 
+        // Chain Cache TTL
+        Command {
+            name: "Chain Cache: 5s",
+            description: "Re-execute dependency requests every 5 seconds",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(5),
+        },
+        Command {
+            name: "Chain Cache: 10s",
+            description: "Re-execute dependency requests every 10 seconds (default)",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(10),
+        },
+        Command {
+            name: "Chain Cache: 15s",
+            description: "Re-execute dependency requests every 15 seconds",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(15),
+        },
+        Command {
+            name: "Chain Cache: 30s",
+            description: "Re-execute dependency requests every 30 seconds",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(30),
+        },
+        Command {
+            name: "Chain Cache: 60s",
+            description: "Re-execute dependency requests every 60 seconds",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(60),
+        },
+        Command {
+            name: "Chain Cache: 300s",
+            description: "Re-execute dependency requests every 5 minutes",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(300),
+        },
+        Command {
+            name: "Chain Cache: 3600s",
+            description: "Re-execute dependency requests every 1 hour",
+            category: "Chain",
+            action: Action::SetChainCacheTTL(3600),
+        },
+
         // General
         Command {
             name: "Show Help",
