@@ -121,7 +121,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 Span::styled(":save ", Style::default().fg(t.text_dim)),
                 Span::styled("R", Style::default().fg(t.accent)),
                 Span::styled(":rename ", Style::default().fg(t.text_dim)),
-                Span::styled("D", Style::default().fg(t.accent)),
+                Span::styled("dd", Style::default().fg(t.accent)),
                 Span::styled(":del ", Style::default().fg(t.text_dim)),
                 Span::styled("yy", Style::default().fg(t.accent)),
                 Span::styled(":copy ", Style::default().fg(t.text_dim)),

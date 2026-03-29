@@ -248,6 +248,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 _ => None,
             },
             Panel::Body => Some(Action::YankLine),
+            Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
         ('y', KeyCode::Char('y')) => match state.active_panel {
@@ -271,7 +272,7 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('S') => Some(Action::SaveRequestAs),
         KeyCode::Char('C') => Some(Action::NewEmptyRequest),
         KeyCode::Char('R') => Some(Action::RenameRequest),
-        KeyCode::Char('D') => Some(Action::DeleteSelected),
+        KeyCode::Char('d') => Some(Action::PendingKey('d')),
         KeyCode::Char('m') => Some(Action::MoveRequest),
         KeyCode::Char('y') => Some(Action::PendingKey('y')),
         KeyCode::Char('p') => Some(Action::PasteRequest),
