@@ -236,18 +236,41 @@ fn render_headers_tab(
 
             let active_style = if state.header_edit_field == 0 { name_style } else { value_style };
 
+            // Compute available width and hscroll for the active field
+            let separator_width = 2usize; // ": "
+            let name_display_width = UnicodeWidthStr::width(header.name.as_str());
+            let (name_field_scroll, visible_name) = if state.header_edit_field == 0 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
+                field_hscroll(&header.name, state.header_edit_cursor, avail)
+            } else {
+                (0, header.name.clone())
+            };
+            let (value_field_scroll, visible_value) = if state.header_edit_field == 1 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + name_display_width + separator_width);
+                field_hscroll(&header.value, state.header_edit_cursor, avail)
+            } else {
+                (0, header.value.clone())
+            };
+
+            let adj_cursor = state.header_edit_cursor.saturating_sub(
+                if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            );
+            let adj_anchor = state.request_visual_anchor.saturating_sub(
+                if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            );
+
             // Build spans — use block cursor / visual highlight for non-insert modes
             let (name_spans, value_spans) = if !is_insert && state.header_edit_field == 0 {
-                (build_field_spans(&header.name, state.header_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.header_edit_cursor)) } else { None },
-                    active_style, t), vec![Span::styled(&header.value, value_style)])
+                (build_field_spans(&visible_name, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(visible_value, value_style)])
             } else if !is_insert && state.header_edit_field == 1 {
-                (vec![Span::styled(&header.name, name_style)],
-                 build_field_spans(&header.value, state.header_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.header_edit_cursor)) } else { None },
+                (vec![Span::styled(visible_name, name_style)],
+                 build_field_spans(&visible_value, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t))
             } else {
-                (vec![Span::styled(&header.name, name_style)], vec![Span::styled(&header.value, value_style)])
+                (vec![Span::styled(visible_name, name_style)], vec![Span::styled(visible_value, value_style)])
             };
 
             let mut spans = vec![
@@ -264,17 +287,12 @@ fn render_headers_tab(
 
             // Position cursor (only blinking line cursor in insert mode)
             if is_insert {
-                let name_display_width = UnicodeWidthStr::width(header.name.as_str());
-                let cursor_before = if state.header_edit_field == 0 {
-                    &header.name[..header.name.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.name.len())]
-                } else {
-                    &header.value[..header.value.char_indices().nth(state.header_edit_cursor).map(|(i,_)|i).unwrap_or(header.value.len())]
-                };
-                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let field_scroll = if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.header_edit_cursor.saturating_sub(field_scroll);
                 let cursor_x = if state.header_edit_field == 0 {
-                    content_area.x + prefix_width as u16 + cursor_text_width
+                    content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
-                    content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_text_width
+                    content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_visual as u16
                 };
                 if cursor_x < bounds.right() {
                     frame.set_cursor_position(Position::new(cursor_x, row_y));
@@ -369,17 +387,39 @@ fn render_queries_tab(
             };
 
             let active_style = if state.param_edit_field == 0 { key_style } else { value_style };
+            let separator_width = 3usize; // " = "
+            let key_display_width = UnicodeWidthStr::width(param.key.as_str());
+            let (key_field_scroll, visible_key) = if state.param_edit_field == 0 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
+                field_hscroll(&param.key, state.param_edit_cursor, avail)
+            } else {
+                (0, param.key.clone())
+            };
+            let (value_field_scroll, visible_value) = if state.param_edit_field == 1 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + key_display_width + separator_width);
+                field_hscroll(&param.value, state.param_edit_cursor, avail)
+            } else {
+                (0, param.value.clone())
+            };
+
+            let adj_cursor = state.param_edit_cursor.saturating_sub(
+                if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            );
+            let adj_anchor = state.request_visual_anchor.saturating_sub(
+                if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            );
+
             let (key_spans, value_spans) = if !is_insert && state.param_edit_field == 0 {
-                (build_field_spans(&param.key, state.param_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.param_edit_cursor)) } else { None },
-                    active_style, t), vec![Span::styled(&param.value, value_style)])
+                (build_field_spans(&visible_key, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(visible_value, value_style)])
             } else if !is_insert && state.param_edit_field == 1 {
-                (vec![Span::styled(&param.key, key_style)],
-                 build_field_spans(&param.value, state.param_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.param_edit_cursor)) } else { None },
+                (vec![Span::styled(visible_key, key_style)],
+                 build_field_spans(&visible_value, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t))
             } else {
-                (vec![Span::styled(&param.key, key_style)], vec![Span::styled(&param.value, value_style)])
+                (vec![Span::styled(visible_key, key_style)], vec![Span::styled(visible_value, value_style)])
             };
 
             let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
@@ -393,17 +433,12 @@ fn render_queries_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let key_display_width = UnicodeWidthStr::width(param.key.as_str());
-                let cursor_before = if state.param_edit_field == 0 {
-                    &param.key[..param.key.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
-                } else {
-                    &param.value[..param.value.char_indices().nth(state.param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
-                };
-                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let field_scroll = if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.param_edit_cursor.saturating_sub(field_scroll);
                 let cursor_x = if state.param_edit_field == 0 {
-                    content_area.x + prefix_width as u16 + cursor_text_width
+                    content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
-                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width
+                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_visual as u16
                 };
                 if cursor_x < bounds.right() {
                     frame.set_cursor_position(Position::new(cursor_x, row_y));
@@ -488,17 +523,39 @@ fn render_cookies_tab(
             };
 
             let active_style = if state.cookie_edit_field == 0 { name_style } else { value_style };
+            let separator_width = 1usize; // "="
+            let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
+            let (name_field_scroll, visible_name) = if state.cookie_edit_field == 0 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
+                field_hscroll(&cookie.name, state.cookie_edit_cursor, avail)
+            } else {
+                (0, cookie.name.clone())
+            };
+            let (value_field_scroll, visible_value) = if state.cookie_edit_field == 1 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + name_display_width + separator_width);
+                field_hscroll(&cookie.value, state.cookie_edit_cursor, avail)
+            } else {
+                (0, cookie.value.clone())
+            };
+
+            let adj_cursor = state.cookie_edit_cursor.saturating_sub(
+                if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            );
+            let adj_anchor = state.request_visual_anchor.saturating_sub(
+                if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            );
+
             let (name_spans, value_spans) = if !is_insert && state.cookie_edit_field == 0 {
-                (build_field_spans(&cookie.name, state.cookie_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.cookie_edit_cursor)) } else { None },
-                    active_style, t), vec![Span::styled(&cookie.value, value_style)])
+                (build_field_spans(&visible_name, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(visible_value, value_style)])
             } else if !is_insert && state.cookie_edit_field == 1 {
-                (vec![Span::styled(&cookie.name, name_style)],
-                 build_field_spans(&cookie.value, state.cookie_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.cookie_edit_cursor)) } else { None },
+                (vec![Span::styled(visible_name, name_style)],
+                 build_field_spans(&visible_value, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t))
             } else {
-                (vec![Span::styled(&cookie.name, name_style)], vec![Span::styled(&cookie.value, value_style)])
+                (vec![Span::styled(visible_name, name_style)], vec![Span::styled(visible_value, value_style)])
             };
 
             let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
@@ -512,17 +569,12 @@ fn render_cookies_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
-                let cursor_before = if state.cookie_edit_field == 0 {
-                    &cookie.name[..cookie.name.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.name.len())]
-                } else {
-                    &cookie.value[..cookie.value.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.value.len())]
-                };
-                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let field_scroll = if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.cookie_edit_cursor.saturating_sub(field_scroll);
                 let cursor_x = if state.cookie_edit_field == 0 {
-                    content_area.x + prefix_width as u16 + cursor_text_width
+                    content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
-                    content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_text_width
+                    content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_visual as u16
                 };
                 if cursor_x < bounds.right() {
                     frame.set_cursor_position(Position::new(cursor_x, row_y));
@@ -608,17 +660,39 @@ fn render_path_params_tab(
             };
 
             let active_style = if state.path_param_edit_field == 0 { key_style } else { value_style };
+            let separator_width = 3usize; // " = "
+            let key_display_width = UnicodeWidthStr::width(param.key.as_str());
+            let (key_field_scroll, visible_key) = if state.path_param_edit_field == 0 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
+                field_hscroll(&param.key, state.path_param_edit_cursor, avail)
+            } else {
+                (0, param.key.clone())
+            };
+            let (value_field_scroll, visible_value) = if state.path_param_edit_field == 1 {
+                let avail = (content_area.width as usize).saturating_sub(prefix_width + key_display_width + separator_width);
+                field_hscroll(&param.value, state.path_param_edit_cursor, avail)
+            } else {
+                (0, param.value.clone())
+            };
+
+            let adj_cursor = state.path_param_edit_cursor.saturating_sub(
+                if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            );
+            let adj_anchor = state.request_visual_anchor.saturating_sub(
+                if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            );
+
             let (key_spans, value_spans) = if !is_insert && state.path_param_edit_field == 0 {
-                (build_field_spans(&param.key, state.path_param_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.path_param_edit_cursor)) } else { None },
-                    active_style, t), vec![Span::styled(&param.value, value_style)])
+                (build_field_spans(&visible_key, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
+                    active_style, t), vec![Span::styled(visible_value, value_style)])
             } else if !is_insert && state.path_param_edit_field == 1 {
-                (vec![Span::styled(&param.key, key_style)],
-                 build_field_spans(&param.value, state.path_param_edit_cursor,
-                    if is_visual { Some((state.request_visual_anchor, state.path_param_edit_cursor)) } else { None },
+                (vec![Span::styled(visible_key, key_style)],
+                 build_field_spans(&visible_value, adj_cursor,
+                    if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t))
             } else {
-                (vec![Span::styled(&param.key, key_style)], vec![Span::styled(&param.value, value_style)])
+                (vec![Span::styled(visible_key, key_style)], vec![Span::styled(visible_value, value_style)])
             };
 
             let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
@@ -632,17 +706,12 @@ fn render_path_params_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let key_display_width = UnicodeWidthStr::width(param.key.as_str());
-                let cursor_before = if state.path_param_edit_field == 0 {
-                    &param.key[..param.key.char_indices().nth(state.path_param_edit_cursor).map(|(i,_)|i).unwrap_or(param.key.len())]
-                } else {
-                    &param.value[..param.value.char_indices().nth(state.path_param_edit_cursor).map(|(i,_)|i).unwrap_or(param.value.len())]
-                };
-                let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+                let field_scroll = if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.path_param_edit_cursor.saturating_sub(field_scroll);
                 let cursor_x = if state.path_param_edit_field == 0 {
-                    content_area.x + prefix_width as u16 + cursor_text_width
+                    content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
-                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_text_width
+                    content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_visual as u16
                 };
                 if cursor_x < bounds.right() {
                     frame.set_cursor_position(Position::new(cursor_x, row_y));
@@ -725,6 +794,25 @@ fn render_autocomplete_popup(
         .highlight_symbol("▸ ");
 
     frame.render_stateful_widget(list, popup_area, &mut list_state);
+}
+
+/// Compute horizontal scroll offset for a field based on cursor position and available width.
+/// Returns (scroll_offset, visible_text).
+fn field_hscroll(text: &str, cursor: usize, available_width: usize) -> (usize, String) {
+    if available_width == 0 {
+        return (0, String::new());
+    }
+    let scroll = if cursor >= available_width {
+        cursor - available_width + 1
+    } else {
+        0
+    };
+    let visible: String = if text.len() > scroll {
+        text[scroll..].chars().take(available_width).collect()
+    } else {
+        String::new()
+    };
+    (scroll, visible)
 }
 
 /// Build a display URL that includes enabled query params appended to base URL.

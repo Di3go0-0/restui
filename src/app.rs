@@ -182,6 +182,20 @@ impl App {
                 // Account for borders and internal layout (approx 5 lines for response header area)
                 self.state.body_visible_height = self.state.body_visible_height.saturating_sub(2);
                 self.state.resp_visible_height = self.state.resp_visible_height.saturating_sub(5);
+
+                // Calculate visible widths for horizontal scroll-follow
+                // Body and response panels share the right side; subtract gutter (4) + border (2)
+                if right_width > 120 {
+                    // Wide: center panel is ~40% of right
+                    self.state.body_visible_width = (right_width as u32 * 40 / 100) as u16;
+                    self.state.resp_visible_width = (right_width as u32 * 50 / 100) as u16;
+                } else {
+                    // Narrow: body/response take full right width
+                    self.state.body_visible_width = right_width;
+                    self.state.resp_visible_width = right_width;
+                }
+                self.state.body_visible_width = self.state.body_visible_width.saturating_sub(6); // gutter(4) + borders(2)
+                self.state.resp_visible_width = self.state.resp_visible_width.saturating_sub(6);
             }
 
             terminal.draw(|frame| {
@@ -2598,6 +2612,12 @@ impl App {
             }
             _ => {}
         }
+        // Sync horizontal scroll after cursor movement
+        match self.state.active_panel {
+            Panel::Body => { self.sync_body_hscroll(); }
+            Panel::Response => { self.sync_resp_hscroll(); }
+            _ => {}
+        }
     }
 
     fn inline_cursor_right(&mut self) {
@@ -2634,6 +2654,12 @@ impl App {
             }
             _ => {}
         }
+        // Sync horizontal scroll after cursor movement
+        match self.state.active_panel {
+            Panel::Body => { self.sync_body_hscroll(); }
+            Panel::Response => { self.sync_resp_hscroll(); }
+            _ => {}
+        }
     }
 
     fn body_cursor_up(&mut self) {
@@ -2645,7 +2671,7 @@ impl App {
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
             self.state.body_cursor_col = self.state.body_cursor_col.min(max);
         }
-        self.sync_body_scroll();
+        self.sync_body_scroll(); self.sync_body_hscroll();
     }
 
     fn body_cursor_down(&mut self) {
@@ -2659,13 +2685,13 @@ impl App {
             let max = if self.state.mode == InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
             self.state.body_cursor_col = self.state.body_cursor_col.min(max);
         }
-        self.sync_body_scroll();
+        self.sync_body_scroll(); self.sync_body_hscroll();
     }
 
     fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
-            Panel::Body => self.state.body_cursor_col = 0,
-            Panel::Response => self.state.resp_cursor_col = 0,
+            Panel::Body => { self.state.body_cursor_col = 0; self.sync_body_hscroll(); },
+            Panel::Response => { self.state.resp_cursor_col = 0; self.sync_resp_hscroll(); },
             Panel::Request => match self.state.request_focus {
                 RequestFocus::Url => self.state.url_cursor = 0,
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
@@ -2685,11 +2711,13 @@ impl App {
                 let lines: Vec<&str> = body.lines().collect();
                 let line_len = lines.get(self.state.body_cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.body_cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
+                self.sync_body_hscroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
                 let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.resp_cursor_col = line_len.saturating_sub(1);
+                self.sync_resp_hscroll();
             }
             Panel::Request => {
                 let len = self.get_request_field_len();
@@ -3590,13 +3618,13 @@ impl App {
                 let lines: Vec<&str> = body.lines().collect();
                 self.state.body_cursor_row = lines.len().saturating_sub(1);
                 self.state.body_cursor_col = 0;
-                self.sync_body_scroll();
+                self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
                 self.state.resp_cursor_row = lines.len().saturating_sub(1);
                 self.state.resp_cursor_col = 0;
-                self.sync_resp_scroll();
+                self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
         }
@@ -3615,6 +3643,19 @@ impl App {
         }
     }
 
+    /// Ensure body horizontal scroll keeps cursor visible.
+    fn sync_body_hscroll(&mut self) {
+        let col = self.state.body_cursor_col;
+        let hscroll = self.state.body_scroll.1 as usize;
+        let visible_w = self.state.body_visible_width as usize;
+        if visible_w == 0 { return; }
+        if col < hscroll {
+            self.state.body_scroll.1 = col as u16;
+        } else if col >= hscroll + visible_w {
+            self.state.body_scroll.1 = (col - visible_w + 1) as u16;
+        }
+    }
+
     /// Ensure response_scroll keeps cursor visible.
     fn sync_resp_scroll(&mut self) {
         let visible = self.state.resp_visible_height as usize;
@@ -3628,6 +3669,19 @@ impl App {
         }
     }
 
+    /// Ensure response horizontal scroll keeps cursor visible.
+    fn sync_resp_hscroll(&mut self) {
+        let col = self.state.resp_cursor_col;
+        let hscroll = self.state.response_scroll.1 as usize;
+        let visible_w = self.state.resp_visible_width as usize;
+        if visible_w == 0 { return; }
+        if col < hscroll {
+            self.state.response_scroll.1 = col as u16;
+        } else if col >= hscroll + visible_w {
+            self.state.response_scroll.1 = (col - visible_w + 1) as u16;
+        }
+    }
+
     fn scroll_half_down(&mut self) {
         let half = 15usize;
         match self.state.active_panel {
@@ -3635,12 +3689,12 @@ impl App {
                 let body = { let bt = self.state.body_type; match bt { BodyType::Json => self.state.current_request.body_json.as_deref().unwrap_or(""), BodyType::Xml => self.state.current_request.body_xml.as_deref().unwrap_or(""), BodyType::FormUrlEncoded => self.state.current_request.body_form.as_deref().unwrap_or(""), BodyType::Plain => self.state.current_request.body_raw.as_deref().unwrap_or("") } };
                 let max = body.lines().count().saturating_sub(1);
                 self.state.body_cursor_row = (self.state.body_cursor_row + half).min(max);
-                self.sync_body_scroll();
+                self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
                 let max = self.get_response_lines().len().saturating_sub(1);
                 self.state.resp_cursor_row = (self.state.resp_cursor_row + half).min(max);
-                self.sync_resp_scroll();
+                self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
         }
@@ -3651,11 +3705,11 @@ impl App {
         match self.state.active_panel {
             Panel::Body => {
                 self.state.body_cursor_row = self.state.body_cursor_row.saturating_sub(half);
-                self.sync_body_scroll();
+                self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response => {
                 self.state.resp_cursor_row = self.state.resp_cursor_row.saturating_sub(half);
-                self.sync_resp_scroll();
+                self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
         }
@@ -3682,7 +3736,7 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        self.sync_resp_scroll();
+        self.sync_resp_scroll(); self.sync_resp_hscroll();
     }
 
     fn resp_cursor_up(&mut self) {
@@ -3692,7 +3746,7 @@ impl App {
             let line_len = lines.get(self.state.resp_cursor_row).map(|l| l.len()).unwrap_or(0);
             self.state.resp_cursor_col = self.state.resp_cursor_col.min(line_len);
         }
-        self.sync_resp_scroll();
+        self.sync_resp_scroll(); self.sync_resp_hscroll();
     }
 
     fn get_response_visual_selection(&self) -> String {

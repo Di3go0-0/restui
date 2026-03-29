@@ -180,6 +180,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let text_area_width = body_area.width.saturating_sub(gutter_width);
 
     let scroll_y = state.response_scroll.0 as usize;
+    let hscroll = state.response_scroll.1 as usize;
     let visible_height = body_area.height as usize;
     let cursor_row = state.resp_cursor_row;
 
@@ -247,23 +248,34 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             gutter_area,
         );
 
-        // Content
-        let line_text = body_lines.get(line_idx).copied().unwrap_or("");
+        // Content — apply horizontal scroll
+        let full_line_text = body_lines.get(line_idx).copied().unwrap_or("");
+        let line_text: String = if full_line_text.len() > hscroll {
+            full_line_text[hscroll..].chars().take(text_area_width as usize).collect()
+        } else {
+            String::new()
+        };
+        let line_text_ref = line_text.as_str();
+
         let content_line = if is_visual && line_idx >= vsr && line_idx <= ver {
-            highlight_visual_line(line_text, line_idx, vsr, vsc, ver, vec_)
+            let adj_vsc = vsc.saturating_sub(hscroll);
+            let adj_vec = vec_.saturating_sub(hscroll);
+            highlight_visual_line(line_text_ref, line_idx, vsr, adj_vsc, ver, adj_vec)
         } else if is_visual_block && line_idx >= vb_min_row && line_idx <= vb_max_row {
-            highlight_block_line(line_text, vb_min_col, vb_max_col)
+            let adj_min_col = vb_min_col.saturating_sub(hscroll);
+            let adj_max_col = vb_max_col.saturating_sub(hscroll);
+            highlight_block_line(line_text_ref, adj_min_col, adj_max_col)
         } else if has_search {
-            highlight_search_line(line_text, line_idx, state, &search_query_lower, t,
-                is_focused && line_idx == cursor_row)
+            highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
+                is_focused && line_idx == cursor_row, hscroll)
         } else if is_focused && line_idx == cursor_row && !is_visual && !is_visual_block {
             // Highlight current line in normal mode
             Line::from(Span::styled(
-                line_text.to_string(),
+                line_text,
                 Style::default().fg(t.text).bg(t.bg_highlight),
             ))
         } else {
-            colorize_response_line(line_text, t)
+            colorize_response_line(line_text_ref, t)
         };
 
         let content_area = Rect::new(text_area_x, y, text_area_width, 1);
@@ -276,10 +288,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
             ];
             for &(br, bc) in &highlight_positions {
-                if br == line_idx {
+                if br == line_idx && bc >= hscroll {
                     if let Some(ch) = body_lines.get(br).and_then(|l| l.as_bytes().get(bc)) {
                         if matches!(ch, b'{' | b'}' | b'[' | b']' | b'(' | b')') {
-                            let bx = text_area_x + bc as u16;
+                            let bx = text_area_x + (bc - hscroll) as u16;
                             if bx < content_area.right() {
                                 let buf = frame.buffer_mut();
                                 if bx < buf.area().right() && y < buf.area().bottom() {
@@ -303,7 +315,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     if is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < body_area.height {
-            let cursor_x = text_area_x + state.resp_cursor_col as u16;
+            let cursor_x = text_area_x + state.resp_cursor_col.saturating_sub(hscroll) as u16;
             let cursor_y = body_area.y + cursor_screen_row as u16;
             if cursor_x < inner.right() {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -333,14 +345,15 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     }
 }
 
-fn highlight_search_line<'a>(
-    line: &'a str,
+fn highlight_search_line(
+    line: &str,
     line_idx: usize,
     state: &AppState,
     query_lower: &str,
     t: &crate::theme::Theme,
     is_cursor_line: bool,
-) -> Line<'a> {
+    hscroll: usize,
+) -> Line<'static> {
     if query_lower.is_empty() {
         if is_cursor_line {
             return Line::from(Span::styled(
@@ -353,7 +366,7 @@ fn highlight_search_line<'a>(
 
     let line_lower = line.to_lowercase();
     let query_len = query_lower.len();
-    let mut spans: Vec<Span<'a>> = Vec::new();
+    let mut spans: Vec<Span<'static>> = Vec::new();
     let mut pos = 0;
 
     // Find current match position
@@ -378,8 +391,8 @@ fn highlight_search_line<'a>(
                 spans.push(Span::styled(line[pos..match_start].to_string(), base_style));
             }
 
-            // Determine if this is the current match
-            let is_current = current_match == Some((line_idx, match_start));
+            // Determine if this is the current match (adjust for hscroll)
+            let is_current = current_match == Some((line_idx, match_start + hscroll));
             let bg = if is_current { current_match_bg } else { match_bg };
 
             spans.push(Span::styled(
@@ -408,7 +421,7 @@ fn resp_visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
     (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
 }
 
-fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'_> {
+fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'static> {
     let start = min_col.min(line.len());
     let end = max_col.min(line.len());
 
@@ -438,7 +451,7 @@ fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
     }
 }
 
-fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize, ec: usize) -> Line<'_> {
+fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize, ec: usize) -> Line<'static> {
     let start_col = if row == sr { sc } else { 0 };
     let end_col = if row == er { ec } else { line.len() };
     let end_col = end_col.min(line.len());
@@ -460,7 +473,7 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
     ])
 }
 
-fn colorize_response_line<'a>(line: &'a str, t: &crate::theme::Theme) -> Line<'a> {
+fn colorize_response_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     let trimmed = line.trim();
 
     if trimmed.starts_with('"') && trimmed.contains(':') {
