@@ -149,6 +149,7 @@ pub enum Action {
 
     // Request lifecycle
     ExecuteRequest,
+    CancelRequest,
     RequestCompleted(Box<Response>),
     RequestFailed(String),
 

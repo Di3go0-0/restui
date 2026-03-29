@@ -238,7 +238,17 @@ impl App {
         match action {
             Action::Quit => self.state.should_quit = true,
             Action::Tick => {
-                if let Some((_, instant)) = &self.state.status_message {
+                // Update spinner + elapsed time for in-flight requests
+                if let Some(started) = self.state.request_started_at {
+                    let elapsed = started.elapsed();
+                    let spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                    let idx = (elapsed.as_millis() / 100) as usize % spinner.len();
+                    self.state.set_status(format!(
+                        "{} Sending request... {:.1}s (Esc to cancel)",
+                        spinner[idx],
+                        elapsed.as_secs_f64()
+                    ));
+                } else if let Some((_, instant)) = &self.state.status_message {
                     if instant.elapsed() > STATUS_MESSAGE_TTL {
                         self.state.status_message = None;
                     }
@@ -1624,8 +1634,13 @@ impl App {
             Action::ExecuteRequest => {
                 self.execute_request().await;
             }
+            Action::CancelRequest => {
+                self.cancel_request();
+            }
             Action::RequestCompleted(response) => {
                 self.state.request_in_flight = false;
+                self.state.request_started_at = None;
+                self.state.request_abort_handle = None;
                 self.state.last_error = None;
                 let status = response.status;
                 let elapsed = response.elapsed_display();
@@ -1669,6 +1684,8 @@ impl App {
             }
             Action::RequestFailed(err) => {
                 self.state.request_in_flight = false;
+                self.state.request_started_at = None;
+                self.state.request_abort_handle = None;
                 self.state.last_error = Some(err.clone());
                 self.state.current_response = None;
                 self.state.set_status(format!("Error: {}", err));
@@ -3938,9 +3955,22 @@ impl App {
         }
     }
 
+    fn cancel_request(&mut self) {
+        if let Some(handle) = self.state.request_abort_handle.take() {
+            handle.abort();
+        }
+        self.state.request_in_flight = false;
+        self.state.request_started_at = None;
+        self.state.set_status("Request cancelled");
+    }
+
     async fn execute_request(&mut self) {
-        // Allow re-sending: cancel conceptually the old one
+        // Cancel any previous in-flight request
+        if let Some(handle) = self.state.request_abort_handle.take() {
+            handle.abort();
+        }
         self.state.request_in_flight = true;
+        self.state.request_started_at = Some(std::time::Instant::now());
         self.state.last_error = None;
         self.state.set_status("Sending request...");
 
@@ -3996,12 +4026,13 @@ impl App {
         let config = self.state.config.general.clone();
         let tx = self.action_tx.clone();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             match http_client::execute(&resolved, &config).await {
                 Ok(resp) => { let _ = tx.send(Action::RequestCompleted(Box::new(resp))); }
                 Err(e) => { let _ = tx.send(Action::RequestFailed(e.to_string())); }
             }
         });
+        self.state.request_abort_handle = Some(handle.abort_handle());
     }
 
     fn resolve_env_vars(&self, req: &Request) -> Request {

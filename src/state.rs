@@ -361,6 +361,8 @@ pub struct AppState {
     pub current_response: Option<Response>,
     pub last_error: Option<String>,
     pub request_in_flight: bool,
+    pub request_started_at: Option<Instant>,
+    pub request_abort_handle: Option<tokio::task::AbortHandle>,
     pub body_type: BodyType,
     pub body_validation_error: Option<String>,
 
@@ -496,6 +498,8 @@ impl AppState {
             current_response: None,
             last_error: None,
             request_in_flight: false,
+            request_started_at: None,
+            request_abort_handle: None,
             body_type: BodyType::Json,
             body_validation_error: None,
             collections_state,

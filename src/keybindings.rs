@@ -95,6 +95,11 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         }
     }
 
+    // Cancel in-flight request with Esc
+    if state.request_in_flight && key.code == KeyCode::Esc {
+        return Some(Action::CancelRequest);
+    }
+
     // Global normal mode keys
     match key.code {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
