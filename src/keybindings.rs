@@ -185,6 +185,9 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 RequestFocus::Param(_) if state.param_edit_field == 0 => {
                     Some(Action::InlineTab)
                 }
+                RequestFocus::Cookie(_) if state.cookie_edit_field == 0 => {
+                    Some(Action::InlineTab)
+                }
                 _ => Some(Action::ExitInsertMode),
             },
             _ => Some(Action::ExitInsertMode),
@@ -228,6 +231,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) => Some(Action::DeleteHeader),
                 RequestFocus::Param(_) => Some(Action::DeleteParam),
+                RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
                 _ => None,
             },
             Panel::Body => Some(Action::YankLine),
@@ -271,6 +275,7 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('a') => match state.request_tab {
             RequestTab::Headers => Some(Action::AddHeader),
             RequestTab::Params => Some(Action::AddParam),
+            RequestTab::Cookies => Some(Action::AddCookie),
             _ => None,
         },
         KeyCode::Char('A') => Some(Action::ShowHeaderAutocomplete),
@@ -278,6 +283,7 @@ fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('x') => match state.request_focus {
             RequestFocus::Header(_) => Some(Action::DeleteHeader),
             RequestFocus::Param(_) => Some(Action::DeleteParam),
+            RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
             _ => None,
         },
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),

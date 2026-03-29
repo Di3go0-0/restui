@@ -59,6 +59,7 @@ pub fn parse(input: &str) -> Result<Vec<Request>> {
                 url: yr.url,
                 headers,
                 query_params,
+                cookies: Vec::new(),
                 body,
                 source_file: None,
                 source_line: None,

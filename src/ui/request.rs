@@ -122,7 +122,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert),
         RequestTab::Params => render_params_tab(frame, state, content_area, area, is_focused, is_insert),
         RequestTab::Auth => render_placeholder_tab(frame, state, content_area, "Auth configuration coming soon"),
-        RequestTab::Cookies => render_placeholder_tab(frame, state, content_area, "Cookie management coming soon"),
+        RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert),
     }
 }
 
@@ -365,6 +365,108 @@ fn render_params_tab(
                 Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
                 Span::styled(" = ", style),
                 Span::styled(&param.value, style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+        }
+
+        y_offset += 1;
+    }
+}
+
+fn render_cookies_tab(
+    frame: &mut Frame,
+    state: &AppState,
+    content_area: Rect,
+    bounds: Rect,
+    is_focused: bool,
+    is_insert: bool,
+) {
+    let t = &state.theme;
+    let req = &state.current_request;
+    let mut y_offset: u16 = 0;
+
+    if req.cookies.is_empty() {
+        if content_area.height > 0 {
+            let hint = Line::from(Span::styled(
+                "   (none) 'a' to add a cookie",
+                Style::default().fg(t.text_dim),
+            ));
+            frame.render_widget(
+                Paragraph::new(hint),
+                Rect::new(content_area.x, content_area.y, content_area.width, 1),
+            );
+        }
+        return;
+    }
+
+    for (i, cookie) in req.cookies.iter().enumerate() {
+        if y_offset >= content_area.height {
+            break;
+        }
+
+        let is_cookie_focused = is_focused && state.request_focus == RequestFocus::Cookie(i);
+        let prefix = if is_cookie_focused { "▸" } else { " " };
+        let style = if cookie.enabled {
+            Style::default().fg(t.text)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+        let toggle = if cookie.enabled { "●" } else { "○" };
+
+        let row_y = content_area.y + y_offset;
+        let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
+
+        if is_cookie_focused && is_insert {
+            let name_style = if state.cookie_edit_field == 0 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style.add_modifier(Modifier::BOLD)
+            };
+            let value_style = if state.cookie_edit_field == 1 {
+                Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
+            } else {
+                style
+            };
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
+                Span::styled(&cookie.name, name_style),
+                Span::styled("=", style),
+                Span::styled(&cookie.value, value_style),
+            ]);
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(content_area.x, row_y, content_area.width, 1),
+            );
+
+            // Position cursor
+            let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
+            let cursor_before = if state.cookie_edit_field == 0 {
+                &cookie.name[..cookie.name.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.name.len())]
+            } else {
+                &cookie.value[..cookie.value.char_indices().nth(state.cookie_edit_cursor).map(|(i,_)|i).unwrap_or(cookie.value.len())]
+            };
+            let cursor_text_width = UnicodeWidthStr::width(cursor_before) as u16;
+            let cursor_x = if state.cookie_edit_field == 0 {
+                content_area.x + prefix_width as u16 + cursor_text_width
+            } else {
+                content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_text_width // "=" is 1 char
+            };
+            if cursor_x < bounds.right() {
+                frame.set_cursor_position(Position::new(cursor_x, row_y));
+            }
+        } else {
+            let prefix_style = Style::default().fg(
+                if is_cookie_focused { t.accent } else { t.text_dim },
+            );
+            let line = Line::from(vec![
+                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&cookie.name, style.add_modifier(Modifier::BOLD)),
+                Span::styled("=", style),
+                Span::styled(&cookie.value, style),
             ]);
             frame.render_widget(
                 Paragraph::new(line),

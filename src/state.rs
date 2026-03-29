@@ -236,6 +236,7 @@ pub enum RequestFocus {
     Url,
     Header(usize),
     Param(usize),
+    Cookie(usize),
 }
 
 pub struct AppState {
@@ -274,6 +275,8 @@ pub struct AppState {
     pub header_edit_field: u8, // 0=name, 1=value
     pub param_edit_cursor: usize,
     pub param_edit_field: u8, // 0=key, 1=value
+    pub cookie_edit_cursor: usize,
+    pub cookie_edit_field: u8, // 0=name, 1=value
 
     // Body inline editing
     pub body_cursor_row: usize,
@@ -353,6 +356,8 @@ impl AppState {
             header_edit_field: 0,
             param_edit_cursor: 0,
             param_edit_field: 0,
+            cookie_edit_cursor: 0,
+            cookie_edit_field: 0,
             body_cursor_row: 0,
             body_cursor_col: 0,
             visual_anchor_row: 0,

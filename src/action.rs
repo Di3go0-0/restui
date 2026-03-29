@@ -38,6 +38,8 @@ pub enum Action {
     ToggleItemEnabled,
     AddParam,
     DeleteParam,
+    AddCookie,
+    DeleteCookie,
 
     // Collections
     SelectRequest,

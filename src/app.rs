@@ -306,7 +306,15 @@ impl App {
                             _ => self.state.request_focus,
                         };
                     }
-                    _ => {} // Auth/Cookies — future
+                    RequestTab::Cookies => {
+                        let cc = self.state.current_request.cookies.len();
+                        self.state.request_focus = match self.state.request_focus {
+                            RequestFocus::Url => if cc > 0 { RequestFocus::Cookie(0) } else { RequestFocus::Url },
+                            RequestFocus::Cookie(i) => if i + 1 < cc { RequestFocus::Cookie(i + 1) } else { RequestFocus::Cookie(i) },
+                            _ => self.state.request_focus,
+                        };
+                    }
+                    _ => {} // Auth — future
                 }
             }
             Action::RequestFocusUp => {
@@ -316,6 +324,8 @@ impl App {
                     RequestFocus::Header(i) => RequestFocus::Header(i - 1),
                     RequestFocus::Param(0) => RequestFocus::Url,
                     RequestFocus::Param(i) => RequestFocus::Param(i - 1),
+                    RequestFocus::Cookie(0) => RequestFocus::Url,
+                    RequestFocus::Cookie(i) => RequestFocus::Cookie(i - 1),
                 };
             }
             Action::RequestNextTab => {
@@ -336,6 +346,11 @@ impl App {
                     RequestFocus::Param(idx) => {
                         if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
                             p.enabled = !p.enabled;
+                        }
+                    }
+                    RequestFocus::Cookie(idx) => {
+                        if let Some(c) = self.state.current_request.cookies.get_mut(idx) {
+                            c.enabled = !c.enabled;
                         }
                     }
                     _ => {}
@@ -382,6 +397,28 @@ impl App {
                             RequestFocus::Param(idx.min(self.state.current_request.query_params.len() - 1))
                         };
                         self.state.set_status("Param deleted");
+                    }
+                }
+            }
+            Action::AddCookie => {
+                self.state.current_request.cookies.push(crate::model::request::Cookie { name: String::new(), value: String::new(), enabled: true });
+                let idx = self.state.current_request.cookies.len() - 1;
+                self.state.request_focus = RequestFocus::Cookie(idx);
+                self.state.cookie_edit_field = 0;
+                self.state.cookie_edit_cursor = 0;
+                self.state.mode = InputMode::Insert;
+            }
+            Action::DeleteCookie => {
+                self.state.pending_key = None;
+                if let RequestFocus::Cookie(idx) = self.state.request_focus {
+                    if idx < self.state.current_request.cookies.len() {
+                        self.state.current_request.cookies.remove(idx);
+                        self.state.request_focus = if self.state.current_request.cookies.is_empty() {
+                            RequestFocus::Url
+                        } else {
+                            RequestFocus::Cookie(idx.min(self.state.current_request.cookies.len() - 1))
+                        };
+                        self.state.set_status("Cookie deleted");
                     }
                 }
             }
@@ -751,6 +788,11 @@ impl App {
                     self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
                 }
             }
+            RequestFocus::Cookie(idx) => {
+                if let Some(c) = self.state.current_request.cookies.get(idx) {
+                    self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { c.name.len() } else { c.value.len() };
+                }
+            }
         }
     }
 
@@ -896,6 +938,14 @@ impl App {
                         self.state.param_edit_cursor = cursor + 1;
                     }
                 }
+                RequestFocus::Cookie(idx) => {
+                    if let Some(ck) = self.state.current_request.cookies.get_mut(idx) {
+                        let field = if self.state.cookie_edit_field == 0 { &mut ck.name } else { &mut ck.value };
+                        let cursor = self.state.cookie_edit_cursor.min(field.len());
+                        field.insert(cursor, c);
+                        self.state.cookie_edit_cursor = cursor + 1;
+                    }
+                }
             },
             _ => {}
         }
@@ -973,6 +1023,17 @@ impl App {
                         }
                     }
                 }
+                RequestFocus::Cookie(idx) => {
+                    if self.state.cookie_edit_cursor > 0 {
+                        if let Some(ck) = self.state.current_request.cookies.get_mut(idx) {
+                            let field = if self.state.cookie_edit_field == 0 { &mut ck.name } else { &mut ck.value };
+                            self.state.cookie_edit_cursor -= 1;
+                            if self.state.cookie_edit_cursor < field.len() {
+                                field.remove(self.state.cookie_edit_cursor);
+                            }
+                        }
+                    }
+                }
             },
             _ => {}
         }
@@ -1001,6 +1062,12 @@ impl App {
                     if let Some(p) = self.state.current_request.query_params.get_mut(idx) {
                         let field = if self.state.param_edit_field == 0 { &mut p.key } else { &mut p.value };
                         if self.state.param_edit_cursor < field.len() { field.remove(self.state.param_edit_cursor); }
+                    }
+                }
+                RequestFocus::Cookie(idx) => {
+                    if let Some(ck) = self.state.current_request.cookies.get_mut(idx) {
+                        let field = if self.state.cookie_edit_field == 0 { &mut ck.name } else { &mut ck.value };
+                        if self.state.cookie_edit_cursor < field.len() { field.remove(self.state.cookie_edit_cursor); }
                     }
                 }
             },
@@ -1034,6 +1101,7 @@ impl App {
                 RequestFocus::Url => { self.state.url_cursor = self.state.url_cursor.saturating_sub(1); }
                 RequestFocus::Header(_) => { self.state.header_edit_cursor = self.state.header_edit_cursor.saturating_sub(1); }
                 RequestFocus::Param(_) => { self.state.param_edit_cursor = self.state.param_edit_cursor.saturating_sub(1); }
+                RequestFocus::Cookie(_) => { self.state.cookie_edit_cursor = self.state.cookie_edit_cursor.saturating_sub(1); }
             },
             Panel::Response => {
                 self.state.resp_cursor_col = self.state.resp_cursor_col.saturating_sub(1);
@@ -1069,6 +1137,12 @@ impl App {
                     if let Some(p) = self.state.current_request.query_params.get(idx) {
                         let len = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
                         if self.state.param_edit_cursor < len { self.state.param_edit_cursor += 1; }
+                    }
+                }
+                RequestFocus::Cookie(idx) => {
+                    if let Some(ck) = self.state.current_request.cookies.get(idx) {
+                        let len = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
+                        if self.state.cookie_edit_cursor < len { self.state.cookie_edit_cursor += 1; }
                     }
                 }
             },
@@ -1122,6 +1196,7 @@ impl App {
                 RequestFocus::Url => self.state.url_cursor = 0,
                 RequestFocus::Header(_) => self.state.header_edit_cursor = 0,
                 RequestFocus::Param(_) => self.state.param_edit_cursor = 0,
+                RequestFocus::Cookie(_) => self.state.cookie_edit_cursor = 0,
             },
             _ => {}
         }
@@ -1148,6 +1223,11 @@ impl App {
                 RequestFocus::Param(idx) => {
                     if let Some(p) = self.state.current_request.query_params.get(idx) {
                         self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                    }
+                }
+                RequestFocus::Cookie(idx) => {
+                    if let Some(ck) = self.state.current_request.cookies.get(idx) {
+                        self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
                     }
                 }
             },
@@ -1181,6 +1261,12 @@ impl App {
                         self.state.param_edit_field = (self.state.param_edit_field + 1) % 2;
                         if let Some(p) = self.state.current_request.query_params.get(idx) {
                             self.state.param_edit_cursor = if self.state.param_edit_field == 0 { p.key.len() } else { p.value.len() };
+                        }
+                    }
+                    RequestFocus::Cookie(idx) => {
+                        self.state.cookie_edit_field = (self.state.cookie_edit_field + 1) % 2;
+                        if let Some(ck) = self.state.current_request.cookies.get(idx) {
+                            self.state.cookie_edit_cursor = if self.state.cookie_edit_field == 0 { ck.name.len() } else { ck.value.len() };
                         }
                     }
                     _ => {}
@@ -1338,6 +1424,7 @@ impl App {
             url: env.resolve(&req.url),
             headers: req.headers.iter().map(|h| Header { name: h.name.clone(), value: env.resolve(&h.value), enabled: h.enabled }).collect(),
             query_params: req.query_params.iter().map(|p| crate::model::request::QueryParam { key: p.key.clone(), value: env.resolve(&p.value), enabled: p.enabled }).collect(),
+            cookies: req.cookies.iter().map(|c| crate::model::request::Cookie { name: c.name.clone(), value: env.resolve(&c.value), enabled: c.enabled }).collect(),
             body: req.body.as_ref().map(|b| env.resolve(b)),
             source_file: req.source_file.clone(),
             source_line: req.source_line,

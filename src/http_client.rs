@@ -42,6 +42,18 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         }
     }
 
+    // Merge enabled cookies into a single Cookie header
+    let cookie_str: String = request
+        .cookies
+        .iter()
+        .filter(|c| c.enabled && !c.name.is_empty())
+        .map(|c| format!("{}={}", c.name, c.value))
+        .collect::<Vec<_>>()
+        .join("; ");
+    if !cookie_str.is_empty() {
+        builder = builder.header("Cookie", &cookie_str);
+    }
+
     if let Some(ref body) = request.body {
         builder = builder.body(body.clone());
     }
