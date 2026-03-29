@@ -250,7 +250,10 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
             Panel::Body => Some(Action::YankLine),
             _ => None,
         },
-        ('y', KeyCode::Char('y')) => Some(Action::YankLine),
+        ('y', KeyCode::Char('y')) => match state.active_panel {
+            Panel::Collections => Some(Action::YankRequest),
+            _ => Some(Action::YankLine),
+        },
         _ => map_normal_mode_key(key, state),
     }
 }
@@ -261,6 +264,7 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
         KeyCode::Char('g') => Some(Action::ScrollTop),
         KeyCode::Char('G') => Some(Action::ScrollBottom),
+        KeyCode::Char(' ') => Some(Action::ToggleCollapse),
         KeyCode::Enter => Some(Action::SelectRequest),
         KeyCode::Char('n') => Some(Action::CreateCollection),
         KeyCode::Char('s') => Some(Action::SaveRequest),
@@ -269,11 +273,11 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('R') => Some(Action::RenameRequest),
         KeyCode::Char('D') => Some(Action::DeleteSelected),
         KeyCode::Char('m') => Some(Action::MoveRequest),
+        KeyCode::Char('y') => Some(Action::PendingKey('y')),
+        KeyCode::Char('p') => Some(Action::PasteRequest),
+        KeyCode::Char('Y') => Some(Action::CopyAsCurl),
         KeyCode::Char('L') | KeyCode::Char('}') => Some(Action::NextCollection),
         KeyCode::Char('H') | KeyCode::Char('{') => Some(Action::PrevCollection),
-        KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
-        KeyCode::Char('y') => Some(Action::CopyResponseBody),
-        KeyCode::Char('Y') => Some(Action::CopyAsCurl),
         _ => None,
     }
 }

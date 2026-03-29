@@ -44,15 +44,38 @@ impl App {
     fn rebuild_collection_items(&mut self) {
         let mut items = Vec::new();
         for (ci, collection) in self.state.collections.iter().enumerate() {
+            let expanded = self.state.expanded_collections.contains(&ci);
+            let arrow = if expanded { "▼" } else { "▶" };
             let marker = if ci == self.state.active_collection { "●" } else { "○" };
-            items.push(format!("{} {}", marker, collection.display_name()));
-            if ci == self.state.active_collection {
+            items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
+            if expanded {
                 for req in &collection.requests {
                     items.push(format!("  {} {}", req.method, req.display_name()));
                 }
             }
         }
         self.state.collection_items = items;
+    }
+
+    /// Maps a flat list index to (collection_index, Option<request_index>).
+    /// Returns None if out of bounds.
+    fn flat_idx_to_coll_req(&self, flat_idx: usize) -> Option<(usize, Option<usize>)> {
+        let mut idx = 0;
+        for (ci, collection) in self.state.collections.iter().enumerate() {
+            if idx == flat_idx {
+                return Some((ci, None)); // collection header
+            }
+            idx += 1;
+            if self.state.expanded_collections.contains(&ci) {
+                for ri in 0..collection.requests.len() {
+                    if idx == flat_idx {
+                        return Some((ci, Some(ri)));
+                    }
+                    idx += 1;
+                }
+            }
+        }
+        None
     }
 
     pub fn load_environments(&mut self, env_file: Option<&str>) {
@@ -458,44 +481,42 @@ impl App {
                 self.save_current_request_as_new();
             }
             Action::RenameRequest => {
-                // Get current name of the selected item
                 if let Some(flat_idx) = self.state.collections_state.selected() {
-                    let current_name = if flat_idx == 0 {
-                        // Collection header
-                        self.state.collections.get(self.state.active_collection)
-                            .map(|c| c.name.clone()).unwrap_or_default()
-                    } else if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-                        let req_idx = flat_idx - 1;
-                        coll.requests.get(req_idx)
+                    let current_name = match self.flat_idx_to_coll_req(flat_idx) {
+                        Some((ci, None)) => self.state.collections.get(ci).map(|c| c.name.clone()).unwrap_or_default(),
+                        Some((ci, Some(ri))) => self.state.collections.get(ci)
+                            .and_then(|c| c.requests.get(ri))
                             .and_then(|r| r.name.clone())
-                            .unwrap_or_default()
-                    } else {
-                        String::new()
+                            .unwrap_or_default(),
+                        None => String::new(),
                     };
                     self.state.overlay = Some(Overlay::RenameRequest { name: current_name });
                 }
             }
             Action::DeleteSelected => {
                 if let Some(flat_idx) = self.state.collections_state.selected() {
-                    let msg = if flat_idx == 0 {
-                        let coll_name = self.state.collections.get(self.state.active_collection)
-                            .map(|c| c.name.clone()).unwrap_or_default();
-                        format!("Delete collection '{}'? (y/Enter to confirm, Esc/n to cancel)", coll_name)
-                    } else if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-                        let req_idx = flat_idx - 1;
-                        let req_name = coll.requests.get(req_idx)
-                            .map(|r| r.display_name()).unwrap_or_default();
-                        format!("Delete request '{}'? (y/Enter to confirm, Esc/n to cancel)", req_name)
-                    } else {
-                        return Ok(());
+                    let msg = match self.flat_idx_to_coll_req(flat_idx) {
+                        Some((ci, None)) => {
+                            let name = self.state.collections.get(ci).map(|c| c.name.clone()).unwrap_or_default();
+                            format!("Delete collection '{}'? (y/Enter, Esc/n to cancel)", name)
+                        }
+                        Some((ci, Some(ri))) => {
+                            let name = self.state.collections.get(ci)
+                                .and_then(|c| c.requests.get(ri))
+                                .map(|r| r.display_name()).unwrap_or_default();
+                            format!("Delete request '{}'? (y/Enter, Esc/n to cancel)", name)
+                        }
+                        None => return Ok(()),
                     };
                     self.state.overlay = Some(Overlay::ConfirmDelete { message: msg });
                 }
             }
             Action::MoveRequest => {
                 if let Some(flat_idx) = self.state.collections_state.selected() {
-                    if flat_idx > 0 && self.state.collections.len() > 1 {
-                        self.state.overlay = Some(Overlay::MoveRequest { selected: 0 });
+                    if let Some((_, Some(_))) = self.flat_idx_to_coll_req(flat_idx) {
+                        if self.state.collections.len() > 1 {
+                            self.state.overlay = Some(Overlay::MoveRequest { selected: 0 });
+                        }
                     } else {
                         self.state.set_status("Select a request first (not a collection header)");
                     }
@@ -509,6 +530,54 @@ impl App {
                 self.state.body_cursor_col = 0;
                 self.state.request_focus = RequestFocus::Url;
                 self.state.set_status("New empty request");
+            }
+            Action::ToggleCollapse => {
+                if let Some(flat_idx) = self.state.collections_state.selected() {
+                    if let Some((ci, None)) = self.flat_idx_to_coll_req(flat_idx) {
+                        if self.state.expanded_collections.contains(&ci) {
+                            self.state.expanded_collections.remove(&ci);
+                        } else {
+                            self.state.expanded_collections.insert(ci);
+                        }
+                        self.rebuild_collection_items();
+                    }
+                }
+            }
+            Action::YankRequest => {
+                self.state.pending_key = None;
+                if let Some(flat_idx) = self.state.collections_state.selected() {
+                    if let Some((ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
+                        if let Some(req) = self.state.collections.get(ci).and_then(|c| c.requests.get(ri)) {
+                            self.state.yanked_request = Some(req.clone());
+                            self.state.set_status(format!("Yanked: {}", req.display_name()));
+                        }
+                    } else {
+                        self.state.set_status("Place cursor on a request to yank");
+                    }
+                }
+            }
+            Action::PasteRequest => {
+                if let Some(req) = self.state.yanked_request.clone() {
+                    // Paste into the collection where cursor is
+                    if let Some(flat_idx) = self.state.collections_state.selected() {
+                        let target_ci = self.flat_idx_to_coll_req(flat_idx)
+                            .map(|(ci, _)| ci)
+                            .unwrap_or(self.state.active_collection);
+                        if let Some(coll) = self.state.collections.get_mut(target_ci) {
+                            let mut new_req = req;
+                            let name = new_req.name.as_deref().unwrap_or("Untitled");
+                            new_req.name = Some(format!("{} (copy)", name));
+                            coll.requests.push(new_req);
+                            self.persist_collection(target_ci);
+                            // Expand target if collapsed
+                            self.state.expanded_collections.insert(target_ci);
+                            self.rebuild_collection_items();
+                            self.state.set_status("Request pasted");
+                        }
+                    }
+                } else {
+                    self.state.set_status("Nothing to paste (yy on a request first)");
+                }
             }
 
             // === Inline Text Editing ===
@@ -741,96 +810,98 @@ impl App {
                     Some(Overlay::RenameRequest { name }) => {
                         if !name.trim().is_empty() {
                             if let Some(flat_idx) = self.state.collections_state.selected() {
-                                if flat_idx == 0 {
-                                    // Rename collection (rename the file)
-                                    if let Some(coll) = self.state.collections.get_mut(self.state.active_collection) {
-                                        let old_path = coll.path.clone();
-                                        let new_filename = format!("{}.http", name.trim());
-                                        let new_path = old_path.with_file_name(&new_filename);
-                                        if std::fs::rename(&old_path, &new_path).is_ok() {
-                                            coll.name = name.trim().to_string();
-                                            coll.path = new_path;
-                                            self.rebuild_collection_items();
-                                            self.state.set_status(format!("Collection renamed to '{}'", name.trim()));
-                                        } else {
-                                            self.state.set_status("Failed to rename collection file");
+                                match self.flat_idx_to_coll_req(flat_idx) {
+                                    Some((ci, None)) => {
+                                        // Rename collection file
+                                        if let Some(coll) = self.state.collections.get_mut(ci) {
+                                            let old_path = coll.path.clone();
+                                            let new_filename = format!("{}.http", name.trim());
+                                            let new_path = old_path.with_file_name(&new_filename);
+                                            if std::fs::rename(&old_path, &new_path).is_ok() {
+                                                coll.name = name.trim().to_string();
+                                                coll.path = new_path;
+                                                self.rebuild_collection_items();
+                                                self.state.set_status(format!("Renamed → '{}'", name.trim()));
+                                            } else {
+                                                self.state.set_status("Failed to rename file");
+                                            }
                                         }
                                     }
-                                } else if let Some(coll) = self.state.collections.get_mut(self.state.active_collection) {
-                                    let req_idx = flat_idx - 1;
-                                    if let Some(req) = coll.requests.get_mut(req_idx) {
-                                        req.name = Some(name.trim().to_string());
-                                        // Also update current_request if it's the loaded one
-                                        self.state.current_request.name = Some(name.trim().to_string());
-                                        self.persist_collection(self.state.active_collection);
-                                        self.rebuild_collection_items();
-                                        self.state.set_status(format!("Request renamed to '{}'", name.trim()));
+                                    Some((ci, Some(ri))) => {
+                                        if let Some(req) = self.state.collections.get_mut(ci).and_then(|c| c.requests.get_mut(ri)) {
+                                            req.name = Some(name.trim().to_string());
+                                            self.state.current_request.name = Some(name.trim().to_string());
+                                            self.persist_collection(ci);
+                                            self.rebuild_collection_items();
+                                            self.state.set_status(format!("Renamed → '{}'", name.trim()));
+                                        }
                                     }
+                                    None => {}
                                 }
                             }
                         }
                     }
                     Some(Overlay::ConfirmDelete { .. }) => {
                         if let Some(flat_idx) = self.state.collections_state.selected() {
-                            if flat_idx == 0 {
-                                // Delete entire collection
-                                if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-                                    let _ = std::fs::remove_file(&coll.path);
-                                    let name = coll.name.clone();
-                                    self.state.collections.remove(self.state.active_collection);
-                                    if self.state.active_collection >= self.state.collections.len() && self.state.active_collection > 0 {
-                                        self.state.active_collection -= 1;
-                                    }
-                                    self.rebuild_collection_items();
-                                    self.state.collections_state.select(Some(0));
-                                    // Load first request of new active collection
-                                    if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-                                        if let Some(req) = coll.requests.first() {
-                                            self.state.current_request = req.clone();
+                            match self.flat_idx_to_coll_req(flat_idx) {
+                                Some((ci, None)) => {
+                                    // Delete entire collection
+                                    if let Some(coll) = self.state.collections.get(ci) {
+                                        let _ = std::fs::remove_file(&coll.path);
+                                        let coll_name = coll.name.clone();
+                                        self.state.expanded_collections.remove(&ci);
+                                        self.state.collections.remove(ci);
+                                        if self.state.active_collection >= self.state.collections.len() && self.state.active_collection > 0 {
+                                            self.state.active_collection -= 1;
                                         }
-                                    } else {
-                                        self.state.current_request = Request::default();
+                                        self.rebuild_collection_items();
+                                        self.state.collections_state.select(Some(0));
+                                        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
+                                            if let Some(req) = coll.requests.first() {
+                                                self.state.current_request = req.clone();
+                                            }
+                                        } else {
+                                            self.state.current_request = Request::default();
+                                        }
+                                        self.state.current_response = None;
+                                        self.state.set_status(format!("Deleted collection '{}'", coll_name));
                                     }
-                                    self.state.current_response = None;
-                                    self.state.set_status(format!("Deleted collection '{}'", name));
                                 }
-                            } else if let Some(coll) = self.state.collections.get_mut(self.state.active_collection) {
-                                let req_idx = flat_idx - 1;
-                                if req_idx < coll.requests.len() {
-                                    let name = coll.requests[req_idx].display_name();
-                                    coll.requests.remove(req_idx);
-                                    self.persist_collection(self.state.active_collection);
-                                    self.rebuild_collection_items();
-                                    // Adjust selection
-                                    let max = self.state.collection_items.len().saturating_sub(1);
-                                    let new_sel = flat_idx.min(max);
-                                    self.state.collections_state.select(Some(new_sel));
-                                    self.state.set_status(format!("Deleted request '{}'", name));
+                                Some((ci, Some(ri))) => {
+                                    if let Some(coll) = self.state.collections.get_mut(ci) {
+                                        if ri < coll.requests.len() {
+                                            let req_name = coll.requests[ri].display_name();
+                                            coll.requests.remove(ri);
+                                            self.persist_collection(ci);
+                                            self.rebuild_collection_items();
+                                            let max = self.state.collection_items.len().saturating_sub(1);
+                                            self.state.collections_state.select(Some(flat_idx.min(max)));
+                                            self.state.set_status(format!("Deleted '{}'", req_name));
+                                        }
+                                    }
                                 }
+                                None => {}
                             }
                         }
                     }
                     Some(Overlay::MoveRequest { selected: target_coll }) => {
                         if let Some(flat_idx) = self.state.collections_state.selected() {
-                            if flat_idx > 0 && target_coll != self.state.active_collection {
-                                let req_idx = flat_idx - 1;
-                                if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-                                    if req_idx < coll.requests.len() {
-                                        let req = coll.requests[req_idx].clone();
+                            if let Some((src_ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
+                                if target_coll != src_ci {
+                                    if let Some(req) = self.state.collections.get(src_ci).and_then(|c| c.requests.get(ri)).cloned() {
                                         let req_name = req.display_name();
-                                        // Remove from source
-                                        self.state.collections.get_mut(self.state.active_collection).unwrap().requests.remove(req_idx);
-                                        self.persist_collection(self.state.active_collection);
-                                        // Add to target
+                                        self.state.collections.get_mut(src_ci).unwrap().requests.remove(ri);
+                                        self.persist_collection(src_ci);
                                         let target_name = self.state.collections.get(target_coll).map(|c| c.name.clone()).unwrap_or_default();
                                         self.state.collections.get_mut(target_coll).unwrap().requests.push(req);
                                         self.persist_collection(target_coll);
+                                        self.state.expanded_collections.insert(target_coll);
                                         self.rebuild_collection_items();
                                         self.state.set_status(format!("Moved '{}' → '{}'", req_name, target_name));
                                     }
+                                } else {
+                                    self.state.set_status("Cannot move to same collection");
                                 }
-                            } else if target_coll == self.state.active_collection {
-                                self.state.set_status("Cannot move to same collection");
                             }
                         }
                     }
@@ -976,12 +1047,11 @@ impl App {
 
     fn save_current_request_over_selected(&mut self) {
         if let Some(flat_idx) = self.state.collections_state.selected() {
-            if let Some(coll) = self.state.collections.get_mut(self.state.active_collection) {
-                if flat_idx > 0 {
-                    let req_idx = flat_idx - 1;
-                    if req_idx < coll.requests.len() {
-                        coll.requests[req_idx] = self.state.current_request.clone();
-                        self.persist_collection(self.state.active_collection);
+            if let Some((ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
+                if let Some(coll) = self.state.collections.get_mut(ci) {
+                    if ri < coll.requests.len() {
+                        coll.requests[ri] = self.state.current_request.clone();
+                        self.persist_collection(ci);
                         self.rebuild_collection_items();
                         self.state.set_status("Request saved");
                         return;
@@ -1048,6 +1118,7 @@ impl App {
     }
 
     fn switch_active_collection(&mut self) {
+        self.state.expanded_collections.insert(self.state.active_collection);
         self.rebuild_collection_items();
         self.state.collections_state.select(Some(0));
         if let Some(coll) = self.state.collections.get(self.state.active_collection) {
@@ -1742,15 +1813,12 @@ impl App {
     }
 
     fn select_request_by_flat_index(&mut self, flat_idx: usize) {
-        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
-            if flat_idx > 0 {
-                let req_idx = flat_idx - 1;
-                if let Some(req) = coll.requests.get(req_idx) {
-                    self.state.current_request = req.clone();
-                    self.state.current_response = None;
-                    self.state.last_error = None;
-                    return;
-                }
+        if let Some((ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
+            if let Some(req) = self.state.collections.get(ci).and_then(|c| c.requests.get(ri)) {
+                self.state.current_request = req.clone();
+                self.state.current_response = None;
+                self.state.last_error = None;
+                self.state.active_collection = ci;
             }
         }
     }

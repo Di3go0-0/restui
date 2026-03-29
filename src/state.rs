@@ -310,6 +310,10 @@ pub struct AppState {
 
     // Clipboard (internal)
     pub yank_buffer: String,
+    pub yanked_request: Option<Request>,
+
+    // Collections expand/collapse
+    pub expanded_collections: std::collections::HashSet<usize>,
 
     // Command Palette
     pub command_palette_open: bool,
@@ -377,6 +381,12 @@ impl AppState {
             pending_key: None,
             autocomplete: None,
             yank_buffer: String::new(),
+            yanked_request: None,
+            expanded_collections: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(0); // expand first collection by default
+                s
+            },
             command_palette_open: false,
             command_palette_input: String::new(),
             command_palette_selected: 0,

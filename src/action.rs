@@ -52,6 +52,9 @@ pub enum Action {
     RenameRequest,        // R — rename selected request
     DeleteSelected,       // D — delete selected request or collection
     MoveRequest,          // m — move request to another collection
+    ToggleCollapse,       // Space on collection header — expand/collapse
+    YankRequest,          // yy on a request — copy to clipboard
+    PasteRequest,         // p — paste yanked request into current collection
 
     // Inline text editing (insert mode)
     InlineInput(char),
