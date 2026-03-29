@@ -6,6 +6,7 @@ use ratatui::widgets::ListState;
 use crate::config::AppConfig;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
+use crate::model::history::History;
 use crate::model::request::Request;
 use crate::model::response::Response;
 use crate::vim_buffer::VimBuffer;
@@ -179,6 +180,9 @@ pub enum Overlay {
         input: String,
     },
     ThemeSelector {
+        selected: usize,
+    },
+    History {
         selected: usize,
     },
     EnvironmentEditor {
@@ -356,6 +360,7 @@ pub struct AppState {
     pub collections: Vec<Collection>,
     pub environments: EnvironmentStore,
     pub active_collection: usize,
+    pub history: History,
 
     // Current request
     pub current_request: Request,
@@ -493,6 +498,7 @@ impl AppState {
             collections: Vec::new(),
             environments: EnvironmentStore::default(),
             active_collection: 0,
+            history: History::load(&crate::config::data_dir().join("history.json")),
             current_request: Request::default(),
             current_response: None,
             last_error: None,

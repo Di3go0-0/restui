@@ -1768,6 +1768,26 @@ impl App {
                     self.validate_response_type();
                 }
 
+                // Save to history
+                {
+                    let entry = crate::model::history::HistoryEntry {
+                        method: self.state.current_request.method,
+                        url: self.state.current_request.url.clone(),
+                        name: self.state.current_request.name.clone(),
+                        status,
+                        status_text: self.state.current_response.as_ref().map(|r| r.status_text.clone()).unwrap_or_default(),
+                        elapsed_ms: self.state.current_response.as_ref().map(|r| r.elapsed.as_millis() as u64).unwrap_or(0),
+                        size_bytes: self.state.current_response.as_ref().map(|r| r.size_bytes).unwrap_or(0),
+                        timestamp: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        body_preview: self.state.current_response.as_ref()
+                            .map(|r| r.body.chars().take(200).collect())
+                            .unwrap_or_default(),
+                    };
+                    let limit = self.state.config.general.history_limit;
+                    self.state.history.add(entry, limit);
+                    self.state.history.save(&crate::config::data_dir().join("history.json"));
+                }
+
                 self.state.set_status(format!("{} - {}", status, elapsed));
             }
             Action::RequestFailed(err) => {
@@ -1820,6 +1840,7 @@ impl App {
                     Some(Overlay::HeaderAutocomplete { selected, .. }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::MoveRequest { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ThemeSelector { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::History { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         *selected = selected.saturating_sub(1);
                     }
@@ -1842,6 +1863,10 @@ impl App {
                     }
                     Some(Overlay::ThemeSelector { selected }) => {
                         let max = crate::theme::THEME_NAMES.len().saturating_sub(1);
+                        *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::History { selected }) => {
+                        let max = self.state.history.entries.len().saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
@@ -2036,6 +2061,19 @@ impl App {
                                     return Ok(());
                                 }
                             }
+                        }
+                    }
+                    Some(Overlay::History { selected }) => {
+                        // Load selected history entry into current request fields
+                        if let Some(entry) = self.state.history.entries.get(selected) {
+                            self.state.current_request.method = entry.method;
+                            self.state.current_request.url = entry.url.clone();
+                            if entry.name.is_some() {
+                                self.state.current_request.name = entry.name.clone();
+                            }
+                            self.state.current_response = None;
+                            self.state.last_error = None;
+                            self.state.set_status(format!("Loaded: {} {}", entry.method, entry.url));
                         }
                     }
                     Some(Overlay::SetCacheTTL { input }) => {

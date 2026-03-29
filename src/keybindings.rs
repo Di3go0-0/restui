@@ -105,6 +105,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('q') => return Some(Action::PendingKey('q')),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
         KeyCode::Char('T') => return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 })),
+        KeyCode::Char('H') => return Some(Action::OpenOverlay(Overlay::History { selected: 0 })),
         KeyCode::Char('E') => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
             selected: 0,
             editing_key: false,

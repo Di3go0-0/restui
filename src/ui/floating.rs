@@ -22,6 +22,7 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
             render_env_editor(frame, state, *selected, *editing_key, new_key, new_value, *cursor);
         }
         Overlay::Help => {}
+        Overlay::History { selected } => render_history(frame, state, *selected),
     }
 }
 
@@ -432,4 +433,71 @@ fn render_env_editor(
     }
 
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_history(frame: &mut Frame, state: &AppState, selected: usize) {
+    let area = centered_rect(70, 60, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Request History (j/k  Enter:load  Esc:close) ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if state.history.entries.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "  No history yet. Execute a request first.",
+                Style::default().fg(Color::DarkGray),
+            ))),
+            inner,
+        );
+        return;
+    }
+
+    let items: Vec<ListItem> = state.history.entries
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            let status_color = match entry.status {
+                200..=299 => Color::Green,
+                300..=399 => Color::Yellow,
+                400..=499 => Color::Red,
+                500..=599 => Color::Magenta,
+                _ => Color::DarkGray,
+            };
+            let line = Line::from(vec![
+                Span::styled(
+                    format!("{:>3} ", entry.status),
+                    Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{:<7} ", format!("{}", entry.method)),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::raw(&entry.url),
+                Span::styled(
+                    format!("  {}ms  {}", entry.elapsed_ms, entry.timestamp),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]);
+            let style = if i == selected {
+                Style::default().bg(Color::DarkGray).fg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(line).style(style)
+        })
+        .collect();
+
+    let mut list_state = ratatui::widgets::ListState::default();
+    list_state.select(Some(selected));
+
+    let list = List::new(items)
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
+        .highlight_symbol("\u{25b8} ");
+
+    frame.render_stateful_widget(list, inner, &mut list_state);
 }
