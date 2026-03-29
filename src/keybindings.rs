@@ -532,23 +532,61 @@ fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
 }
 
 fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    // Tab switching (works in both Body and Type tabs)
+    match key.code {
+        KeyCode::Char('}') => return Some(Action::ResponseNextTab),
+        KeyCode::Char('{') => return Some(Action::ResponsePrevTab),
+        _ => {}
+    }
+
     if state.response_tab == ResponseTab::Type {
+        // Type editor: full vim normal mode (editable)
         return match key.code {
+            // Cursor movement
             KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
             KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
+            KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
+            KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
+            KeyCode::Char('w') => Some(Action::BodyWordForward),
+            KeyCode::Char('b') => Some(Action::BodyWordBackward),
+            KeyCode::Char('e') => Some(Action::BodyWordEnd),
+            KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
+            KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
             KeyCode::Char('g') => Some(Action::ScrollTop),
             KeyCode::Char('G') => Some(Action::ScrollBottom),
+            // Mode transitions
             KeyCode::Char('i') => Some(Action::EnterInsertMode),
+            KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
+            KeyCode::Char('a') => Some(Action::EnterAppendMode),
+            KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
+            KeyCode::Char('o') => Some(Action::OpenLineBelow),
+            KeyCode::Char('O') => Some(Action::OpenLineAbove),
+            KeyCode::Char('v') => Some(Action::EnterVisualMode),
+            // Edit operations
+            KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
+            KeyCode::Char('s') => Some(Action::Substitute),
+            KeyCode::Char('S') => Some(Action::ChangeLine),
+            KeyCode::Char('C') => Some(Action::ChangeToEnd),
+            KeyCode::Char('D') => Some(Action::DeleteToEnd),
+            KeyCode::Char('c') => Some(Action::PendingKey('c')),
+            KeyCode::Char('r') => Some(Action::PendingKey('r')),
+            KeyCode::Char('d') => Some(Action::PendingKey('d')),
+            KeyCode::Char('y') => Some(Action::PendingKey('y')),
+            KeyCode::Char('u') => Some(Action::Undo),
+            KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
+            // Find char
+            KeyCode::Char('f') => Some(Action::PendingKey('f')),
+            KeyCode::Char('F') => Some(Action::PendingKey('F')),
+            KeyCode::Char('t') => Some(Action::PendingKey('t')),
+            KeyCode::Char('T') => Some(Action::PendingKey('T')),
+            // Type-specific
             KeyCode::Char('R') => Some(Action::RegenerateType),
-            KeyCode::Char('}') => Some(Action::ResponseNextTab),
-            KeyCode::Char('{') => Some(Action::ResponsePrevTab),
             _ => None,
         };
     }
 
+    // Response Body tab (read-only: normal + visual only)
     match key.code {
-        KeyCode::Char('}') => Some(Action::ResponseNextTab),
-        KeyCode::Char('{') => Some(Action::ResponsePrevTab),
         KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
         KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
         KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
@@ -563,6 +601,10 @@ fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('v') => Some(Action::EnterVisualMode),
         KeyCode::Char('y') => Some(Action::CopyResponseBody),
         KeyCode::Char('Y') => Some(Action::CopyAsCurl),
+        KeyCode::Char('f') => Some(Action::PendingKey('f')),
+        KeyCode::Char('F') => Some(Action::PendingKey('F')),
+        KeyCode::Char('t') => Some(Action::PendingKey('t')),
+        KeyCode::Char('T') => Some(Action::PendingKey('T')),
         KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
         KeyCode::Char('H') => Some(Action::ToggleResponseHeaders),
         KeyCode::Char('/') => Some(Action::StartSearch),
