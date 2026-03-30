@@ -90,7 +90,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             if is_visual { Some((state.request_visual_anchor.saturating_sub(scroll), cursor_in_visible)) } else { None },
             url_base_style, t)
     } else {
-        vec![Span::styled(truncated_url, url_base_style)]
+        colorize_url(&truncated_url, t)
     };
 
     let mut method_spans = vec![
@@ -817,6 +817,50 @@ fn field_hscroll(text: &str, cursor: usize, available_width: usize) -> (usize, S
 
 /// Build a display URL that includes enabled query params appended to base URL.
 /// When not in insert mode on the URL, this gives a preview of the final URL.
+fn colorize_url<'a>(url: &'a str, t: &crate::theme::Theme) -> Vec<Span<'a>> {
+    if let Some(q_pos) = url.find('?') {
+        let base = &url[..q_pos];
+        let query = &url[q_pos..];
+        let mut spans = vec![Span::styled(base, Style::default().fg(t.text))];
+        // Colorize each part of the query string
+        for (i, segment) in query.split_inclusive(&['?', '&'][..]).enumerate() {
+            if i == 0 && segment.starts_with('?') {
+                spans.push(Span::styled("?", Style::default().fg(t.text_dim)));
+                let rest = &segment[1..];
+                if let Some(eq) = rest.find('=') {
+                    spans.push(Span::styled(&rest[..eq], Style::default().fg(t.json_key)));
+                    spans.push(Span::styled("=", Style::default().fg(t.text_dim)));
+                    spans.push(Span::styled(&rest[eq+1..], Style::default().fg(t.json_string)));
+                } else {
+                    spans.push(Span::styled(rest, Style::default().fg(t.json_key)));
+                }
+            } else if segment.ends_with('&') || segment.ends_with('?') {
+                let sep = &segment[segment.len()-1..];
+                let part = &segment[..segment.len()-1];
+                if let Some(eq) = part.find('=') {
+                    spans.push(Span::styled(&part[..eq], Style::default().fg(t.json_key)));
+                    spans.push(Span::styled("=", Style::default().fg(t.text_dim)));
+                    spans.push(Span::styled(&part[eq+1..], Style::default().fg(t.json_string)));
+                } else {
+                    spans.push(Span::styled(part, Style::default().fg(t.json_key)));
+                }
+                spans.push(Span::styled(sep, Style::default().fg(t.text_dim)));
+            } else {
+                if let Some(eq) = segment.find('=') {
+                    spans.push(Span::styled(&segment[..eq], Style::default().fg(t.json_key)));
+                    spans.push(Span::styled("=", Style::default().fg(t.text_dim)));
+                    spans.push(Span::styled(&segment[eq+1..], Style::default().fg(t.json_string)));
+                } else {
+                    spans.push(Span::styled(segment, Style::default().fg(t.json_key)));
+                }
+            }
+        }
+        spans
+    } else {
+        vec![Span::styled(url, Style::default().fg(t.text))]
+    }
+}
+
 fn build_display_url(base_url: &str, params: &[crate::model::request::QueryParam]) -> String {
     let enabled: Vec<_> = params.iter().filter(|p| p.enabled && !p.key.is_empty()).collect();
     if enabled.is_empty() {
