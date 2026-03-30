@@ -413,6 +413,7 @@ fn map_collections_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('n') => Some(Action::CreateCollection),
         KeyCode::Char('s') => Some(Action::SaveRequest),
         KeyCode::Char('S') => Some(Action::SaveRequestAs),
+        KeyCode::Char('a') => Some(Action::AddRequestToCollection),
         KeyCode::Char('C') => Some(Action::NewEmptyRequest),
         KeyCode::Char('r') => Some(Action::RenameRequest),
         KeyCode::Char('d') => Some(Action::PendingKey('d')),

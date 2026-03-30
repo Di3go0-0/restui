@@ -881,6 +881,56 @@ impl App {
                 self.state.request_focus = RequestFocus::Url;
                 self.state.set_status("New empty request");
             }
+            Action::AddRequestToCollection => {
+                // Determine which collection is selected
+                let ci = if let Some(flat_idx) = self.state.collections_state.selected() {
+                    match self.flat_idx_to_coll_req(flat_idx) {
+                        Some((ci, _)) => Some(ci),
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(ci) = ci {
+                    // Generate unique name
+                    let existing_names: Vec<String> = self.state.collections[ci]
+                        .requests.iter()
+                        .filter_map(|r| r.name.clone())
+                        .collect();
+                    let mut name = "New Request".to_string();
+                    let mut counter = 2;
+                    while existing_names.contains(&name) {
+                        name = format!("New Request ({})", counter);
+                        counter += 1;
+                    }
+
+                    let mut new_req = Request::default();
+                    new_req.name = Some(name.clone());
+
+                    // Add to collection and persist
+                    self.state.collections[ci].requests.push(new_req.clone());
+                    self.persist_collection(ci);
+                    self.state.active_collection = ci;
+
+                    // Load into editor
+                    self.state.current_request = new_req;
+                    self.state.current_response = None;
+                    self.state.last_error = None;
+                    self.state.body_buf.cursor_row = 0;
+                    self.state.body_buf.cursor_col = 0;
+                    self.state.request_focus = RequestFocus::Url;
+
+                    // Expand and select the new request
+                    self.state.expanded_collections.insert(ci);
+                    self.rebuild_collection_items();
+
+                    let coll_name = self.state.collections[ci].name.clone();
+                    self.state.set_status(format!("Created: {} in {}", name, coll_name));
+                } else {
+                    self.state.set_status("Select a collection first");
+                }
+            }
             Action::ToggleCollapse => {
                 if let Some(flat_idx) = self.state.collections_state.selected() {
                     if let Some((ci, None)) = self.flat_idx_to_coll_req(flat_idx) {
@@ -3128,9 +3178,57 @@ impl App {
             }
         };
 
-        // Find {{@ before cursor
+        // Find {{ or {{@ before cursor
         let before_cursor = &text[..cursor_pos.min(text.len())];
+
+        // Check for {{@ first (chain autocomplete takes priority)
         let at_pos = before_cursor.rfind("{{@");
+        let brace_pos = before_cursor.rfind("{{");
+
+        // If we have {{ but not {{@ (or {{ appears after {{@), show env autocomplete
+        if let Some(bp) = brace_pos {
+            let is_chain = at_pos.is_some_and(|ap| ap == bp); // {{@ starts at same position as {{
+            if !is_chain {
+                let after_braces = &before_cursor[bp + 2..];
+                // Don't show if already closed with }}
+                if !after_braces.contains("}}") {
+                    let prefix = after_braces.to_lowercase();
+                    let prefix_len = after_braces.len();
+                    let panel = self.state.active_panel;
+                    let mut items: Vec<(String, String)> = Vec::new();
+
+                    if let Some(env) = self.state.environments.active_env() {
+                        for (key, value) in &env.variables {
+                            if key.to_lowercase().starts_with(&prefix) || prefix.is_empty() {
+                                let truncated = if value.len() > 20 {
+                                    format!("{}…", &value[..19])
+                                } else {
+                                    value.clone()
+                                };
+                                let suffix = &key[prefix_len.min(key.len())..];
+                                items.push((
+                                    format!("{}: {}", key, truncated),
+                                    suffix.to_string(),
+                                ));
+                            }
+                        }
+                    }
+
+                    if items.is_empty() {
+                        items.push(("(no active environment \u{2014} press p to select)".to_string(), String::new()));
+                    }
+
+                    self.state.chain_autocomplete = Some(ChainAutocomplete {
+                        items,
+                        selected: 0,
+                        anchor_panel: panel,
+                        kind: crate::state::AutocompleteKind::Env,
+                    });
+                    return;
+                }
+            }
+        }
+
         if at_pos.is_none() {
             self.state.chain_autocomplete = None;
             return;
@@ -3188,6 +3286,7 @@ impl App {
                 items,
                 selected: 0,
                 anchor_panel: panel,
+                kind: crate::state::AutocompleteKind::Chain,
             });
         } else {
             // Has path — suggest fields from type
@@ -3213,6 +3312,7 @@ impl App {
                     items: vec![("(no type \u{2014} execute request first)".to_string(), String::new())],
                     selected: 0,
                     anchor_panel: panel,
+                    kind: crate::state::AutocompleteKind::Chain,
                 });
                 return;
             };
@@ -3230,6 +3330,7 @@ impl App {
                         items: vec![("(field not found)".to_string(), String::new())],
                         selected: 0,
                         anchor_panel: panel,
+                        kind: crate::state::AutocompleteKind::Chain,
                     });
                     return;
                 }
@@ -3284,6 +3385,7 @@ impl App {
                 items,
                 selected: 0,
                 anchor_panel: panel,
+                kind: crate::state::AutocompleteKind::Chain,
             });
         }
     }

@@ -194,12 +194,19 @@ pub enum Overlay {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutocompleteKind {
+    Chain,
+    Env,
+}
+
 #[derive(Debug, Clone)]
 pub struct ChainAutocomplete {
     pub items: Vec<(String, String)>,  // (display_text, insert_text)
     pub selected: usize,
     #[allow(dead_code)]
     pub anchor_panel: Panel,  // which panel triggered it
+    pub kind: AutocompleteKind,
 }
 
 impl ChainAutocomplete {

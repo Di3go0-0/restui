@@ -55,6 +55,7 @@ pub enum Action {
     SaveRequest,          // s — overwrite selected request in collection
     SaveRequestAs,        // S — save current as new request in collection
     NewEmptyRequest,      // C — create blank request
+    AddRequestToCollection,  // a — create new GET request and save to selected collection
     RenameRequest,        // R — rename selected request
     DeleteSelected,       // D — delete selected request or collection
     MoveRequest,          // m — move request to another collection

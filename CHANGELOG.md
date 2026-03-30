@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1] - 2026-03-30
+
+### New Features
+- **Environment variable autocomplete**: type `{{` in any field to see matching variables from the active environment
+- **Add request to collection**: press `a` in the Collections panel to create a new empty GET request and save it directly to the selected collection
+
+### Documentation
+- Added "Environment Variables" section to README with env file format, auto-discovery, and keybindings
+- Added "Request Chaining" section to README with syntax reference and examples
+- Updated help overlay and keybindings table with new shortcuts
+
 ## [0.3.0] - 2026-03-29
 
 ### Type System — TS & C# Code Generation

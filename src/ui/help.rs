@@ -94,8 +94,9 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
             "Collections",
             vec![
                 ("Enter", "Select request"),
+                ("a", "Add new request to collection"),
                 ("s / S", "Save / Save As"),
-                ("C", "New empty request"),
+                ("C", "New empty request (editor only)"),
                 ("n", "New collection (in .http/ folder)"),
                 ("r", "Rename request"),
                 ("dd", "Delete request or collection"),

@@ -150,8 +150,12 @@ fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect, cu
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
     frame.render_widget(Clear, popup_area);
 
+    let title = match ac.kind {
+        crate::state::AutocompleteKind::Chain => " {{@chain  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
+        crate::state::AutocompleteKind::Env => " {{env  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
+    };
     let block = Block::default()
-        .title(" {{@chain  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 

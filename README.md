@@ -98,6 +98,7 @@ restui --env-file env.json
 |-----|--------|
 | `j/k` | Navigate |
 | `Enter` | Select request |
+| `a` | Add new request to collection |
 | `s` | Save request |
 | `S` | Save as new |
 | `n` | New collection |
@@ -120,6 +121,78 @@ Content-Type: application/json
   "email": "john@example.com"
 }
 ```
+
+## Environment Variables
+
+Use `{{variable_name}}` syntax to inject values from the active environment into your requests.
+
+### Environment file
+
+Create an `env.json` (or `env.yaml`) in your `.http/` folder or project root:
+
+```json
+{
+  "dev": {
+    "base_url": "http://localhost:3000",
+    "token": "dev-token-123"
+  },
+  "prod": {
+    "base_url": "https://api.example.com",
+    "token": "prod-token-456"
+  }
+}
+```
+
+Supported filenames (auto-discovered): `env.json`, `env.yaml`, `env.yml`, `.env.json`, `environments.json`, `environments.yaml`.
+You can also pass a file explicitly with `--env-file`.
+
+### Using variables
+
+Reference variables in any request field (URL, headers, body, params, cookies):
+
+```http
+# @name Get Users
+GET {{base_url}}/api/users
+Authorization: Bearer {{token}}
+```
+
+### Keybindings
+
+| Key | Action |
+|-----|--------|
+| `p` | Change active environment |
+| `E` | Edit environment variables |
+
+Autocomplete is available — type `{{` in any field to see matching variables from the active environment.
+
+## Request Chaining
+
+Use `{{@request_name.json.path}}` to extract values from a previous request's JSON response.
+
+```http
+# @name login
+POST {{base_url}}/auth/login
+Content-Type: application/json
+
+{"email": "user@test.com", "password": "secret"}
+
+###
+
+# @name Get Profile
+GET {{base_url}}/api/profile
+Authorization: Bearer {{@login.token}}
+```
+
+### Syntax
+
+| Pattern | Description |
+|---------|-------------|
+| `{{@login.token}}` | Field `token` from `login` response |
+| `{{@auth/login.token}}` | With collection prefix |
+| `{{@login.data[0].id}}` | Array indexing |
+| `{{@login.nested.field}}` | Nested field access |
+
+The referenced request must be executed first so its response is cached. Autocomplete activates automatically when you type `{{@` — it suggests request names and then available JSON fields.
 
 ## Neovim Integration
 
