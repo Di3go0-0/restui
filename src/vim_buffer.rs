@@ -1,5 +1,8 @@
 use crate::state::{InputMode, UNDO_STACK_MAX};
 
+/// Number of lines to keep visible above/below cursor (like vim scrolloff).
+pub const SCROLLOFF: usize = 2;
+
 // ── Vim word-class helpers ──────────────────────────────────────────────────
 
 fn is_word_char(b: u8) -> bool {
@@ -493,12 +496,12 @@ impl VimBuffer {
 
     pub fn sync_scroll(&mut self) {
         let visible = self.visible_height as usize;
-        if visible == 0 { return; }
+        if visible <= SCROLLOFF * 2 { return; }
         let scroll = self.scroll.0 as usize;
-        if self.cursor_row < scroll {
-            self.scroll.0 = self.cursor_row as u16;
-        } else if self.cursor_row >= scroll + visible {
-            self.scroll.0 = (self.cursor_row - visible + 1) as u16;
+        if self.cursor_row < scroll + SCROLLOFF {
+            self.scroll.0 = self.cursor_row.saturating_sub(SCROLLOFF) as u16;
+        } else if self.cursor_row >= scroll + visible - SCROLLOFF {
+            self.scroll.0 = (self.cursor_row - visible + SCROLLOFF + 1) as u16;
         }
     }
 

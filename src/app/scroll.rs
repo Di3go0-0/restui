@@ -89,13 +89,14 @@ impl App {
 
     pub(super) fn sync_body_scroll(&mut self) {
         let visible = self.state.body_buf.visible_height as usize;
-        if visible == 0 { return; }
+        let off = crate::vim_buffer::SCROLLOFF;
+        if visible <= off * 2 { return; }
         let scroll = self.state.body_buf.scroll.0 as usize;
         let row = self.state.body_buf.cursor_row;
-        if row < scroll {
-            self.state.body_buf.scroll.0 = row as u16;
-        } else if row >= scroll + visible {
-            self.state.body_buf.scroll.0 = (row - visible + 1) as u16;
+        if row < scroll + off {
+            self.state.body_buf.scroll.0 = row.saturating_sub(off) as u16;
+        } else if row >= scroll + visible - off {
+            self.state.body_buf.scroll.0 = (row - visible + off + 1) as u16;
         }
     }
 
@@ -113,13 +114,14 @@ impl App {
 
     pub(super) fn sync_resp_scroll(&mut self) {
         let visible = self.state.resp_buf.visible_height as usize;
-        if visible == 0 { return; }
+        let off = crate::vim_buffer::SCROLLOFF;
+        if visible <= off * 2 { return; }
         let scroll = self.state.resp_buf.scroll.0 as usize;
         let row = self.state.resp_buf.cursor_row;
-        if row < scroll {
-            self.state.resp_buf.scroll.0 = row as u16;
-        } else if row >= scroll + visible {
-            self.state.resp_buf.scroll.0 = (row - visible + 1) as u16;
+        if row < scroll + off {
+            self.state.resp_buf.scroll.0 = row.saturating_sub(off) as u16;
+        } else if row >= scroll + visible - off {
+            self.state.resp_buf.scroll.0 = (row - visible + off + 1) as u16;
         }
     }
 
