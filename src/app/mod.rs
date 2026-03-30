@@ -2172,14 +2172,17 @@ impl App {
                     Some(Overlay::NewCollection { name }) => {
                         if !name.trim().is_empty() {
                             let filename = format!("{}.http", name.trim());
-                            let path = PathBuf::from(&filename);
+                            // Create in .http/ folder (convention)
+                            let http_dir = PathBuf::from(".http");
+                            let _ = std::fs::create_dir_all(&http_dir);
+                            let path = http_dir.join(&filename);
                             let content = format!("### {}\nGET https://example.com\n", name.trim());
                             let _ = std::fs::write(&path, &content);
                             if let Ok(requests) = crate::parser::http::parse(&content) {
                                 self.state.collections.push(Collection { name: name.trim().to_string(), path, requests, format: FileFormat::Http });
                                 self.state.active_collection = self.state.collections.len() - 1;
                                 self.rebuild_collection_items();
-                                self.state.set_status(format!("Created: {}", filename));
+                                self.state.set_status(format!("Created: .http/{}", filename));
                             }
                         }
                     }
