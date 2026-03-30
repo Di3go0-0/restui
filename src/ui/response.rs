@@ -794,17 +794,6 @@ fn render_response_body(
     let t = &state.theme;
     let body = resp.formatted_body();
 
-    // Wrap mode: use Paragraph with word wrap for the entire body
-    if state.wrap_enabled && !is_visual && !is_visual_block {
-        let scroll_y = state.resp_buf.scroll.0;
-        let paragraph = Paragraph::new(body.as_str())
-            .wrap(Wrap { trim: false })
-            .scroll((scroll_y, 0))
-            .style(Style::default().fg(t.text));
-        frame.render_widget(paragraph, body_area);
-        return;
-    }
-
     let body_lines: Vec<&str> = body.lines().collect();
     let total_lines = body_lines.len();
 
@@ -816,6 +805,7 @@ fn render_response_body(
     let hscroll = if state.wrap_enabled { 0 } else { state.resp_buf.scroll.1 as usize };
     let visible_height = body_area.height as usize;
     let cursor_row = state.resp_buf.cursor_row;
+    let cursor_col = state.resp_buf.cursor_col;
 
     // Visual range
     let (vsr, vsc, ver, vec_) = if is_visual {
@@ -847,96 +837,117 @@ fn render_response_body(
         .bg(t.accent)
         .add_modifier(Modifier::BOLD);
 
-    for vi in 0..visible_height {
-        let line_idx = scroll_y + vi;
-        if line_idx >= total_lines {
-            break;
-        }
+    let wrap = state.wrap_enabled;
+    let tw = text_area_width as usize;
+    let mut screen_row: usize = 0;
+    let mut line_idx = scroll_y;
+    let mut cursor_screen_pos: Option<(u16, u16)> = None;
 
-        let y = body_area.y + vi as u16;
+    while screen_row < visible_height && line_idx < total_lines {
+        let full_line = body_lines.get(line_idx).copied().unwrap_or("");
 
-        // Line number gutter (relative when focused)
-        let line_num_str = if is_focused && line_idx == cursor_row {
-            format!("{:>3} ", line_idx + 1)
-        } else if is_focused {
-            let rel = if line_idx > cursor_row {
-                line_idx - cursor_row
+        // How many visual rows does this line occupy?
+        let wrap_rows = if wrap && tw > 0 { (full_line.len().max(1) + tw - 1) / tw } else { 1 };
+
+        for wrap_vi in 0..wrap_rows {
+            if screen_row >= visible_height { break; }
+
+            let y = body_area.y + screen_row as u16;
+
+            // Gutter: line number on first wrap row, blank on continuations
+            let gutter_area = Rect::new(body_area.x, y, gutter_width, 1);
+            if wrap_vi == 0 {
+                let line_num_str = if is_focused && line_idx == cursor_row {
+                    format!("{:>3} ", line_idx + 1)
+                } else if is_focused {
+                    let rel = if line_idx > cursor_row { line_idx - cursor_row } else { cursor_row - line_idx };
+                    format!("{:>3} ", rel)
+                } else {
+                    format!("{:>3} ", line_idx + 1)
+                };
+                let gutter_style = if line_idx == cursor_row && is_focused {
+                    Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(t.gutter)
+                };
+                frame.render_widget(Paragraph::new(Line::from(Span::styled(line_num_str, gutter_style))), gutter_area);
             } else {
-                cursor_row - line_idx
+                frame.render_widget(Paragraph::new(Line::from(Span::styled("  ~ ", Style::default().fg(t.gutter)))), gutter_area);
+            }
+
+            // Content slice for this visual row
+            let (line_text, col_offset) = if wrap && tw > 0 {
+                let start = wrap_vi * tw;
+                let end = (start + tw).min(full_line.len());
+                if start < full_line.len() {
+                    (full_line[start..end].to_string(), start)
+                } else {
+                    (String::new(), start)
+                }
+            } else {
+                let text: String = if full_line.len() > hscroll {
+                    full_line[hscroll..].chars().take(tw).collect()
+                } else {
+                    String::new()
+                };
+                (text, hscroll)
             };
-            format!("{:>3} ", rel)
-        } else {
-            format!("{:>3} ", line_idx + 1)
-        };
+            let line_text_ref = line_text.as_str();
 
-        let gutter_style = if line_idx == cursor_row && is_focused {
-            Style::default().fg(t.gutter_active).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(t.gutter)
-        };
+            // Colorize with visual/search/cursor highlight
+            let _adj_cursor_col = cursor_col.saturating_sub(col_offset);
+            let content_line = if is_visual && line_idx >= vsr && line_idx <= ver {
+                let adj_vsc = vsc.saturating_sub(col_offset);
+                let adj_vec = vec_.saturating_sub(col_offset);
+                highlight_visual_line(line_text_ref, line_idx, vsr, adj_vsc, ver, adj_vec)
+            } else if is_visual_block && line_idx >= vb_min_row && line_idx <= vb_max_row {
+                let adj_min_col = vb_min_col.saturating_sub(col_offset);
+                let adj_max_col = vb_max_col.saturating_sub(col_offset);
+                highlight_block_line(line_text_ref, adj_min_col, adj_max_col)
+            } else if has_search {
+                highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
+                    is_focused && line_idx == cursor_row, col_offset)
+            } else if is_focused && line_idx == cursor_row && cursor_col >= col_offset && cursor_col < col_offset + tw && !is_visual && !is_visual_block {
+                Line::from(Span::styled(line_text, Style::default().fg(t.text).bg(t.bg_highlight)))
+            } else {
+                colorize_response_line(line_text_ref, t)
+            };
 
-        let gutter_area = Rect::new(body_area.x, y, gutter_width, 1);
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(line_num_str, gutter_style))),
-            gutter_area,
-        );
+            let content_area = Rect::new(text_area_x, y, text_area_width, 1);
+            frame.render_widget(Paragraph::new(content_line), content_area);
 
-        // Content - apply horizontal scroll (or show full when wrap on)
-        let full_line_text = body_lines.get(line_idx).copied().unwrap_or("");
-        let line_text: String = if state.wrap_enabled {
-            full_line_text.to_string()
-        } else if full_line_text.len() > hscroll {
-            full_line_text[hscroll..].chars().take(text_area_width as usize).collect()
-        } else {
-            String::new()
-        };
-        let line_text_ref = line_text.as_str();
+            // Track cursor screen position for this visual row
+            if is_focused && line_idx == cursor_row && cursor_col >= col_offset && cursor_col < col_offset + tw {
+                let cx = text_area_x + (cursor_col - col_offset) as u16;
+                cursor_screen_pos = Some((cx, y));
+            }
 
-        let content_line = if is_visual && line_idx >= vsr && line_idx <= ver {
-            let adj_vsc = vsc.saturating_sub(hscroll);
-            let adj_vec = vec_.saturating_sub(hscroll);
-            highlight_visual_line(line_text_ref, line_idx, vsr, adj_vsc, ver, adj_vec)
-        } else if is_visual_block && line_idx >= vb_min_row && line_idx <= vb_max_row {
-            let adj_min_col = vb_min_col.saturating_sub(hscroll);
-            let adj_max_col = vb_max_col.saturating_sub(hscroll);
-            highlight_block_line(line_text_ref, adj_min_col, adj_max_col)
-        } else if has_search {
-            highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
-                is_focused && line_idx == cursor_row, hscroll)
-        } else if is_focused && line_idx == cursor_row && !is_visual && !is_visual_block {
-            Line::from(Span::styled(
-                line_text,
-                Style::default().fg(t.text).bg(t.bg_highlight),
-            ))
-        } else {
-            colorize_response_line(line_text_ref, t)
-        };
-
-        let content_area = Rect::new(text_area_x, y, text_area_width, 1);
-        frame.render_widget(Paragraph::new(content_line), content_area);
-
-        // Bracket highlighting
-        if is_focused {
-            let highlight_positions: [(usize, usize); 2] = [
-                (state.resp_buf.cursor_row, state.resp_buf.cursor_col),
-                matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
-            ];
-            for &(br, bc) in &highlight_positions {
-                if br == line_idx && bc >= hscroll {
-                    if let Some(ch) = body_lines.get(br).and_then(|l| l.as_bytes().get(bc)) {
-                        if matches!(ch, b'{' | b'}' | b'[' | b']' | b'(' | b')') {
-                            let bx = text_area_x + (bc - hscroll) as u16;
-                            if bx < content_area.right() {
-                                let buf = frame.buffer_mut();
-                                if bx < buf.area().right() && y < buf.area().bottom() {
-                                    buf[(bx, y)].set_style(bracket_style);
+            // Bracket highlighting
+            if is_focused {
+                let highlight_positions: [(usize, usize); 2] = [
+                    (state.resp_buf.cursor_row, state.resp_buf.cursor_col),
+                    matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
+                ];
+                for &(br, bc) in &highlight_positions {
+                    if br == line_idx && bc >= col_offset && bc < col_offset + tw {
+                        if let Some(ch) = body_lines.get(br).and_then(|l| l.as_bytes().get(bc)) {
+                            if matches!(ch, b'{' | b'}' | b'[' | b']' | b'(' | b')') {
+                                let bx = text_area_x + (bc - col_offset) as u16;
+                                if bx < content_area.right() {
+                                    let buf = frame.buffer_mut();
+                                    if bx < buf.area().right() && y < buf.area().bottom() {
+                                        buf[(bx, y)].set_style(bracket_style);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+            screen_row += 1;
         }
+        line_idx += 1;
     }
 
     // Scrollbar
@@ -946,7 +957,13 @@ fn render_response_body(
     }
 
     // Cursor in visual mode
-    if is_visual || is_visual_block {
+    if let Some((cx, cy)) = cursor_screen_pos {
+        if is_visual || is_visual_block {
+            if cx < inner.right() {
+                frame.set_cursor_position(Position::new(cx, cy));
+            }
+        }
+    } else if is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < body_area.height {
             let cursor_x = text_area_x + state.resp_buf.cursor_col.saturating_sub(hscroll) as u16;
