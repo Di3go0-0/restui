@@ -472,6 +472,9 @@ pub struct AppState {
     // Config
     pub config: AppConfig,
 
+    // Word wrap (global toggle)
+    pub wrap_enabled: bool,
+
     // Response headers inspector
     pub response_headers_expanded: bool,
     pub response_headers_scroll: usize,
@@ -569,6 +572,7 @@ impl AppState {
             env_selector_state: ListState::default(),
             theme: crate::theme::Theme::default(),
             config,
+            wrap_enabled: false,
             response_headers_expanded: false,
             response_headers_scroll: 0,
             search: SearchState::default(),

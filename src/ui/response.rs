@@ -793,6 +793,18 @@ fn render_response_body(
 ) {
     let t = &state.theme;
     let body = resp.formatted_body();
+
+    // Wrap mode: use Paragraph with word wrap for the entire body
+    if state.wrap_enabled && !is_visual && !is_visual_block {
+        let scroll_y = state.resp_buf.scroll.0;
+        let paragraph = Paragraph::new(body.as_str())
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_y, 0))
+            .style(Style::default().fg(t.text));
+        frame.render_widget(paragraph, body_area);
+        return;
+    }
+
     let body_lines: Vec<&str> = body.lines().collect();
     let total_lines = body_lines.len();
 
@@ -801,7 +813,7 @@ fn render_response_body(
     let text_area_width = body_area.width.saturating_sub(gutter_width);
 
     let scroll_y = state.resp_buf.scroll.0 as usize;
-    let hscroll = state.resp_buf.scroll.1 as usize;
+    let hscroll = if state.wrap_enabled { 0 } else { state.resp_buf.scroll.1 as usize };
     let visible_height = body_area.height as usize;
     let cursor_row = state.resp_buf.cursor_row;
 
@@ -869,9 +881,11 @@ fn render_response_body(
             gutter_area,
         );
 
-        // Content - apply horizontal scroll
+        // Content - apply horizontal scroll (or show full when wrap on)
         let full_line_text = body_lines.get(line_idx).copied().unwrap_or("");
-        let line_text: String = if full_line_text.len() > hscroll {
+        let line_text: String = if state.wrap_enabled {
+            full_line_text.to_string()
+        } else if full_line_text.len() > hscroll {
             full_line_text[hscroll..].chars().take(text_area_width as usize).collect()
         } else {
             String::new()

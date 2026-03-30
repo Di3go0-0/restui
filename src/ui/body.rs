@@ -135,9 +135,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let gutter_area = Rect::new(inner.x, y, gutter_width, 1);
         frame.render_widget(Paragraph::new(gutter_line), gutter_area);
 
-        // Content — apply horizontal scroll
+        // Content — apply horizontal scroll or wrap
         let full_line_text = body_lines.get(line_idx).copied().unwrap_or("");
-        let line_text: String = if full_line_text.len() > hscroll {
+        let line_text: String = if state.wrap_enabled {
+            // Wrap: show from start, truncate to width (visual wrap line 0)
+            full_line_text.chars().take(text_area_width as usize).collect()
+        } else if full_line_text.len() > hscroll {
             full_line_text[hscroll..].chars().take(text_area_width as usize).collect()
         } else {
             String::new()

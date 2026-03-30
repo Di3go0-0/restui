@@ -174,6 +174,7 @@ pub enum Action {
 
     // SSL
     ToggleInsecureMode,
+    ToggleWrap,
 
     // Clipboard
     CopyResponseBody,

@@ -68,6 +68,18 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::raw(" "),
     ];
 
+    // Wrap indicator
+    if state.wrap_enabled {
+        spans.push(Span::styled(
+            " WRAP ",
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::raw(" "));
+    }
+
     // SSL indicator
     if !state.config.general.verify_ssl {
         spans.push(Span::styled(

@@ -50,6 +50,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             KeyCode::Char('d') => return Some(Action::ScrollHalfDown),
             KeyCode::Char('u') => return Some(Action::ScrollHalfUp),
             KeyCode::Char('s') => return Some(Action::ToggleInsecureMode),
+            KeyCode::Char('w') if state.mode == InputMode::Normal => return Some(Action::ToggleWrap),
             _ => {}
         }
     }

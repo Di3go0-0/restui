@@ -238,6 +238,10 @@ impl App {
                 // Account for borders and internal layout (approx 5 lines for response header area)
                 self.state.body_buf.visible_height = self.state.body_buf.visible_height.saturating_sub(2);
                 self.state.resp_buf.visible_height = self.state.resp_buf.visible_height.saturating_sub(5);
+                // When Type tab is open, response preview only gets ~40% of the response panel
+                if self.state.response_tab == ResponseTab::Type {
+                    self.state.resp_buf.visible_height = self.state.resp_buf.visible_height / 2;
+                }
 
                 // Calculate visible widths for horizontal scroll-follow
                 // Body and response panels share the right side; subtract gutter (4) + border (2)
@@ -2041,6 +2045,15 @@ impl App {
                     self.state.set_status("SSL: Strict (certificates verified)");
                 } else {
                     self.state.set_status("SSL: Insecure (certificates NOT verified)");
+                }
+            }
+
+            Action::ToggleWrap => {
+                self.state.wrap_enabled = !self.state.wrap_enabled;
+                if self.state.wrap_enabled {
+                    self.state.set_status("Wrap: ON");
+                } else {
+                    self.state.set_status("Wrap: OFF");
                 }
             }
 
