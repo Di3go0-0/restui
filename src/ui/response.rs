@@ -455,6 +455,7 @@ fn render_type_editor(
 ) {
     let t = &state.theme;
     let is_insert = is_focused && state.mode == InputMode::Insert && state.response_tab == ResponseTab::Type;
+    let is_type_visual = is_focused && (state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock);
     let text = &state.response_type_text;
 
     if text.is_empty() && state.response_type.is_none() {
@@ -499,8 +500,19 @@ fn render_type_editor(
         let line_text = text_lines.get(line_idx).copied().unwrap_or("");
         let line_area = Rect::new(text_area_x, y, text_area_width, 1);
 
-        // Colorize the line
-        let colored_line = colorize_type_line(line_text, t);
+        // Colorize the line (with visual highlight if applicable)
+        let colored_line = if is_type_visual {
+            let (ar, ac) = (state.type_buf.visual_anchor_row, state.type_buf.visual_anchor_col);
+            let (cr, cc) = (state.type_buf.cursor_row, state.type_buf.cursor_col);
+            let (sr, sc, er, ec) = if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) };
+            if line_idx >= sr && line_idx <= er {
+                highlight_visual_line(line_text, line_idx, sr, sc, er, ec)
+            } else {
+                colorize_type_line(line_text, t)
+            }
+        } else {
+            colorize_type_line(line_text, t)
+        };
         frame.render_widget(Paragraph::new(colored_line), line_area);
 
         // Cursor rendering
