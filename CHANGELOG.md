@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.2.1] - 2026-03-29
+
+### Type Editor (Response Panel)
+- Full vim support in the Type editor: normal, insert, and visual modes
+- All vim motions: `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `f`/`F`/`t`/`T`
+- Edit operations: `dd`, `cc`, `x`, `r`, `s`, `S`, `C`, `D`, `cw`/`cb`, `dw`/`de`/`db`
+- Insert modes: `i`/`I`/`a`/`A`/`o`/`O`
+- Visual mode with selection highlighting
+- Undo/redo: `u` / `Ctrl+R`
+- Paste: `p`/`P`, `Ctrl+V` from clipboard
+- Yank: `yy`, `yw`, `y$`
+
+### Type Tab Split View
+- When the Type tab is open, the response body preview is visible below
+- **Ctrl+J** moves focus down to the response preview
+- **Ctrl+K** moves focus back up to the type editor
+- Response preview supports full read-only vim navigation + visual mode + copy
+- Visual indicator (`▸`) shows which section has focus
+- At edges, Ctrl+J/K falls through to normal panel navigation
+
+### Request History
+- Every completed request is saved to persistent history (`~/.local/share/restui/history.json`)
+- Press **H** to open the history overlay (navigate with `j`/`k`, load with `Enter`)
+- History is capped at the configured `history_limit` (default 100)
+
+### Chain Autocomplete Fixes
+- Accepting a suggestion now inserts only the missing suffix (was inserting the full text, duplicating what was already typed)
+- Fixed suffix calculation for array-of-objects field suggestions
+- Popup now renders near the cursor instead of at a fixed position
+- Header autocomplete popup renders near the edited header row
+
+### Request Cancellation
+- Press **Esc** during a request to cancel it immediately
+- Animated spinner with elapsed time in the status bar while waiting
+- Status shows `⠋ Sending request... 2.3s (Esc to cancel)`
+
+### Code Quality & Security
+- **Security**: shell injection fix in curl export (header values now escaped)
+- **Security**: URL scheme validation (only `http://` and `https://` allowed)
+- Magic numbers extracted to named constants
+- `app.rs` split into focused modules (`execute.rs`, `scroll.rs`, `search.rs`)
+- `AppState` fields grouped into `SearchState`, `CommandPaletteState`
+- Body type access consolidated into `Request.get_body()` / `set_body()` / `any_body()`
+- Duplicated cache eviction logic extracted to `cache_response()`
+- `VimBuffer` abstraction for reusable vim editing across panels
+- Body, response, and type editor state migrated to `VimBuffer`
+- User-Agent header suggestion uses dynamic crate version
+- File-based tracing/logging with `--debug` flag
+- Version number shown in bottom-right corner of status bar
+
 ## [0.2.0] - 2026-03-29
 
 ### Vim Editing
