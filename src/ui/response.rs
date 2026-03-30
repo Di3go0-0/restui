@@ -910,7 +910,7 @@ fn render_response_body(
                 highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
                     is_focused && line_idx == cursor_row, col_offset)
             } else if is_focused && line_idx == cursor_row && cursor_col >= col_offset && cursor_col < col_offset + tw && !is_visual && !is_visual_block {
-                Line::from(Span::styled(line_text, Style::default().fg(t.text).bg(t.bg_highlight)))
+                render_resp_cursor_line(line_text_ref, cursor_col.saturating_sub(col_offset), t)
             } else if wrap && col_offset > 0 {
                 // Wrapped continuation: slice spans from the pre-colorized full line
                 slice_colored_line(&full_colored, col_offset, col_offset + line_text.len())
@@ -1080,6 +1080,35 @@ fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
     } else {
         (cr, cc, ar, ac)
     }
+}
+
+/// Render a response line with block cursor at cursor_col and highlighted background.
+fn render_resp_cursor_line(line: &str, cursor_col: usize, t: &crate::theme::Theme) -> Line<'static> {
+    let line_style = Style::default().fg(t.text).bg(t.bg_highlight);
+    let cursor_style = Style::default().fg(Color::Black).bg(t.text);
+
+    if line.is_empty() {
+        return Line::from(vec![Span::styled(" ", cursor_style)]);
+    }
+
+    let col = cursor_col.min(line.len());
+
+    if col >= line.len() {
+        return Line::from(vec![
+            Span::styled(line.to_string(), line_style),
+            Span::styled(" ", cursor_style),
+        ]);
+    }
+
+    let before = &line[..col];
+    let cursor_char = &line[col..col + 1];
+    let after = &line[col + 1..];
+
+    Line::from(vec![
+        Span::styled(before.to_string(), line_style),
+        Span::styled(cursor_char.to_string(), cursor_style),
+        Span::styled(after.to_string(), line_style),
+    ])
 }
 
 fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize, ec: usize) -> Line<'static> {
