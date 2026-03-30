@@ -141,10 +141,10 @@ fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect, cu
     // Position below and to the right of the cursor
     let (cx, cy) = cursor_pos;
     let popup_x = cx.min(area.right().saturating_sub(popup_width));
-    let popup_y = if cy + 1 + popup_height <= area.bottom() {
-        cy + 1 // below cursor
+    let popup_y = if cy + 3 + popup_height <= area.bottom() {
+        cy + 2 // 2 lines below cursor so it doesn't block the current line
     } else {
-        cy.saturating_sub(popup_height) // above cursor if no room below
+        cy.saturating_sub(popup_height + 1) // above cursor if no room below
     };
 
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
