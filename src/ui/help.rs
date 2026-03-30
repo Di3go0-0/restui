@@ -116,7 +116,7 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
                 ("Ctrl+S", "Toggle SSL insecure mode"),
                 ("Esc", "Cancel in-flight request"),
                 ("H", "Request history"),
-                ("qq", "Quit"),
+                ("q", "Quit"),
             ],
         ),
     ];

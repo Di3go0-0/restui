@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.2] - 2026-03-30
+
+### Improvements
+- **Quick quit**: press `q` once to exit (previously required `qq`)
+
 ## [0.3.1] - 2026-03-30
 
 ### New Features

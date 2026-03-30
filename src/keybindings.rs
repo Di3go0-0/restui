@@ -103,15 +103,6 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         };
     }
 
-    // qq to quit (pending key)
-    if let Some((pending, instant)) = state.pending_key {
-        if pending == 'q' && instant.elapsed() < PENDING_KEY_TIMEOUT {
-            if key.code == KeyCode::Char('q') {
-                return Some(Action::Quit);
-            }
-        }
-    }
-
     // Cancel in-flight request with Esc
     if state.request_in_flight && key.code == KeyCode::Esc {
         return Some(Action::CancelRequest);
@@ -119,7 +110,7 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 
     // Global normal mode keys
     match key.code {
-        KeyCode::Char('q') => return Some(Action::PendingKey('q')),
+        KeyCode::Char('q') => return Some(Action::Quit),
         KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
         // T/H are global shortcuts ONLY when not in an editable panel (they conflict with vim motions)
         KeyCode::Char('T') if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
