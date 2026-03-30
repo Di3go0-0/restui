@@ -167,6 +167,8 @@ pub enum Action {
     ResponseNextTab,
     ResponsePrevTab,
     RegenerateType,
+    TypeSubFocusDown,
+    TypeSubFocusUp,
 
     // SSL
     ToggleInsecureMode,

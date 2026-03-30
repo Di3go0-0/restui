@@ -271,6 +271,13 @@ pub enum ResponseTab {
     Type,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TypeSubFocus {
+    #[default]
+    Editor,
+    Preview,
+}
+
 impl ResponseTab {
     pub fn next(self) -> Self {
         match self {
@@ -451,6 +458,7 @@ pub struct AppState {
     pub response_type_locked: bool,
     pub type_validation_errors: Vec<String>,
     pub type_buf: VimBuffer,
+    pub type_sub_focus: TypeSubFocus,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -532,6 +540,7 @@ impl AppState {
             response_type_locked: false,
             type_validation_errors: Vec::new(),
             type_buf: VimBuffer::default(),
+            type_sub_focus: TypeSubFocus::default(),
             matched_bracket: None,
             count_prefix: None,
             should_quit: false,

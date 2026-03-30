@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::Action;
-use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, PENDING_KEY_TIMEOUT};
+use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, PENDING_KEY_TIMEOUT};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 0. Command Palette consumes all input when open
@@ -76,6 +76,22 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 }
 
 fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    // Ctrl+J/K: sub-focus navigation within Type tab (before panel navigation)
+    if key.modifiers.contains(KeyModifiers::CONTROL)
+        && state.active_panel == Panel::Response
+        && state.response_tab == ResponseTab::Type
+    {
+        match key.code {
+            KeyCode::Char('j') if state.type_sub_focus == TypeSubFocus::Editor => {
+                return Some(Action::TypeSubFocusDown);
+            }
+            KeyCode::Char('k') if state.type_sub_focus == TypeSubFocus::Preview => {
+                return Some(Action::TypeSubFocusUp);
+            }
+            _ => {} // fall through to panel navigation
+        }
+    }
+
     // Ctrl+h/j/k/l for panel navigation
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match key.code {
@@ -545,6 +561,33 @@ fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Char('}') => return Some(Action::ResponseNextTab),
         KeyCode::Char('{') => return Some(Action::ResponsePrevTab),
         _ => {}
+    }
+
+    if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Preview {
+        // Type tab: response body preview (read-only navigation + copy)
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
+            KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
+            KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
+            KeyCode::Char('w') => Some(Action::BodyWordForward),
+            KeyCode::Char('b') => Some(Action::BodyWordBackward),
+            KeyCode::Char('e') => Some(Action::BodyWordEnd),
+            KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
+            KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
+            KeyCode::Char('g') => Some(Action::ScrollTop),
+            KeyCode::Char('G') => Some(Action::ScrollBottom),
+            KeyCode::Char('v') => Some(Action::EnterVisualMode),
+            KeyCode::Char('y') => Some(Action::CopyResponseBody),
+            KeyCode::Char('f') => Some(Action::PendingKey('f')),
+            KeyCode::Char('F') => Some(Action::PendingKey('F')),
+            KeyCode::Char('t') => Some(Action::PendingKey('t')),
+            KeyCode::Char('T') => Some(Action::PendingKey('T')),
+            KeyCode::Char('/') => Some(Action::StartSearch),
+            KeyCode::Char('n') => Some(Action::SearchNext),
+            KeyCode::Char('N') => Some(Action::SearchPrev),
+            _ => None,
+        };
     }
 
     if state.response_tab == ResponseTab::Type {

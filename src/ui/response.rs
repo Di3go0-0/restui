@@ -387,8 +387,20 @@ fn render_type_tab(
     ));
     frame.render_widget(Paragraph::new(sep1), chunks[2]);
 
-    // Type editor area
-    render_type_editor(frame, state, chunks[3], is_focused);
+    // Type editor area — cursor only when sub-focus is Editor
+    let editor_focused = is_focused && state.type_sub_focus == crate::state::TypeSubFocus::Editor;
+    render_type_editor(frame, state, chunks[3], editor_focused);
+
+    // Sub-focus indicator
+    if is_focused {
+        let indicator = if state.type_sub_focus == crate::state::TypeSubFocus::Editor {
+            "▸ Type (Ctrl+J → preview)"
+        } else {
+            "  Type"
+        };
+        let ind_area = Rect::new(chunks[2].x, chunks[2].y, indicator.len() as u16, 1);
+        frame.render_widget(Paragraph::new(Span::styled(indicator, Style::default().fg(Color::Cyan))), ind_area);
+    }
 
     // Validation warnings
     if !errors.is_empty() {
@@ -415,9 +427,24 @@ fn render_type_tab(
     ));
     frame.render_widget(Paragraph::new(sep2), chunks[5]);
 
-    // Response body preview (read-only, using same rendering as body tab but in half height)
+    // Response body preview — cursor when sub-focus is Preview
+    let preview_focused = is_focused && state.type_sub_focus == crate::state::TypeSubFocus::Preview;
+    let preview_visual = preview_focused && state.mode == InputMode::Visual;
+    let preview_visual_block = preview_focused && state.mode == InputMode::VisualBlock;
     let preview_area = chunks[6];
-    render_response_body(frame, state, resp, preview_area, inner, is_focused, false, false);
+
+    // Sub-focus indicator for preview
+    if is_focused {
+        let indicator = if state.type_sub_focus == crate::state::TypeSubFocus::Preview {
+            "▸ Response (Ctrl+K → type)"
+        } else {
+            "  Response"
+        };
+        let ind_area = Rect::new(chunks[5].x, chunks[5].y, indicator.len() as u16, 1);
+        frame.render_widget(Paragraph::new(Span::styled(indicator, Style::default().fg(Color::Cyan))), ind_area);
+    }
+
+    render_response_body(frame, state, resp, preview_area, inner, preview_focused, preview_visual, preview_visual_block);
 }
 
 fn render_type_editor(

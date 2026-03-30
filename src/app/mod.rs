@@ -275,12 +275,14 @@ impl App {
                 self.state.pending_key = None;
                 self.state.request_field_editing = false;
                 self.state.chain_autocomplete = None;
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
             Action::FocusPanel(panel) => {
                 self.state.active_panel = panel;
                 self.state.mode = InputMode::Normal;
                 self.state.request_field_editing = false;
                 self.state.chain_autocomplete = None;
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
 
             // === Vim Mode Transitions ===
@@ -1827,9 +1829,19 @@ impl App {
             // === Response Tabs ===
             Action::ResponseNextTab => {
                 self.state.response_tab = self.state.response_tab.next();
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
             Action::ResponsePrevTab => {
                 self.state.response_tab = self.state.response_tab.prev();
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+            }
+            Action::TypeSubFocusDown => {
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Preview;
+                self.state.mode = InputMode::Normal;
+            }
+            Action::TypeSubFocusUp => {
+                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.mode = InputMode::Normal;
             }
             Action::RegenerateType => {
                 self.state.response_type_locked = false;
