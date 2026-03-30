@@ -60,7 +60,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .iter()
         .enumerate()
         .map(|(_i, item)| {
-            let is_collection_header = !item.starts_with("  ");
+            let is_collection_header = item.starts_with('▼') || item.starts_with('▶');
             if is_collection_header {
                 // Collection header line: "● name" or "○ name"
                 ListItem::new(Line::from(vec![Span::styled(

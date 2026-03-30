@@ -484,11 +484,9 @@ fn render_type_editor(
     let t = &state.theme;
     let is_insert = is_focused && state.mode == InputMode::Insert && state.response_tab == ResponseTab::Type;
     let is_type_visual = is_focused && (state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock);
-    let (text, buf) = match state.type_lang {
-        crate::state::TypeLang::Inferred => (&state.response_type_text, &state.type_buf),
-        crate::state::TypeLang::TypeScript => (&state.type_ts_text, &state.type_ts_buf),
-        crate::state::TypeLang::CSharp => (&state.type_csharp_text, &state.type_csharp_buf),
-    };
+    // response_type_text and type_buf always hold the active lang's data (swapped on lang change)
+    let text = &state.response_type_text;
+    let buf = &state.type_buf;
 
     if text.is_empty() && state.response_type.is_none() {
         let placeholder = Paragraph::new(Line::from(Span::styled(
@@ -532,7 +530,12 @@ fn render_type_editor(
         let line_text = text_lines.get(line_idx).copied().unwrap_or("");
         let line_area = Rect::new(text_area_x, y, text_area_width, 1);
 
-        // Colorize the line (with visual highlight if applicable)
+        // Colorize the line based on language (with visual highlight if applicable)
+        let colorize_fn = match state.type_lang {
+            crate::state::TypeLang::TypeScript => colorize_ts_line,
+            crate::state::TypeLang::CSharp => colorize_csharp_line,
+            _ => colorize_type_line,
+        };
         let colored_line = if is_type_visual {
             let (ar, ac) = (buf.visual_anchor_row, buf.visual_anchor_col);
             let (cr, cc) = (buf.cursor_row, buf.cursor_col);
@@ -540,10 +543,10 @@ fn render_type_editor(
             if line_idx >= sr && line_idx <= er {
                 highlight_visual_line(line_text, line_idx, sr, sc, er, ec)
             } else {
-                colorize_type_line(line_text, t)
+                colorize_fn(line_text, t)
             }
         } else {
-            colorize_type_line(line_text, t)
+            colorize_fn(line_text, t)
         };
         frame.render_widget(Paragraph::new(colored_line), line_area);
 
@@ -575,6 +578,90 @@ fn render_type_editor(
     if total_lines > visible_height {
         render_scrollbar(frame, type_area, scroll, total_lines, visible_height, t.text_dim);
     }
+}
+
+fn colorize_ts_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut current = line;
+
+    // Simple token-based colorization
+    let leading_ws: String = current.chars().take_while(|c| c.is_whitespace()).collect();
+    if !leading_ws.is_empty() {
+        spans.push(Span::raw(leading_ws.clone()));
+        current = &current[leading_ws.len()..];
+    }
+
+    for word in current.split_inclusive(|c: char| !c.is_alphanumeric() && c != '_') {
+        let trimmed_word = word.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
+        let suffix = &word[trimmed_word.len()..];
+
+        let style = if trimmed_word == "type" {
+            Style::default().fg(t.json_bool).add_modifier(Modifier::BOLD) // keyword purple/yellow
+        } else if ["string", "number", "boolean", "null"].contains(&trimmed_word) {
+            Style::default().fg(t.json_key) // type names in cyan
+        } else if trimmed_word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD) // type name
+        } else {
+            Style::default().fg(t.text)
+        };
+
+        if !trimmed_word.is_empty() {
+            spans.push(Span::styled(trimmed_word.to_string(), style));
+        }
+        if !suffix.is_empty() {
+            let punct_style = if suffix.contains('{') || suffix.contains('}') || suffix.contains(';') {
+                Style::default().fg(t.text_dim)
+            } else if suffix.contains(':') {
+                Style::default().fg(t.text_dim)
+            } else {
+                Style::default().fg(t.text)
+            };
+            spans.push(Span::styled(suffix.to_string(), punct_style));
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(line.to_string(), Style::default().fg(t.text)));
+    }
+    Line::from(spans)
+}
+
+fn colorize_csharp_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let current = line;
+
+    let leading_ws: String = current.chars().take_while(|c| c.is_whitespace()).collect();
+    if !leading_ws.is_empty() {
+        spans.push(Span::raw(leading_ws.clone()));
+    }
+    let trimmed = &current[leading_ws.len()..];
+
+    for word in trimmed.split_inclusive(|c: char| !c.is_alphanumeric() && c != '_' && c != '?') {
+        let trimmed_word = word.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '?');
+        let suffix = &word[trimmed_word.len()..];
+
+        let style = if ["public", "class", "get", "set", "List"].contains(&trimmed_word) {
+            Style::default().fg(t.json_bool).add_modifier(Modifier::BOLD) // keywords
+        } else if ["string", "int", "bool", "float", "double", "long", "object", "object?"].contains(&trimmed_word) {
+            Style::default().fg(t.json_key) // C# types
+        } else if trimmed_word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            Style::default().fg(t.accent) // class/property names
+        } else {
+            Style::default().fg(t.text)
+        };
+
+        if !trimmed_word.is_empty() {
+            spans.push(Span::styled(trimmed_word.to_string(), style));
+        }
+        if !suffix.is_empty() {
+            spans.push(Span::styled(suffix.to_string(), Style::default().fg(t.text_dim)));
+        }
+    }
+
+    if spans.is_empty() {
+        spans.push(Span::styled(line.to_string(), Style::default().fg(t.text)));
+    }
+    Line::from(spans)
 }
 
 fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {

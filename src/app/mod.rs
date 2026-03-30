@@ -36,6 +36,68 @@ impl App {
         }
     }
 
+    fn active_type_text(&self) -> &str {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => &self.state.response_type_text,
+            crate::state::TypeLang::TypeScript => &self.state.type_ts_text,
+            crate::state::TypeLang::CSharp => &self.state.type_csharp_text,
+        }
+    }
+
+    fn active_type_text_mut(&mut self) -> &mut String {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => &mut self.state.response_type_text,
+            crate::state::TypeLang::TypeScript => &mut self.state.type_ts_text,
+            crate::state::TypeLang::CSharp => &mut self.state.type_csharp_text,
+        }
+    }
+
+    fn active_type_buf(&self) -> &crate::vim_buffer::VimBuffer {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => &self.state.type_buf,
+            crate::state::TypeLang::TypeScript => &self.state.type_ts_buf,
+            crate::state::TypeLang::CSharp => &self.state.type_csharp_buf,
+        }
+    }
+
+    fn active_type_buf_mut(&mut self) -> &mut crate::vim_buffer::VimBuffer {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => &mut self.state.type_buf,
+            crate::state::TypeLang::TypeScript => &mut self.state.type_ts_buf,
+            crate::state::TypeLang::CSharp => &mut self.state.type_csharp_buf,
+        }
+    }
+
+    /// Save current active type text/buf to the storage for the current lang.
+    fn swap_type_lang_out(&mut self) {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
+            crate::state::TypeLang::TypeScript => {
+                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_ts_text);
+                std::mem::swap(&mut self.state.type_buf, &mut self.state.type_ts_buf);
+            }
+            crate::state::TypeLang::CSharp => {
+                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_csharp_text);
+                std::mem::swap(&mut self.state.type_buf, &mut self.state.type_csharp_buf);
+            }
+        }
+    }
+
+    /// Load the type text/buf for the new lang into the active slots.
+    fn swap_type_lang_in(&mut self) {
+        match self.state.type_lang {
+            crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
+            crate::state::TypeLang::TypeScript => {
+                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_ts_text);
+                std::mem::swap(&mut self.state.type_buf, &mut self.state.type_ts_buf);
+            }
+            crate::state::TypeLang::CSharp => {
+                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_csharp_text);
+                std::mem::swap(&mut self.state.type_buf, &mut self.state.type_csharp_buf);
+            }
+        }
+    }
+
     fn active_body(&self) -> &str {
         self.state.current_request.get_body(self.state.body_type)
     }
@@ -1848,11 +1910,15 @@ impl App {
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeLangNext => {
+                self.swap_type_lang_out();
                 self.state.type_lang = self.state.type_lang.next();
+                self.swap_type_lang_in();
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeLangPrev => {
+                self.swap_type_lang_out();
                 self.state.type_lang = self.state.type_lang.prev();
+                self.swap_type_lang_in();
                 self.state.mode = InputMode::Normal;
             }
             Action::RegenerateType => {
