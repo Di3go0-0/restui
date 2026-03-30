@@ -179,6 +179,14 @@ pub fn all_commands() -> Vec<Command> {
             category: "Theme",
             action: Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }),
         },
+
+        // Display
+        Command {
+            name: "Toggle Wrap",
+            description: "Toggle word wrap for response and body panels",
+            category: "Display",
+            action: Action::ToggleWrap,
+        },
     ];
 
     cmds
