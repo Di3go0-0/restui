@@ -1872,6 +1872,7 @@ impl App {
                 self.state.last_error = None;
                 let status = response.status;
                 let elapsed = response.elapsed_display();
+                self.state.last_response_info = Some((status, response.elapsed.as_millis() as u64));
 
                 // Cache response for request chaining
                 if let Some(ref name) = self.state.current_request.name {

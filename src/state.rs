@@ -467,6 +467,9 @@ pub struct AppState {
     // Count prefix (vim number prefix for repeatable motions)
     pub count_prefix: Option<u32>,
 
+    // Last response info (for status bar badge)
+    pub last_response_info: Option<(u16, u64)>, // (status_code, elapsed_ms)
+
     // Misc
     pub should_quit: bool,
     pub status_message: Option<(String, Instant)>,
@@ -543,6 +546,7 @@ impl AppState {
             type_sub_focus: TypeSubFocus::default(),
             matched_bracket: None,
             count_prefix: None,
+            last_response_info: None,
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),

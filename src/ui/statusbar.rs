@@ -80,6 +80,37 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         spans.push(Span::raw(" "));
     }
 
+    // Last response badge (status code + elapsed time)
+    if let Some((status_code, elapsed_ms)) = state.last_response_info {
+        let status_bg = match status_code {
+            200..=299 => Color::Green,
+            300..=399 => Color::Yellow,
+            400..=499 => Color::Red,
+            500..=599 => Color::Magenta,
+            _ => Color::DarkGray,
+        };
+        let time_color = if elapsed_ms < 200 {
+            Color::Green
+        } else if elapsed_ms < 1000 {
+            Color::Yellow
+        } else {
+            Color::Red
+        };
+        let time_str = if elapsed_ms < 1000 {
+            format!("{}ms", elapsed_ms)
+        } else {
+            format!("{:.1}s", elapsed_ms as f64 / 1000.0)
+        };
+        spans.push(Span::styled(
+            format!(" {} ", status_code),
+            Style::default().fg(Color::Black).bg(status_bg).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {} ", time_str),
+            Style::default().fg(time_color),
+        ));
+    }
+
     // Cursor position for body/response panels
     let show_cursor_pos = match state.active_panel {
         Panel::Body => state.mode == InputMode::Insert || state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock,
