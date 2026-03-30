@@ -302,7 +302,7 @@ impl App {
                         }
                         self.state.request_field_editing = true;
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         self.state.mode = InputMode::Insert;
                     }
@@ -322,7 +322,7 @@ impl App {
                         self.state.request_field_editing = true;
                         self.set_request_cursor(0);
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         self.state.type_buf.home();
                         self.state.mode = InputMode::Insert;
@@ -348,7 +348,7 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor((cursor + 1).min(len));
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         let text = &self.state.response_type_text;
                         self.state.type_buf.move_right(text, InputMode::Normal);
@@ -374,7 +374,7 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor(len);
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         let text = &self.state.response_type_text;
                         self.state.type_buf.end(text, InputMode::Insert);
@@ -384,7 +384,7 @@ impl App {
                 }
             }
             Action::OpenLineBelow => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     self.state.type_buf.open_line_below(&mut self.state.response_type_text);
                     self.state.response_type_locked = true;
@@ -412,7 +412,7 @@ impl App {
                 }
             }
             Action::OpenLineAbove => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     self.state.type_buf.open_line_above(&mut self.state.response_type_text);
                     self.state.response_type_locked = true;
@@ -454,7 +454,7 @@ impl App {
                             self.set_request_cursor(cursor.min(len - 1));
                         }
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         // Clamp cursor for type editor
                         let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                         let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
@@ -487,7 +487,7 @@ impl App {
                         self.state.body_buf.visual_anchor_row = self.state.body_buf.cursor_row;
                         self.state.body_buf.visual_anchor_col = self.state.body_buf.cursor_col;
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.mode = InputMode::Visual;
                         self.state.type_buf.start_visual();
                     }
@@ -908,12 +908,12 @@ impl App {
             Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
             Action::InlineCursorRight => { for _ in 0..count { self.inline_cursor_right(); } }
             Action::InlineCursorUp => match self.state.active_panel {
-                Panel::Response if self.state.response_tab == ResponseTab::Type => self.type_cursor_up(),
+                Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_up(),
                 Panel::Response => self.resp_cursor_up(),
                 _ => self.body_cursor_up(),
             },
             Action::InlineCursorDown => match self.state.active_panel {
-                Panel::Response if self.state.response_tab == ResponseTab::Type => self.type_cursor_down(),
+                Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_down(),
                 Panel::Response => self.resp_cursor_down(),
                 _ => self.body_cursor_down(),
             },
@@ -926,7 +926,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_forward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                         let text = &self.state.response_type_text;
                         self.state.type_buf.word_forward(text);
                         self.state.type_buf.sync_scroll();
@@ -939,7 +939,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_backward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                         let text = &self.state.response_type_text;
                         self.state.type_buf.word_backward(text);
                         self.state.type_buf.sync_scroll();
@@ -952,7 +952,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                         self.request_word_end();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                         let text = &self.state.response_type_text;
                         self.state.type_buf.word_end(text);
                         self.state.type_buf.sync_scroll();
@@ -964,7 +964,7 @@ impl App {
             Action::BodyLineHome => {
                 if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.set_request_cursor(0);
-                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.home();
                 } else {
                     self.state.body_buf.cursor_col = 0;
@@ -1006,7 +1006,7 @@ impl App {
                         }
                         self.state.mode = InputMode::Normal;
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         let text = self.state.type_buf.get_visual_selection(&self.state.response_type_text);
                         self.state.yank_buffer = text;
@@ -1026,7 +1026,7 @@ impl App {
                 }
             }
             Action::Paste => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let paste = self.state.yank_buffer.clone();
                     self.state.type_buf.paste(&mut self.state.response_type_text, &paste);
@@ -1064,7 +1064,7 @@ impl App {
                         }
                         self.state.validate_body();
                         self.state.set_status("Pasted from clipboard");
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         self.state.type_buf.paste(&mut self.state.response_type_text, &text);
                         self.state.response_type_locked = true;
@@ -1097,7 +1097,7 @@ impl App {
                             }
                         }
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                         let row = self.state.type_buf.cursor_row;
                         let end_row = (row + count).min(lines.len());
@@ -1144,7 +1144,7 @@ impl App {
                             self.state.set_status("Line deleted");
                         }
                     }
-                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let yanked = self.state.type_buf.delete_line(&mut self.state.response_type_text);
                     self.state.yank_buffer = format!("{}\n", yanked);
@@ -1164,7 +1164,7 @@ impl App {
                 }
             }
             Action::DeleteCharUnderCursor => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     self.state.type_buf.delete_char(&mut self.state.response_type_text);
                     self.state.response_type_locked = true;
@@ -1189,7 +1189,7 @@ impl App {
             }
             Action::ReplaceChar(c) => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     self.state.type_buf.replace_char(&mut self.state.response_type_text, c);
                     self.state.response_type_locked = true;
@@ -1212,7 +1212,7 @@ impl App {
             }
             Action::ChangeLine => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let yanked = self.state.type_buf.change_line(&mut self.state.response_type_text);
                     self.state.yank_buffer = yanked;
@@ -1247,7 +1247,7 @@ impl App {
             }
             Action::ChangeWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
@@ -1313,7 +1313,7 @@ impl App {
             }
             Action::ChangeWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
@@ -1381,7 +1381,7 @@ impl App {
                 }
             }
             Action::ChangeToEnd => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let yanked = self.state.type_buf.delete_to_end(&mut self.state.response_type_text);
                     self.state.yank_buffer = yanked;
@@ -1419,7 +1419,7 @@ impl App {
                 }
             }
             Action::Substitute => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     self.state.type_buf.delete_char(&mut self.state.response_type_text);
                     self.state.response_type_locked = true;
@@ -1447,7 +1447,7 @@ impl App {
             }
             Action::DeleteWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
@@ -1512,7 +1512,7 @@ impl App {
             }
             Action::DeleteWordEnd => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
@@ -1590,7 +1590,7 @@ impl App {
             }
             Action::DeleteWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.push_undo(&self.state.response_type_text);
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
@@ -1654,7 +1654,7 @@ impl App {
             }
             Action::YankWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                     let row = self.state.type_buf.cursor_row;
                     let col = self.state.type_buf.cursor_col;
@@ -1703,7 +1703,7 @@ impl App {
                 }
             }
             Action::Undo => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     if self.state.type_buf.undo(&mut self.state.response_type_text) {
                         self.state.response_type_locked = true;
                         self.state.set_status("Undo");
@@ -1745,7 +1745,7 @@ impl App {
                 }
             }
             Action::Redo => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     if self.state.type_buf.redo(&mut self.state.response_type_text) {
                         self.state.response_type_locked = true;
                         self.state.set_status("Redo");
@@ -2554,7 +2554,7 @@ impl App {
             Action::DeleteToEnd => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
-                    Panel::Response if self.state.response_tab == ResponseTab::Type => {
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.type_buf.push_undo(&self.state.response_type_text);
                         let yanked = self.state.type_buf.delete_to_end(&mut self.state.response_type_text);
                         self.state.yank_buffer = yanked;
@@ -2984,7 +2984,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_type_text;
                 let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 text.insert(pos, c);
@@ -3325,7 +3325,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_type_text;
                 let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 if pos > 0 {
@@ -3385,7 +3385,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_type_text;
                 let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
                 if pos < text.len() {
@@ -3398,7 +3398,7 @@ impl App {
     }
 
     fn inline_newline(&mut self) {
-        if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type {
+        if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
             let text = &mut self.state.response_type_text;
             let pos = row_col_to_offset(text, self.state.type_buf.cursor_row, self.state.type_buf.cursor_col);
 
@@ -3461,7 +3461,7 @@ impl App {
                 RequestFocus::Cookie(_) => { self.state.cookie_edit_cursor = self.state.cookie_edit_cursor.saturating_sub(1); }
                 RequestFocus::PathParam(_) => { self.state.path_param_edit_cursor = self.state.path_param_edit_cursor.saturating_sub(1); }
             },
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 if self.state.type_buf.cursor_col > 0 {
                     self.state.type_buf.cursor_col -= 1;
                 } else if self.state.mode == InputMode::Insert && self.state.type_buf.cursor_row > 0 {
@@ -3509,7 +3509,7 @@ impl App {
                     self.set_request_cursor(cursor + 1);
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                 let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 let max = if is_insert { line_len } else { line_len.saturating_sub(1) };
@@ -3568,7 +3568,7 @@ impl App {
     fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
             Panel::Body => { self.state.body_buf.cursor_col = 0; self.sync_body_hscroll(); },
-            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.mode == InputMode::Insert => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor && self.state.mode == InputMode::Insert => {
                 self.state.type_buf.cursor_col = 0;
             },
             Panel::Response => { self.state.resp_buf.cursor_col = 0; self.sync_resp_hscroll(); },
@@ -3593,7 +3593,7 @@ impl App {
                 self.state.body_buf.cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
                 self.sync_body_hscroll();
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type && is_insert => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor && is_insert => {
                 let lines: Vec<&str> = self.state.response_type_text.lines().collect();
                 let line_len = lines.get(self.state.type_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.type_buf.cursor_col = line_len;
@@ -4253,7 +4253,7 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let text = &self.state.response_type_text;
                 self.state.type_buf.find_char_forward(text, target, before);
             }
@@ -4308,7 +4308,7 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type => {
+            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                 let text = &self.state.response_type_text;
                 self.state.type_buf.find_char_backward(text, target, after);
             }

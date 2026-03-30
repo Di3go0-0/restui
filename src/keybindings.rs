@@ -32,7 +32,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 let in_vim_edit = match state.active_panel {
                     Panel::Body => state.mode == InputMode::Normal,
                     Panel::Request => state.request_field_editing,
-                    Panel::Response if state.response_tab == ResponseTab::Type => state.mode == InputMode::Normal,
+                    Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => state.mode == InputMode::Normal,
                     _ => false,
                 };
                 if in_vim_edit {
@@ -274,12 +274,12 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Up => match state.active_panel {
             Panel::Body => Some(Action::InlineCursorUp),
-            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineCursorUp),
+            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorUp),
             _ => None,
         },
         KeyCode::Down => match state.active_panel {
             Panel::Body => Some(Action::InlineCursorDown),
-            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineCursorDown),
+            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorDown),
             _ => None,
         },
         KeyCode::Home => Some(Action::InlineCursorHome),
@@ -287,7 +287,7 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         KeyCode::Tab => Some(Action::InlineTab),
         KeyCode::Enter => match state.active_panel {
             Panel::Body => Some(Action::InlineNewline),
-            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::InlineNewline),
+            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineNewline),
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) if state.header_edit_field == 0 => {
                     Some(Action::InlineTab)
@@ -355,7 +355,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 _ => None,
             },
             Panel::Body => Some(Action::DeleteLine),
-            Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::DeleteLine),
+            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteLine),
             Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
@@ -383,7 +383,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
             match state.active_panel {
                 Panel::Body => Some(Action::ReplaceChar(c)),
                 Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
-                Panel::Response if state.response_tab == ResponseTab::Type => Some(Action::ReplaceChar(c)),
+                Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ReplaceChar(c)),
                 _ => None,
             }
         },
@@ -590,7 +590,7 @@ fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         };
     }
 
-    if state.response_tab == ResponseTab::Type {
+    if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor {
         // Type editor: full vim normal mode (editable)
         return match key.code {
             // Cursor movement
