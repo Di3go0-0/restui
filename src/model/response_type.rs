@@ -157,9 +157,22 @@ impl JsonType {
 
     /// Generate C# class definition
     pub fn to_csharp(&self, name: &str) -> String {
+        // Unwrap array to get the inner object type
+        let obj_fields = match self {
+            JsonType::Object(fields) => Some(fields),
+            JsonType::Array(inner) => {
+                if let JsonType::Object(fields) = inner.as_ref() {
+                    Some(fields)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
         let mut lines = vec![format!("public class {}", name)];
         lines.push("{".to_string());
-        if let JsonType::Object(fields) = self {
+        if let Some(fields) = obj_fields {
             for (key, val) in fields {
                 let cs_type = val.csharp_type();
                 let prop_name = capitalize(key);
