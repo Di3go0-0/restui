@@ -1,113 +1,78 @@
 # Changelog
 
-## [0.2.6] - 2026-03-29
+## [0.3.0] - 2026-03-29
 
-### Type Editor (Response Panel)
-- Full vim support in TS and C# sub-tabs (normal, visual, insert modes via swap technique)
-- Syntax coloring for TypeScript (`type`/`string`/`number` keywords, type names, punctuation)
-- Syntax coloring for C# (`public`/`class`/`get`/`set` keywords, C# types, properties)
-- Fixed C# class generation for array-of-objects responses (was generating empty class)
-- Visual mode now includes the character under the cursor (off-by-one fix)
-- Block cursor shows exact column position in response body normal mode
-- `[` / `]` to switch between Type / TS / C# sub-tabs
+### Type System — TS & C# Code Generation
+- **TypeScript type generation**: auto-generates `type ResponseType = { ... }` from JSON response
+- **C# class generation**: auto-generates `public class ResponseType { ... }` with proper properties
+- Switch between Type / TS / C# with `[` / `]` sub-tabs
+- Syntax coloring for TS (keywords, type names, punctuation) and C# (keywords, types, properties)
+- Full vim support in all sub-tabs (normal, visual, insert modes)
 
-### Response Body Vim
-- h/l horizontal cursor movement works correctly in all views
-- w/b/e word motions sync horizontal scroll after moving
-- 0/$ line motions sync scroll in response panel
-- Scrolloff (2-line margin) tuned for accurate viewport calculation
-- Visual yank in Type editor copies to system clipboard
-
-### Word Wrap
-- Toggle via command palette: `:toggle wrap`
-- Proper line wrapping preserving syntax colors (pre-colorize full line, slice spans per visual row)
-- Gutter shows line number on first row, `~` on continuations
-- Cursor, visual highlight, and bracket matching work on wrapped lines
-- `WRAP` badge in status bar when enabled
-
-### Chain Autocomplete
-- Popup appears 2 lines below cursor (was blocking the current line)
-
-### Collections
-- `.http/` folder convention: restui scans `.http/` subfolder + root directory
-- New collections created with `n` go into `.http/` (auto-created)
-- Environment files also discovered from `.http/` folder
-- No duplicates when same file exists in both locations
-- Method colors (GET=green, POST=blue, etc.) now render correctly in tree view
-
-### Help
-- `?` overlay updated with all v0.2.5+ keybindings and features
-- Organized into: Navigation, Vim Modes, Editing, Visual Mode, Request/Response Panel, Collections, General
-
-### Code Quality
-- Zero compiler warnings (removed 10 unused methods)
-- Extracted `Request::get_body_mut()` replacing 26 duplicated body-type match blocks
-- Cleaned unused scaffolding from VimBuffer, App, and scroll helpers
-- Version displayed in status bar bottom-right
-
-## [0.2.5] - 2026-03-29
-
-### UX Polish
-- **Status bar response badge**: shows last HTTP status code (color-coded: green 2xx, yellow 3xx, red 4xx, magenta 5xx) and response time (green <200ms, yellow <1s, red >1s) persistently in the status bar
-- **Tree guides in collections**: visual hierarchy with │├└ lines connecting requests to their parent collection
-- **URL colorization**: query string params are now colorized (keys in cyan, values in green, `?`/`&`/`=` separators dim) for easy visual parsing
-- **3 new themes**: Dracula, Nord, Solarized Dark — switch with `T` or `:theme <name>`
-
-### Themes
-- **Dracula**: purple/pink/green/cyan on #282a36
-- **Nord**: blue/teal/white on #2e3440
-- **Solarized Dark**: yellow/orange/blue on #002b36
-- Total: 8 built-in themes (default, catppuccin, gruvbox, tokyonight, light, dracula, nord, solarized)
-
-## [0.2.1] - 2026-03-29
-
-### Type Editor (Response Panel)
-- Full vim support in the Type editor: normal, insert, and visual modes
-- All vim motions: `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `f`/`F`/`t`/`T`
+### Type Editor — Full Vim
+- Complete vim normal mode: `h`/`j`/`k`/`l`, `w`/`b`/`e`, `0`/`$`, `gg`/`G`, `f`/`F`/`t`/`T`
 - Edit operations: `dd`, `cc`, `x`, `r`, `s`, `S`, `C`, `D`, `cw`/`cb`, `dw`/`de`/`db`
 - Insert modes: `i`/`I`/`a`/`A`/`o`/`O`
 - Visual mode with selection highlighting
 - Undo/redo: `u` / `Ctrl+R`
 - Paste: `p`/`P`, `Ctrl+V` from clipboard
-- Yank: `yy`, `yw`, `y$`
 
 ### Type Tab Split View
-- When the Type tab is open, the response body preview is visible below
-- **Ctrl+J** moves focus down to the response preview
-- **Ctrl+K** moves focus back up to the type editor
-- Response preview supports full read-only vim navigation + visual mode + copy
+- Type editor (top 50%) + response body preview (bottom 50%) visible simultaneously
+- **Ctrl+J** / **Ctrl+K** to move focus between type editor and response preview
+- Response preview: full read-only vim navigation + visual mode + clipboard copy
 - Visual indicator (`▸`) shows which section has focus
-- At edges, Ctrl+J/K falls through to normal panel navigation
+
+### Word Wrap
+- Toggle via command palette: `:toggle wrap`
+- Proper line wrapping preserving syntax colors
+- Gutter shows line number on first row, `~` on continuations
+- Cursor, visual highlight, and bracket matching work on wrapped lines
+- `WRAP` badge in status bar when enabled
+
+### Response Body — Enhanced Vim
+- Block cursor shows exact column position in normal mode
+- h/l, w/b/e, 0/$ all work with proper horizontal scroll sync
+- Scrolloff: cursor stays 2 lines from viewport edge while scrolling
+- Visual mode includes character under cursor (off-by-one fix)
+
+### UX Polish
+- **Status bar response badge**: persistent HTTP status code (color-coded) + response time (green <200ms, yellow <1s, red >1s)
+- **Tree guides in collections**: visual hierarchy with │├└ lines, colored method names (GET=green, POST=blue, etc.)
+- **URL colorization**: query params colorized (keys cyan, values green, separators dim)
+- **Autocomplete popup**: appears 2 lines below cursor, near the edited field
+
+### Collections & Files
+- **`.http/` folder convention**: scans `.http/` subfolder + root directory (backwards compatible)
+- New collections created with `n` go into `.http/` (auto-created)
+- Environment files also discovered from `.http/` folder
 
 ### Request History
-- Every completed request is saved to persistent history (`~/.local/share/restui/history.json`)
-- Press **H** to open the history overlay (navigate with `j`/`k`, load with `Enter`)
-- History is capped at the configured `history_limit` (default 100)
-
-### Chain Autocomplete Fixes
-- Accepting a suggestion now inserts only the missing suffix (was inserting the full text, duplicating what was already typed)
-- Fixed suffix calculation for array-of-objects field suggestions
-- Popup now renders near the cursor instead of at a fixed position
-- Header autocomplete popup renders near the edited header row
+- Persistent history saved to `~/.local/share/restui/history.json`
+- Press **H** to open history overlay (navigate with `j`/`k`, load with `Enter`)
+- Capped at configured `history_limit` (default 100)
 
 ### Request Cancellation
-- Press **Esc** during a request to cancel it immediately
-- Animated spinner with elapsed time in the status bar while waiting
-- Status shows `⠋ Sending request... 2.3s (Esc to cancel)`
+- **Esc** cancels in-flight request immediately
+- Animated spinner with elapsed time: `⠋ Sending request... 2.3s (Esc to cancel)`
 
-### Code Quality & Security
-- **Security**: shell injection fix in curl export (header values now escaped)
-- **Security**: URL scheme validation (only `http://` and `https://` allowed)
-- Magic numbers extracted to named constants
+### Themes
+- 3 new themes: **Dracula**, **Nord**, **Solarized Dark**
+- Total: 8 built-in themes (default, catppuccin, gruvbox, tokyonight, light, dracula, nord, solarized)
+
+### Security
+- Shell injection fix in curl export (header values now escaped)
+- URL scheme validation (only `http://` and `https://` allowed)
+
+### Code Quality
+- Zero compiler warnings
+- `VimBuffer` abstraction for reusable vim editing across all panels
 - `app.rs` split into focused modules (`execute.rs`, `scroll.rs`, `search.rs`)
-- `AppState` fields grouped into `SearchState`, `CommandPaletteState`
-- Body type access consolidated into `Request.get_body()` / `set_body()` / `any_body()`
-- Duplicated cache eviction logic extracted to `cache_response()`
-- `VimBuffer` abstraction for reusable vim editing across panels
-- Body, response, and type editor state migrated to `VimBuffer`
-- User-Agent header suggestion uses dynamic crate version
+- 26 duplicated body-type match blocks → `Request::get_body_mut()`
+- `AppState` fields grouped into sub-structs
 - File-based tracing/logging with `--debug` flag
-- Version number shown in bottom-right corner of status bar
+- Help overlay (`?`) updated with all keybindings
+- Version number displayed in status bar
 
 ## [0.2.0] - 2026-03-29
 
