@@ -845,6 +845,8 @@ fn render_response_body(
 
     while screen_row < visible_height && line_idx < total_lines {
         let full_line = body_lines.get(line_idx).copied().unwrap_or("");
+        // Pre-colorize the full line once, then slice spans for each wrap row
+        let full_colored = colorize_response_line(full_line, t);
 
         // How many visual rows does this line occupy?
         let wrap_rows = if wrap && tw > 0 { (full_line.len().max(1) + tw - 1) / tw } else { 1 };
@@ -909,6 +911,9 @@ fn render_response_body(
                     is_focused && line_idx == cursor_row, col_offset)
             } else if is_focused && line_idx == cursor_row && cursor_col >= col_offset && cursor_col < col_offset + tw && !is_visual && !is_visual_block {
                 Line::from(Span::styled(line_text, Style::default().fg(t.text).bg(t.bg_highlight)))
+            } else if wrap && col_offset > 0 {
+                // Wrapped continuation: slice spans from the pre-colorized full line
+                slice_colored_line(&full_colored, col_offset, col_offset + line_text.len())
             } else {
                 colorize_response_line(line_text_ref, t)
             };
@@ -1097,6 +1102,37 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
         Span::styled(selected.to_string(), sel_style),
         Span::styled(after.to_string(), Style::default().fg(Color::White)),
     ])
+}
+
+/// Extract a column range from a pre-colorized Line, preserving span styles.
+fn slice_colored_line(line: &Line<'static>, start: usize, end: usize) -> Line<'static> {
+    let mut spans = Vec::new();
+    let mut pos = 0usize;
+    for span in line.spans.iter() {
+        let span_len = span.content.len();
+        let span_start = pos;
+        let span_end = pos + span_len;
+        pos = span_end;
+
+        // Skip spans entirely before start
+        if span_end <= start { continue; }
+        // Stop if span starts at or after end
+        if span_start >= end { break; }
+
+        // Calculate the slice within this span
+        let slice_start = if start > span_start { start - span_start } else { 0 };
+        let slice_end = if end < span_end { end - span_start } else { span_len };
+
+        if slice_start < slice_end {
+            let sliced = &span.content[slice_start..slice_end];
+            spans.push(Span::styled(sliced.to_string(), span.style));
+        }
+    }
+    if spans.is_empty() {
+        Line::from("")
+    } else {
+        Line::from(spans)
+    }
 }
 
 fn colorize_response_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
