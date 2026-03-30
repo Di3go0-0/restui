@@ -122,12 +122,15 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         InputMode::VisualBlock => " y:yank  d:delete  Esc:cancel  hjkl:block select ",
     };
 
+    let version = concat!(" v", env!("CARGO_PKG_VERSION"), " ");
+    let version_len = version.len() as u16;
     let hints_len = hints.len() as u16;
     let left_len: u16 = spans.iter().map(|s| s.content.len() as u16).sum();
-    let padding = area.width.saturating_sub(left_len + hints_len);
+    let padding = area.width.saturating_sub(left_len + hints_len + version_len);
 
     spans.push(Span::raw(" ".repeat(padding as usize)));
     spans.push(Span::styled(hints, Style::default().fg(t.text_dim)));
+    spans.push(Span::styled(version, Style::default().fg(Color::DarkGray)));
 
     let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);
