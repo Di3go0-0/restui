@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.5] - 2026-03-29
+
+### UX Polish
+- **Status bar response badge**: shows last HTTP status code (color-coded: green 2xx, yellow 3xx, red 4xx, magenta 5xx) and response time (green <200ms, yellow <1s, red >1s) persistently in the status bar
+- **Tree guides in collections**: visual hierarchy with │├└ lines connecting requests to their parent collection
+- **URL colorization**: query string params are now colorized (keys in cyan, values in green, `?`/`&`/`=` separators dim) for easy visual parsing
+- **3 new themes**: Dracula, Nord, Solarized Dark — switch with `T` or `:theme <name>`
+
+### Themes
+- **Dracula**: purple/pink/green/cyan on #282a36
+- **Nord**: blue/teal/white on #2e3440
+- **Solarized Dark**: yellow/orange/blue on #002b36
+- Total: 8 built-in themes (default, catppuccin, gruvbox, tokyonight, light, dracula, nord, solarized)
+
 ## [0.2.1] - 2026-03-29
 
 ### Type Editor (Response Panel)
