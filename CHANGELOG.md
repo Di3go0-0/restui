@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.2.6] - 2026-03-29
+
+### Type Editor (Response Panel)
+- Full vim support in TS and C# sub-tabs (normal, visual, insert modes via swap technique)
+- Syntax coloring for TypeScript (`type`/`string`/`number` keywords, type names, punctuation)
+- Syntax coloring for C# (`public`/`class`/`get`/`set` keywords, C# types, properties)
+- Fixed C# class generation for array-of-objects responses (was generating empty class)
+- Visual mode now includes the character under the cursor (off-by-one fix)
+- Block cursor shows exact column position in response body normal mode
+- `[` / `]` to switch between Type / TS / C# sub-tabs
+
+### Response Body Vim
+- h/l horizontal cursor movement works correctly in all views
+- w/b/e word motions sync horizontal scroll after moving
+- 0/$ line motions sync scroll in response panel
+- Scrolloff (2-line margin) tuned for accurate viewport calculation
+- Visual yank in Type editor copies to system clipboard
+
+### Word Wrap
+- Toggle via command palette: `:toggle wrap`
+- Proper line wrapping preserving syntax colors (pre-colorize full line, slice spans per visual row)
+- Gutter shows line number on first row, `~` on continuations
+- Cursor, visual highlight, and bracket matching work on wrapped lines
+- `WRAP` badge in status bar when enabled
+
+### Chain Autocomplete
+- Popup appears 2 lines below cursor (was blocking the current line)
+
+### Collections
+- `.http/` folder convention: restui scans `.http/` subfolder + root directory
+- New collections created with `n` go into `.http/` (auto-created)
+- Environment files also discovered from `.http/` folder
+- No duplicates when same file exists in both locations
+- Method colors (GET=green, POST=blue, etc.) now render correctly in tree view
+
+### Help
+- `?` overlay updated with all v0.2.5+ keybindings and features
+- Organized into: Navigation, Vim Modes, Editing, Visual Mode, Request/Response Panel, Collections, General
+
+### Code Quality
+- Zero compiler warnings (removed 10 unused methods)
+- Extracted `Request::get_body_mut()` replacing 26 duplicated body-type match blocks
+- Cleaned unused scaffolding from VimBuffer, App, and scroll helpers
+- Version displayed in status bar bottom-right
+
 ## [0.2.5] - 2026-03-29
 
 ### UX Polish

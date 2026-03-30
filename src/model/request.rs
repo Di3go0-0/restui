@@ -170,6 +170,15 @@ impl Request {
         }
     }
 
+    pub fn get_body_mut(&mut self, body_type: BodyType) -> &mut String {
+        match body_type {
+            BodyType::Json => self.body_json.get_or_insert_with(String::new),
+            BodyType::Xml => self.body_xml.get_or_insert_with(String::new),
+            BodyType::FormUrlEncoded => self.body_form.get_or_insert_with(String::new),
+            BodyType::Plain => self.body_raw.get_or_insert_with(String::new),
+        }
+    }
+
     pub fn get_body(&self, body_type: BodyType) -> &str {
         match body_type {
             BodyType::Json => self.body_json.as_deref().unwrap_or(""),

@@ -86,14 +86,6 @@ impl Default for VimBuffer {
 impl VimBuffer {
     // ── Cursor movement ─────────────────────────────────────────────────
 
-    pub fn move_left(&mut self, _text: &str, mode: InputMode) {
-        if self.cursor_col > 0 {
-            self.cursor_col -= 1;
-        } else if mode == InputMode::Normal && self.cursor_row > 0 {
-            // Don't wrap in normal mode
-        }
-    }
-
     pub fn move_right(&mut self, text: &str, mode: InputMode) {
         let lines: Vec<&str> = text.lines().collect();
         if let Some(line) = lines.get(self.cursor_row) {
@@ -270,31 +262,6 @@ impl VimBuffer {
 
     // ── Text editing ────────────────────────────────────────────────────
 
-    pub fn insert_char(&mut self, text: &mut String, c: char) {
-        let offset = row_col_to_offset(text, self.cursor_row, self.cursor_col);
-        text.insert(offset, c);
-        self.cursor_col += 1;
-    }
-
-    pub fn backspace(&mut self, text: &mut String) {
-        if self.cursor_col > 0 {
-            let offset = row_col_to_offset(text, self.cursor_row, self.cursor_col);
-            if offset > 0 {
-                text.remove(offset - 1);
-                self.cursor_col -= 1;
-            }
-        } else if self.cursor_row > 0 {
-            // Join with previous line
-            let offset = row_col_to_offset(text, self.cursor_row, 0);
-            if offset > 0 {
-                let prev_line_len = text.lines().nth(self.cursor_row - 1).map(|l| l.len()).unwrap_or(0);
-                text.remove(offset - 1); // remove the \n
-                self.cursor_row -= 1;
-                self.cursor_col = prev_line_len;
-            }
-        }
-    }
-
     pub fn delete_char(&mut self, text: &mut String) {
         let offset = row_col_to_offset(text, self.cursor_row, self.cursor_col);
         if offset < text.len() {
@@ -307,23 +274,6 @@ impl VimBuffer {
                 }
             }
         }
-    }
-
-    pub fn newline(&mut self, text: &mut String) {
-        // Determine indent from current line
-        let indent = text.lines()
-            .nth(self.cursor_row)
-            .map(|line| {
-                let trimmed = line.trim_start();
-                &line[..line.len() - trimmed.len()]
-            })
-            .unwrap_or("")
-            .to_string();
-
-        let offset = row_col_to_offset(text, self.cursor_row, self.cursor_col);
-        text.insert_str(offset, &format!("\n{}", indent));
-        self.cursor_row += 1;
-        self.cursor_col = indent.len();
     }
 
     pub fn delete_line(&mut self, text: &mut String) -> String {

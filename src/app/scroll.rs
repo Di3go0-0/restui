@@ -226,22 +226,4 @@ impl App {
         self.state.type_buf.move_down(text, mode);
         self.state.type_buf.sync_scroll();
     }
-
-    /// Get mutable references to the active type text and buffer based on type_lang.
-    pub(super) fn active_type_refs_mut(&mut self) -> (&str, &mut crate::vim_buffer::VimBuffer) {
-        match self.state.type_lang {
-            crate::state::TypeLang::Inferred => (&self.state.response_type_text, &mut self.state.type_buf),
-            crate::state::TypeLang::TypeScript => (&self.state.type_ts_text, &mut self.state.type_ts_buf),
-            crate::state::TypeLang::CSharp => (&self.state.type_csharp_text, &mut self.state.type_csharp_buf),
-        }
-    }
-
-    /// Get mutable references to both text and buffer for editing.
-    pub(super) fn active_type_edit_mut(&mut self) -> (&mut String, &mut crate::vim_buffer::VimBuffer) {
-        match self.state.type_lang {
-            crate::state::TypeLang::Inferred => (&mut self.state.response_type_text, &mut self.state.type_buf),
-            crate::state::TypeLang::TypeScript => (&mut self.state.type_ts_text, &mut self.state.type_ts_buf),
-            crate::state::TypeLang::CSharp => (&mut self.state.type_csharp_text, &mut self.state.type_csharp_buf),
-        }
-    }
 }
