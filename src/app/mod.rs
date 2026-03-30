@@ -1002,6 +1002,12 @@ impl App {
                         self.body_word_forward();
                     }
                 }
+                // Sync hscroll after word motion
+                match self.state.active_panel {
+                    Panel::Body => { self.sync_body_hscroll(); self.sync_body_scroll(); }
+                    Panel::Response => { self.sync_resp_hscroll(); self.sync_resp_scroll(); }
+                    _ => {}
+                }
             }
             Action::BodyWordBackward => {
                 for _ in 0..count {
@@ -1014,6 +1020,11 @@ impl App {
                     } else {
                         self.body_word_backward();
                     }
+                }
+                match self.state.active_panel {
+                    Panel::Body => { self.sync_body_hscroll(); self.sync_body_scroll(); }
+                    Panel::Response => { self.sync_resp_hscroll(); self.sync_resp_scroll(); }
+                    _ => {}
                 }
             }
             Action::BodyWordEnd => {
@@ -1028,14 +1039,23 @@ impl App {
                         self.body_word_end();
                     }
                 }
+                match self.state.active_panel {
+                    Panel::Body => { self.sync_body_hscroll(); self.sync_body_scroll(); }
+                    Panel::Response => { self.sync_resp_hscroll(); self.sync_resp_scroll(); }
+                    _ => {}
+                }
             }
             Action::BodyLineHome => {
                 if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.set_request_cursor(0);
                 } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_buf.home();
+                } else if self.state.active_panel == Panel::Response {
+                    self.state.resp_buf.cursor_col = 0;
+                    self.sync_resp_hscroll();
                 } else {
                     self.state.body_buf.cursor_col = 0;
+                    self.sync_body_hscroll();
                 }
             }
             Action::BodyLineEnd => self.inline_cursor_end(),
@@ -3589,7 +3609,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response if self.state.response_tab != ResponseTab::Type => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_tab != ResponseTab::Type || self.state.type_sub_focus == crate::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }
@@ -3643,7 +3663,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response if self.state.response_tab != ResponseTab::Type => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_tab != ResponseTab::Type || self.state.type_sub_focus == crate::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }

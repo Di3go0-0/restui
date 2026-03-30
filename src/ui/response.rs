@@ -1084,7 +1084,7 @@ fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
 
 fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize, ec: usize) -> Line<'static> {
     let start_col = if row == sr { sc } else { 0 };
-    let end_col = if row == er { ec } else { line.len() };
+    let end_col = if row == er { (ec + 1).min(line.len()) } else { line.len() };
     let end_col = end_col.min(line.len());
     let start_col = start_col.min(end_col);
 
