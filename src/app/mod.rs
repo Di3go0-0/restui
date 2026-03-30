@@ -979,6 +979,9 @@ impl App {
                 let text = match self.state.active_panel {
                     Panel::Body if is_block => Some(self.get_block_selection()),
                     Panel::Body => Some(self.get_visual_selection()),
+                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        Some(self.state.type_buf.get_visual_selection(&self.state.response_type_text))
+                    }
                     Panel::Response if is_block => Some(self.get_response_block_selection()),
                     Panel::Response => Some(self.get_response_visual_selection()),
                     Panel::Request if self.state.request_field_editing => Some(self.get_request_visual_selection()),

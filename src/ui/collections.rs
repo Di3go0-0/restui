@@ -70,11 +70,21 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                         .add_modifier(Modifier::BOLD),
                 )]))
             } else {
-                // Request line: "  METHOD url"
-                let trimmed = item.trim_start();
-                let (method, rest) = trimmed
+                // Request line: "│ ├ METHOD name" or "│ └ METHOD name"
+                // Extract tree prefix, method, and name
+                let (tree_prefix, after_tree) = if item.starts_with("│") {
+                    // Find the method after tree chars (│ ├ or │ └)
+                    let after = item.trim_start_matches(|c: char| "│├└ ".contains(c));
+                    let prefix_len = item.len() - after.len();
+                    (&item[..prefix_len], after)
+                } else {
+                    let trimmed = item.trim_start();
+                    let prefix_len = item.len() - trimmed.len();
+                    (&item[..prefix_len], trimmed)
+                };
+                let (method, rest) = after_tree
                     .split_once(' ')
-                    .unwrap_or((trimmed, ""));
+                    .unwrap_or((after_tree, ""));
                 let method_color = match method {
                     "GET" => t.method_get,
                     "POST" => t.method_post,
@@ -86,7 +96,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                     _ => t.text,
                 };
                 ListItem::new(Line::from(vec![
-                    Span::raw("  "),
+                    Span::styled(tree_prefix.to_string(), Style::default().fg(t.text_dim)),
                     Span::styled(
                         format!("{:7}", method),
                         Style::default().fg(method_color),
