@@ -63,26 +63,25 @@ impl App {
             let expanded = self.state.expanded_collections.contains(&ci);
 
             if has_filter {
-                // Check if any request in this collection matches the filter
-                let matching_requests: Vec<&crate::model::request::Request> = collection.requests.iter()
-                    .filter(|req| {
+                let matching: Vec<usize> = collection.requests.iter().enumerate()
+                    .filter(|(_, req)| {
                         req.display_name().to_lowercase().contains(&filter)
                             || req.url.to_lowercase().contains(&filter)
                     })
+                    .map(|(i, _)| i)
                     .collect();
-                if matching_requests.is_empty() {
-                    continue; // skip collections with no matching requests
+                if matching.is_empty() {
+                    continue;
                 }
                 let arrow = if expanded { "▼" } else { "▶" };
                 let marker = if ci == self.state.active_collection { "●" } else { "○" };
                 items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
                 if expanded {
-                    for req in &collection.requests {
-                        let name_match = req.display_name().to_lowercase().contains(&filter);
-                        let url_match = req.url.to_lowercase().contains(&filter);
-                        if name_match || url_match {
-                            items.push(format!("  {} {}", req.method, req.display_name()));
-                        }
+                    let last_match = *matching.last().unwrap();
+                    for &ri in &matching {
+                        let req = &collection.requests[ri];
+                        let branch = if ri == last_match { "└" } else { "├" };
+                        items.push(format!("│ {} {} {}", branch, req.method, req.display_name()));
                     }
                 }
             } else {
@@ -90,8 +89,10 @@ impl App {
                 let marker = if ci == self.state.active_collection { "●" } else { "○" };
                 items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
                 if expanded {
-                    for req in &collection.requests {
-                        items.push(format!("  {} {}", req.method, req.display_name()));
+                    let last_idx = collection.requests.len().saturating_sub(1);
+                    for (ri, req) in collection.requests.iter().enumerate() {
+                        let branch = if ri == last_idx { "└" } else { "├" };
+                        items.push(format!("│ {} {} {}", branch, req.method, req.display_name()));
                     }
                 }
             }
