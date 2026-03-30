@@ -122,6 +122,72 @@ impl JsonType {
         }
     }
 
+    /// Generate TypeScript type definition
+    pub fn to_typescript(&self, name: &str) -> String {
+        let body = self.ts_type(1);
+        format!("type {} = {}", name, body)
+    }
+
+    fn ts_type(&self, indent: usize) -> String {
+        let pad = "  ".repeat(indent);
+        let pad_outer = "  ".repeat(indent.saturating_sub(1));
+        match self {
+            JsonType::Null => "null".to_string(),
+            JsonType::Bool => "boolean".to_string(),
+            JsonType::Number => "number".to_string(),
+            JsonType::String => "string".to_string(),
+            JsonType::Enum(values) => values.iter()
+                .map(|v| format!("\"{}\"", v))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            JsonType::Array(inner) => format!("{}[]", inner.ts_type(indent)),
+            JsonType::Object(fields) => {
+                if fields.is_empty() {
+                    return "{}".to_string();
+                }
+                let mut lines = vec!["{".to_string()];
+                for (key, val) in fields {
+                    lines.push(format!("{}{}: {};", pad, key, val.ts_type(indent + 1)));
+                }
+                lines.push(format!("{}}}", pad_outer));
+                lines.join("\n")
+            }
+        }
+    }
+
+    /// Generate C# class definition
+    pub fn to_csharp(&self, name: &str) -> String {
+        let mut lines = vec![format!("public class {}", name)];
+        lines.push("{".to_string());
+        if let JsonType::Object(fields) = self {
+            for (key, val) in fields {
+                let cs_type = val.csharp_type();
+                let prop_name = capitalize(key);
+                lines.push(format!("    public {} {} {{ get; set; }}", cs_type, prop_name));
+            }
+        }
+        lines.push("}".to_string());
+        lines.join("\n")
+    }
+
+    fn csharp_type(&self) -> String {
+        match self {
+            JsonType::Null => "object?".to_string(),
+            JsonType::Bool => "bool".to_string(),
+            JsonType::Number => "int".to_string(),
+            JsonType::String => "string".to_string(),
+            JsonType::Enum(_) => "string".to_string(),
+            JsonType::Array(inner) => format!("List<{}>", inner.csharp_type()),
+            JsonType::Object(fields) => {
+                // Inline anonymous object — for nested, would need named classes
+                if fields.is_empty() {
+                    return "object".to_string();
+                }
+                "object".to_string()
+            }
+        }
+    }
+
     /// Get field names at the top level (for autocomplete)
     #[allow(dead_code)]
     pub fn field_names(&self) -> Vec<std::string::String> {
@@ -232,6 +298,14 @@ pub struct TypeMismatch {
     pub path: String,
     pub expected: String,
     pub actual: String,
+}
+
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().to_string() + c.as_str(),
+    }
 }
 
 /// Parse a TypeScript-like type text back into a JsonType.

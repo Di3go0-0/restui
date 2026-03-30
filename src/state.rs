@@ -272,6 +272,38 @@ pub enum ResponseTab {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TypeLang {
+    #[default]
+    Inferred,
+    TypeScript,
+    CSharp,
+}
+
+impl TypeLang {
+    pub fn label(self) -> &'static str {
+        match self {
+            TypeLang::Inferred => "Type",
+            TypeLang::TypeScript => "TS",
+            TypeLang::CSharp => "C#",
+        }
+    }
+    pub fn next(self) -> Self {
+        match self {
+            TypeLang::Inferred => TypeLang::TypeScript,
+            TypeLang::TypeScript => TypeLang::CSharp,
+            TypeLang::CSharp => TypeLang::Inferred,
+        }
+    }
+    pub fn prev(self) -> Self {
+        match self {
+            TypeLang::Inferred => TypeLang::CSharp,
+            TypeLang::TypeScript => TypeLang::Inferred,
+            TypeLang::CSharp => TypeLang::TypeScript,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TypeSubFocus {
     #[default]
     Editor,
@@ -459,6 +491,11 @@ pub struct AppState {
     pub type_validation_errors: Vec<String>,
     pub type_buf: VimBuffer,
     pub type_sub_focus: TypeSubFocus,
+    pub type_lang: TypeLang,
+    pub type_ts_text: String,
+    pub type_csharp_text: String,
+    pub type_ts_buf: VimBuffer,
+    pub type_csharp_buf: VimBuffer,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -544,6 +581,11 @@ impl AppState {
             type_validation_errors: Vec::new(),
             type_buf: VimBuffer::default(),
             type_sub_focus: TypeSubFocus::default(),
+            type_lang: TypeLang::default(),
+            type_ts_text: String::new(),
+            type_csharp_text: String::new(),
+            type_ts_buf: VimBuffer::default(),
+            type_csharp_buf: VimBuffer::default(),
             matched_bracket: None,
             count_prefix: None,
             last_response_info: None,

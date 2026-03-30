@@ -563,6 +563,15 @@ fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         _ => {}
     }
 
+    // Type language sub-tab switching [ ] (only in Type tab)
+    if state.response_tab == ResponseTab::Type {
+        match key.code {
+            KeyCode::Char(']') => return Some(Action::TypeLangNext),
+            KeyCode::Char('[') => return Some(Action::TypeLangPrev),
+            _ => {}
+        }
+    }
+
     if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Preview {
         // Type tab: response body preview (read-only navigation + copy)
         return match key.code {

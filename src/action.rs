@@ -169,6 +169,8 @@ pub enum Action {
     RegenerateType,
     TypeSubFocusDown,
     TypeSubFocusUp,
+    TypeLangNext,
+    TypeLangPrev,
 
     // SSL
     ToggleInsecureMode,

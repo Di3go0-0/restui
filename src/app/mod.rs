@@ -1847,18 +1847,33 @@ impl App {
                 self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
                 self.state.mode = InputMode::Normal;
             }
+            Action::TypeLangNext => {
+                self.state.type_lang = self.state.type_lang.next();
+                self.state.mode = InputMode::Normal;
+            }
+            Action::TypeLangPrev => {
+                self.state.type_lang = self.state.type_lang.prev();
+                self.state.mode = InputMode::Normal;
+            }
             Action::RegenerateType => {
                 self.state.response_type_locked = false;
                 if let Some(ref resp) = self.state.current_response {
                     if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
                         let rt = crate::model::response_type::JsonType::infer(&json_val);
                         self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                        let type_name = self.state.current_request.name.as_deref()
+                            .map(|n| { let mut c = n.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().to_string() + c.as_str() } })
+                            .unwrap_or_else(|| "ResponseType".to_string());
+                        self.state.type_ts_text = rt.to_typescript(&type_name);
+                        self.state.type_csharp_text = rt.to_csharp(&type_name);
                         self.state.response_type = Some(rt);
                     }
                 }
                 self.state.type_validation_errors.clear();
                 self.state.type_buf.cursor_row = 0;
                 self.state.type_buf.cursor_col = 0;
+                self.state.type_ts_buf.reset();
+                self.state.type_csharp_buf.reset();
                 self.state.set_status("Type regenerated from response");
             }
 
@@ -1905,10 +1920,19 @@ impl App {
                 if !self.state.response_type_locked {
                     if let Some(ref rt) = self.state.response_type {
                         self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                        let type_name = self.state.current_request.name.as_deref()
+                            .map(|n| { let mut c = n.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().to_string() + c.as_str() } })
+                            .unwrap_or_else(|| "ResponseType".to_string());
+                        self.state.type_ts_text = rt.to_typescript(&type_name);
+                        self.state.type_csharp_text = rt.to_csharp(&type_name);
                     } else {
                         self.state.response_type_text.clear();
+                        self.state.type_ts_text.clear();
+                        self.state.type_csharp_text.clear();
                     }
                     self.state.type_validation_errors.clear();
+                    self.state.type_ts_buf.reset();
+                    self.state.type_csharp_buf.reset();
                 } else {
                     self.validate_response_type();
                 }

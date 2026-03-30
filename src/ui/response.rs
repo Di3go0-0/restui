@@ -119,6 +119,34 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
 
     spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
 
+    // Show type language sub-tabs when Type tab is active
+    if state.response_tab == ResponseTab::Type {
+        spans.push(Span::raw("  "));
+        let langs = [
+            crate::state::TypeLang::Inferred,
+            crate::state::TypeLang::TypeScript,
+            crate::state::TypeLang::CSharp,
+        ];
+        for (i, lang) in langs.iter().enumerate() {
+            let is_active_lang = *lang == state.type_lang;
+            if is_active_lang {
+                spans.push(Span::styled(
+                    format!("[{}]", lang.label()),
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                spans.push(Span::styled(
+                    lang.label().to_string(),
+                    Style::default().fg(t.text_dim),
+                ));
+            }
+            if i < langs.len() - 1 {
+                spans.push(Span::raw(" "));
+            }
+        }
+        spans.push(Span::styled("  [/]", Style::default().fg(t.text_dim)));
+    }
+
     Line::from(spans)
 }
 
@@ -456,7 +484,11 @@ fn render_type_editor(
     let t = &state.theme;
     let is_insert = is_focused && state.mode == InputMode::Insert && state.response_tab == ResponseTab::Type;
     let is_type_visual = is_focused && (state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock);
-    let text = &state.response_type_text;
+    let (text, buf) = match state.type_lang {
+        crate::state::TypeLang::Inferred => (&state.response_type_text, &state.type_buf),
+        crate::state::TypeLang::TypeScript => (&state.type_ts_text, &state.type_ts_buf),
+        crate::state::TypeLang::CSharp => (&state.type_csharp_text, &state.type_csharp_buf),
+    };
 
     if text.is_empty() && state.response_type.is_none() {
         let placeholder = Paragraph::new(Line::from(Span::styled(
@@ -470,7 +502,7 @@ fn render_type_editor(
     let text_lines: Vec<&str> = if text.is_empty() { vec![""] } else { text.lines().collect() };
     let total_lines = text_lines.len();
     let visible_height = type_area.height as usize;
-    let scroll = (state.type_buf.scroll.0 as usize).min(total_lines.saturating_sub(visible_height));
+    let scroll = (buf.scroll.0 as usize).min(total_lines.saturating_sub(visible_height));
 
     let gutter_width: u16 = 4;
     let text_area_x = type_area.x + gutter_width;
@@ -486,7 +518,7 @@ fn render_type_editor(
         let y = type_area.y + vi as u16;
 
         // Gutter (line number)
-        let is_cursor_line = is_focused && line_idx == state.type_buf.cursor_row;
+        let is_cursor_line = is_focused && line_idx == buf.cursor_row;
         let gutter_style = if is_cursor_line {
             Style::default().fg(t.gutter_active)
         } else {
@@ -502,8 +534,8 @@ fn render_type_editor(
 
         // Colorize the line (with visual highlight if applicable)
         let colored_line = if is_type_visual {
-            let (ar, ac) = (state.type_buf.visual_anchor_row, state.type_buf.visual_anchor_col);
-            let (cr, cc) = (state.type_buf.cursor_row, state.type_buf.cursor_col);
+            let (ar, ac) = (buf.visual_anchor_row, buf.visual_anchor_col);
+            let (cr, cc) = (buf.cursor_row, buf.cursor_col);
             let (sr, sc, er, ec) = if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) };
             if line_idx >= sr && line_idx <= er {
                 highlight_visual_line(line_text, line_idx, sr, sc, er, ec)
@@ -516,8 +548,8 @@ fn render_type_editor(
         frame.render_widget(Paragraph::new(colored_line), line_area);
 
         // Cursor rendering
-        if is_focused && line_idx == state.type_buf.cursor_row {
-            let col = state.type_buf.cursor_col;
+        if is_focused && line_idx == buf.cursor_row {
+            let col = buf.cursor_col;
             if col < text_area_width as usize {
                 let cursor_x = text_area_x + col as u16;
                 if is_insert {
