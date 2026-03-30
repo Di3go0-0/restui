@@ -1,6 +1,6 @@
 # restui
 
-A lazygit-style TUI HTTP client. Run HTTP requests from your terminal with vim keybindings.
+A TUI HTTP client. Run HTTP requests from your terminal with vim keybindings.
 
 ## Features
 

@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
-#[command(name = "restui", version, about = "A lazygit-style TUI HTTP client")]
+#[command(name = "restui", version, about = "A TUI HTTP client")]
 struct Cli {
     /// Path to a .http or .yaml file to open
     #[arg(short, long)]

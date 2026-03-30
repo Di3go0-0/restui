@@ -2,7 +2,7 @@
 name = "restui"
 version = "0.3.0"
 edition = "2024"
-description = "A lazygit-style TUI HTTP client with vim keybindings"
+description = "A TUI HTTP client with vim keybindings"
 license = "MIT"
 repository = "https://github.com/Di3go0-0/restui"
 homepage = "https://github.com/Di3go0-0/restui"
