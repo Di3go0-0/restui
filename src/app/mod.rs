@@ -235,12 +235,13 @@ impl App {
                     self.state.body_buf.visible_height = (main_h as u32 * 35 / 100) as u16;
                     self.state.resp_buf.visible_height = (main_h as u32 * 40 / 100) as u16;
                 }
-                // Account for borders and internal layout (approx 5 lines for response header area)
-                self.state.body_buf.visible_height = self.state.body_buf.visible_height.saturating_sub(2);
-                self.state.resp_buf.visible_height = self.state.resp_buf.visible_height.saturating_sub(5);
-                // When Type tab is open, response preview only gets ~40% of the response panel
+                // Account for borders + tab bar + search bar + internal chrome
+                self.state.body_buf.visible_height = self.state.body_buf.visible_height.saturating_sub(4);
+                // Account for borders + status line + tab bar + separator + headers area
+                self.state.resp_buf.visible_height = self.state.resp_buf.visible_height.saturating_sub(7);
+                // When Type tab is open, response preview only gets ~half minus separators/indicators
                 if self.state.response_tab == ResponseTab::Type {
-                    self.state.resp_buf.visible_height = self.state.resp_buf.visible_height / 2;
+                    self.state.resp_buf.visible_height = (self.state.resp_buf.visible_height / 2).saturating_sub(3);
                 }
 
                 // Calculate visible widths for horizontal scroll-follow
