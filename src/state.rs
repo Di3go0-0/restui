@@ -9,7 +9,7 @@ use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
 use crate::model::request::Request;
 use crate::model::response::Response;
-use crate::vim_buffer::VimBuffer;
+use crate::vim_instance::VimInstance;
 
 // ── Application-wide constants ──────────────────────────────────────────────
 pub const RESPONSE_CACHE_MAX: usize = 50;
@@ -436,11 +436,11 @@ pub struct AppState {
     pub request_field_editing: bool,   // true = vim normal mode inside a field
     pub request_visual_anchor: usize,  // visual selection anchor for request fields
 
-    // Body vim buffer
-    pub body_buf: VimBuffer,
+    // Body vim instance (all modes)
+    pub body_vim: VimInstance,
 
-    // Response vim buffer (read-only)
-    pub resp_buf: VimBuffer,
+    // Response vim instance (read-only, no insert)
+    pub resp_vim: VimInstance,
 
     // Pending key for dd
     pub pending_key: Option<(char, Instant)>,
@@ -499,13 +499,13 @@ pub struct AppState {
     pub response_type_text: String,
     pub response_type_locked: bool,
     pub type_validation_errors: Vec<String>,
-    pub type_buf: VimBuffer,
+    pub type_vim: VimInstance,
     pub type_sub_focus: TypeSubFocus,
     pub type_lang: TypeLang,
     pub type_ts_text: String,
     pub type_csharp_text: String,
-    pub type_ts_buf: VimBuffer,
-    pub type_csharp_buf: VimBuffer,
+    pub type_ts_vim: VimInstance,
+    pub type_csharp_vim: VimInstance,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -559,8 +559,8 @@ impl AppState {
             path_param_edit_field: 0,
             request_field_editing: false,
             request_visual_anchor: 0,
-            body_buf: VimBuffer::default(),
-            resp_buf: VimBuffer::default(),
+            body_vim: VimInstance::new(),
+            resp_vim: VimInstance::read_only(),
             pending_key: None,
             autocomplete: None,
             chain_autocomplete: None,
@@ -590,13 +590,13 @@ impl AppState {
             response_type_text: String::new(),
             response_type_locked: false,
             type_validation_errors: Vec::new(),
-            type_buf: VimBuffer::default(),
+            type_vim: VimInstance::new(),
             type_sub_focus: TypeSubFocus::default(),
             type_lang: TypeLang::default(),
             type_ts_text: String::new(),
             type_csharp_text: String::new(),
-            type_ts_buf: VimBuffer::default(),
-            type_csharp_buf: VimBuffer::default(),
+            type_ts_vim: VimInstance::new(),
+            type_csharp_vim: VimInstance::new(),
             matched_bracket: None,
             count_prefix: None,
             last_response_info: None,
@@ -613,6 +613,28 @@ impl AppState {
     pub fn validate_body(&mut self) {
         let body = self.current_request.get_body(self.body_type);
         self.body_validation_error = self.body_type.validate(body);
+    }
+
+    /// Get the VimInstance for the active panel
+    #[allow(dead_code)]
+    pub fn active_vim(&mut self) -> &mut VimInstance {
+        match self.active_panel {
+            Panel::Body => &mut self.body_vim,
+            Panel::Response if self.response_tab == ResponseTab::Type => &mut self.type_vim,
+            Panel::Response => &mut self.resp_vim,
+            _ => &mut self.body_vim, // fallback
+        }
+    }
+
+    /// Validate if the new mode is allowed before changing
+    #[allow(dead_code)]
+    pub fn try_set_mode(&mut self, new_mode: InputMode) -> bool {
+        if self.active_vim().is_mode_allowed(new_mode) {
+            self.mode = new_mode;
+            true
+        } else {
+            false
+        }
     }
 }
 

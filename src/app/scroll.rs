@@ -43,16 +43,16 @@ impl App {
     pub(super) fn scroll_top(&mut self) {
         match self.state.active_panel {
             Panel::Collections => self.state.collections_state.select(Some(0)),
-            Panel::Body => { self.state.body_buf.scroll = (0, 0); self.state.body_buf.cursor_row = 0; self.state.body_buf.cursor_col = 0; }
+            Panel::Body => { self.state.body_vim.buffer.scroll = (0, 0); self.state.body_vim.buffer.cursor_row = 0; self.state.body_vim.buffer.cursor_col = 0; }
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == TypeSubFocus::Editor => {
-                self.state.type_buf.cursor_row = 0;
-                self.state.type_buf.cursor_col = 0;
-                self.state.type_buf.scroll = (0, 0);
+                self.state.type_vim.buffer.cursor_row = 0;
+                self.state.type_vim.buffer.cursor_col = 0;
+                self.state.type_vim.buffer.scroll = (0, 0);
             }
             Panel::Response => {
-                self.state.resp_buf.cursor_row = 0;
-                self.state.resp_buf.cursor_col = 0;
-                self.state.resp_buf.scroll = (0, 0);
+                self.state.resp_vim.buffer.cursor_row = 0;
+                self.state.resp_vim.buffer.cursor_col = 0;
+                self.state.resp_vim.buffer.scroll = (0, 0);
             }
             _ => {}
         }
@@ -67,20 +67,20 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let lines: Vec<&str> = body.lines().collect();
-                self.state.body_buf.cursor_row = lines.len().saturating_sub(1);
-                self.state.body_buf.cursor_col = 0;
+                self.state.body_vim.buffer.cursor_row = lines.len().saturating_sub(1);
+                self.state.body_vim.buffer.cursor_col = 0;
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == TypeSubFocus::Editor => {
                 let line_count = self.state.response_type_text.lines().count();
-                self.state.type_buf.cursor_row = line_count.saturating_sub(1);
-                self.state.type_buf.cursor_col = 0;
-                self.state.type_buf.sync_scroll();
+                self.state.type_vim.buffer.cursor_row = line_count.saturating_sub(1);
+                self.state.type_vim.buffer.cursor_col = 0;
+                self.state.type_vim.buffer.sync_scroll();
             }
             Panel::Response => {
                 let lines = self.get_response_lines();
-                self.state.resp_buf.cursor_row = lines.len().saturating_sub(1);
-                self.state.resp_buf.cursor_col = 0;
+                self.state.resp_vim.buffer.cursor_row = lines.len().saturating_sub(1);
+                self.state.resp_vim.buffer.cursor_col = 0;
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -88,52 +88,52 @@ impl App {
     }
 
     pub(super) fn sync_body_scroll(&mut self) {
-        let visible = self.state.body_buf.visible_height as usize;
+        let visible = self.state.body_vim.buffer.visible_height as usize;
         let off = crate::vim_buffer::SCROLLOFF;
         if visible <= off * 2 { return; }
-        let scroll = self.state.body_buf.scroll.0 as usize;
-        let row = self.state.body_buf.cursor_row;
+        let scroll = self.state.body_vim.buffer.scroll.0 as usize;
+        let row = self.state.body_vim.buffer.cursor_row;
         if row < scroll + off {
-            self.state.body_buf.scroll.0 = row.saturating_sub(off) as u16;
+            self.state.body_vim.buffer.scroll.0 = row.saturating_sub(off) as u16;
         } else if row >= scroll + visible - off {
-            self.state.body_buf.scroll.0 = (row - visible + off + 1) as u16;
+            self.state.body_vim.buffer.scroll.0 = (row - visible + off + 1) as u16;
         }
     }
 
     pub(super) fn sync_body_hscroll(&mut self) {
-        let col = self.state.body_buf.cursor_col;
-        let hscroll = self.state.body_buf.scroll.1 as usize;
-        let visible_w = self.state.body_buf.visible_width as usize;
+        let col = self.state.body_vim.buffer.cursor_col;
+        let hscroll = self.state.body_vim.buffer.scroll.1 as usize;
+        let visible_w = self.state.body_vim.buffer.visible_width as usize;
         if visible_w == 0 { return; }
         if col < hscroll {
-            self.state.body_buf.scroll.1 = col as u16;
+            self.state.body_vim.buffer.scroll.1 = col as u16;
         } else if col >= hscroll + visible_w {
-            self.state.body_buf.scroll.1 = (col - visible_w + 1) as u16;
+            self.state.body_vim.buffer.scroll.1 = (col - visible_w + 1) as u16;
         }
     }
 
     pub(super) fn sync_resp_scroll(&mut self) {
-        let visible = self.state.resp_buf.visible_height as usize;
+        let visible = self.state.resp_vim.buffer.visible_height as usize;
         let off = crate::vim_buffer::SCROLLOFF;
         if visible <= off * 2 { return; }
-        let scroll = self.state.resp_buf.scroll.0 as usize;
-        let row = self.state.resp_buf.cursor_row;
+        let scroll = self.state.resp_vim.buffer.scroll.0 as usize;
+        let row = self.state.resp_vim.buffer.cursor_row;
         if row < scroll + off {
-            self.state.resp_buf.scroll.0 = row.saturating_sub(off) as u16;
+            self.state.resp_vim.buffer.scroll.0 = row.saturating_sub(off) as u16;
         } else if row >= scroll + visible - off {
-            self.state.resp_buf.scroll.0 = (row - visible + off + 1) as u16;
+            self.state.resp_vim.buffer.scroll.0 = (row - visible + off + 1) as u16;
         }
     }
 
     pub(super) fn sync_resp_hscroll(&mut self) {
-        let col = self.state.resp_buf.cursor_col;
-        let hscroll = self.state.resp_buf.scroll.1 as usize;
-        let visible_w = self.state.resp_buf.visible_width as usize;
+        let col = self.state.resp_vim.buffer.cursor_col;
+        let hscroll = self.state.resp_vim.buffer.scroll.1 as usize;
+        let visible_w = self.state.resp_vim.buffer.visible_width as usize;
         if visible_w == 0 { return; }
         if col < hscroll {
-            self.state.resp_buf.scroll.1 = col as u16;
+            self.state.resp_vim.buffer.scroll.1 = col as u16;
         } else if col >= hscroll + visible_w {
-            self.state.resp_buf.scroll.1 = (col - visible_w + 1) as u16;
+            self.state.resp_vim.buffer.scroll.1 = (col - visible_w + 1) as u16;
         }
     }
 
@@ -143,17 +143,17 @@ impl App {
             Panel::Body => {
                 let body = self.state.current_request.get_body(self.state.body_type);
                 let max = body.lines().count().saturating_sub(1);
-                self.state.body_buf.cursor_row = (self.state.body_buf.cursor_row + half).min(max);
+                self.state.body_vim.buffer.cursor_row = (self.state.body_vim.buffer.cursor_row + half).min(max);
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == TypeSubFocus::Editor => {
                 let max = self.state.response_type_text.lines().count().saturating_sub(1);
-                self.state.type_buf.cursor_row = (self.state.type_buf.cursor_row + half).min(max);
-                self.state.type_buf.sync_scroll();
+                self.state.type_vim.buffer.cursor_row = (self.state.type_vim.buffer.cursor_row + half).min(max);
+                self.state.type_vim.buffer.sync_scroll();
             }
             Panel::Response => {
                 let max = self.get_response_lines().len().saturating_sub(1);
-                self.state.resp_buf.cursor_row = (self.state.resp_buf.cursor_row + half).min(max);
+                self.state.resp_vim.buffer.cursor_row = (self.state.resp_vim.buffer.cursor_row + half).min(max);
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -164,15 +164,15 @@ impl App {
         let half = 15usize;
         match self.state.active_panel {
             Panel::Body => {
-                self.state.body_buf.cursor_row = self.state.body_buf.cursor_row.saturating_sub(half);
+                self.state.body_vim.buffer.cursor_row = self.state.body_vim.buffer.cursor_row.saturating_sub(half);
                 self.sync_body_scroll(); self.sync_body_hscroll();
             }
             Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == TypeSubFocus::Editor => {
-                self.state.type_buf.cursor_row = self.state.type_buf.cursor_row.saturating_sub(half);
-                self.state.type_buf.sync_scroll();
+                self.state.type_vim.buffer.cursor_row = self.state.type_vim.buffer.cursor_row.saturating_sub(half);
+                self.state.type_vim.buffer.sync_scroll();
             }
             Panel::Response => {
-                self.state.resp_buf.cursor_row = self.state.resp_buf.cursor_row.saturating_sub(half);
+                self.state.resp_vim.buffer.cursor_row = self.state.resp_vim.buffer.cursor_row.saturating_sub(half);
                 self.sync_resp_scroll(); self.sync_resp_hscroll();
             }
             _ => {}
@@ -195,20 +195,20 @@ impl App {
 
     pub(super) fn resp_cursor_down(&mut self) {
         let lines = self.get_response_lines();
-        if self.state.resp_buf.cursor_row + 1 < lines.len() {
-            self.state.resp_buf.cursor_row += 1;
-            let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.min(line_len);
+        if self.state.resp_vim.buffer.cursor_row + 1 < lines.len() {
+            self.state.resp_vim.buffer.cursor_row += 1;
+            let line_len = lines.get(self.state.resp_vim.buffer.cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_vim.buffer.cursor_col = self.state.resp_vim.buffer.cursor_col.min(line_len);
         }
         self.sync_resp_scroll(); self.sync_resp_hscroll();
     }
 
     pub(super) fn resp_cursor_up(&mut self) {
-        if self.state.resp_buf.cursor_row > 0 {
-            self.state.resp_buf.cursor_row -= 1;
+        if self.state.resp_vim.buffer.cursor_row > 0 {
+            self.state.resp_vim.buffer.cursor_row -= 1;
             let lines = self.get_response_lines();
-            let line_len = lines.get(self.state.resp_buf.cursor_row).map(|l| l.len()).unwrap_or(0);
-            self.state.resp_buf.cursor_col = self.state.resp_buf.cursor_col.min(line_len);
+            let line_len = lines.get(self.state.resp_vim.buffer.cursor_row).map(|l| l.len()).unwrap_or(0);
+            self.state.resp_vim.buffer.cursor_col = self.state.resp_vim.buffer.cursor_col.min(line_len);
         }
         self.sync_resp_scroll(); self.sync_resp_hscroll();
     }
@@ -216,14 +216,14 @@ impl App {
     pub(super) fn type_cursor_up(&mut self) {
         let mode = self.state.mode;
         let text = &self.state.response_type_text;
-        self.state.type_buf.move_up(text, mode);
-        self.state.type_buf.sync_scroll();
+        self.state.type_vim.buffer.move_up(text, mode);
+        self.state.type_vim.buffer.sync_scroll();
     }
 
     pub(super) fn type_cursor_down(&mut self) {
         let mode = self.state.mode;
         let text = &self.state.response_type_text;
-        self.state.type_buf.move_down(text, mode);
-        self.state.type_buf.sync_scroll();
+        self.state.type_vim.buffer.move_down(text, mode);
+        self.state.type_vim.buffer.sync_scroll();
     }
 }

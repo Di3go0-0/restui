@@ -79,20 +79,28 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     }
 
     // Line number gutter width
-    let body_lines: Vec<&str> = if body_text.is_empty() { vec![""] } else { body_text.lines().collect() };
+    let body_lines: Vec<&str> = if body_text.is_empty() {
+        vec![""]
+    } else {
+        let mut lines: Vec<&str> = body_text.lines().collect();
+        if body_text.ends_with('\n') {
+            lines.push("");
+        }
+        lines
+    };
     let total_lines = body_lines.len();
     let gutter_width: u16 = 4; // "NNN "
     let text_area_x = inner.x + gutter_width;
     let text_area_width = inner.width.saturating_sub(gutter_width);
 
-    let scroll_y = state.body_buf.scroll.0 as usize;
-    let hscroll = state.body_buf.scroll.1 as usize;
+    let scroll_y = state.body_vim.buffer.scroll.0 as usize;
+    let hscroll = state.body_vim.buffer.scroll.1 as usize;
     let visible_height = inner.height as usize;
-    let cursor_row = state.body_buf.cursor_row;
+    let cursor_row = state.body_vim.buffer.cursor_row;
 
     // Compute bracket match
     let matched_bracket = if is_focused {
-        find_matching_bracket(&body_lines, state.body_buf.cursor_row, state.body_buf.cursor_col)
+        find_matching_bracket(&body_lines, state.body_vim.buffer.cursor_row, state.body_vim.buffer.cursor_col)
     } else {
         None
     };
@@ -148,7 +156,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let line_text_ref = line_text.as_str();
 
         // Adjust cursor col and visual anchors for hscroll
-        let adj_cursor_col = state.body_buf.cursor_col.saturating_sub(hscroll);
+        let adj_cursor_col = state.body_vim.buffer.cursor_col.saturating_sub(hscroll);
 
         // Prepare search info
         let search_query_lower = state.search.query.to_lowercase();
@@ -192,7 +200,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         // Bracket highlighting (both cursor bracket and matched bracket)
         if is_focused {
             let highlight_positions: [(usize, usize); 2] = [
-                (state.body_buf.cursor_row, state.body_buf.cursor_col),
+                (state.body_vim.buffer.cursor_row, state.body_vim.buffer.cursor_col),
                 matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
             ];
             for &(br, bc) in &highlight_positions {
@@ -224,7 +232,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     if is_insert || is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < inner.height {
-            let cursor_x = text_area_x + state.body_buf.cursor_col.saturating_sub(hscroll) as u16;
+            let cursor_x = text_area_x + state.body_vim.buffer.cursor_col.saturating_sub(hscroll) as u16;
             let cursor_y = inner.y + cursor_screen_row as u16;
             if cursor_x < inner.right() {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -290,8 +298,8 @@ fn render_body_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
 }
 
 fn visual_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = (state.body_buf.visual_anchor_row, state.body_buf.visual_anchor_col);
-    let (cr, cc) = (state.body_buf.cursor_row, state.body_buf.cursor_col);
+    let (ar, ac) = (state.body_vim.buffer.visual_anchor_row, state.body_vim.buffer.visual_anchor_col);
+    let (cr, cc) = (state.body_vim.buffer.cursor_row, state.body_vim.buffer.cursor_col);
     if (ar, ac) <= (cr, cc) {
         (ar, ac, cr, cc)
     } else {
@@ -301,8 +309,8 @@ fn visual_range(state: &AppState) -> (usize, usize, usize, usize) {
 
 /// Calculate the rectangle for Visual Block selection: (min_row, min_col, max_row, max_col)
 fn visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = (state.body_buf.visual_anchor_row, state.body_buf.visual_anchor_col);
-    let (cr, cc) = (state.body_buf.cursor_row, state.body_buf.cursor_col);
+    let (ar, ac) = (state.body_vim.buffer.visual_anchor_row, state.body_vim.buffer.visual_anchor_col);
+    let (cr, cc) = (state.body_vim.buffer.cursor_row, state.body_vim.buffer.cursor_col);
     (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
 }
 
@@ -429,7 +437,7 @@ fn highlight_body_search_line(
 ) -> Line<'static> {
     if query_lower.is_empty() {
         if is_cursor_line {
-            return render_normal_cursor_line(line, state.body_buf.cursor_col.saturating_sub(hscroll), t);
+            return render_normal_cursor_line(line, state.body_vim.buffer.cursor_col.saturating_sub(hscroll), t);
         }
         return colorize_json_line(line, t);
     }

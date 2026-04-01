@@ -41,23 +41,23 @@ impl App {
         if let Some(&(row, col)) = self.state.search.matches.get(self.state.search.match_idx) {
             match self.state.active_panel {
                 Panel::Response => {
-                    self.state.resp_buf.cursor_row = row;
-                    self.state.resp_buf.cursor_col = col;
-                    let visible = self.state.resp_buf.visible_height as usize;
-                    if row < self.state.resp_buf.scroll.0 as usize {
-                        self.state.resp_buf.scroll.0 = row as u16;
-                    } else if row >= self.state.resp_buf.scroll.0 as usize + visible {
-                        self.state.resp_buf.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    self.state.resp_vim.buffer.cursor_row = row;
+                    self.state.resp_vim.buffer.cursor_col = col;
+                    let visible = self.state.resp_vim.buffer.visible_height as usize;
+                    if row < self.state.resp_vim.buffer.scroll.0 as usize {
+                        self.state.resp_vim.buffer.scroll.0 = row as u16;
+                    } else if row >= self.state.resp_vim.buffer.scroll.0 as usize + visible {
+                        self.state.resp_vim.buffer.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
                     }
                 }
                 Panel::Body => {
-                    self.state.body_buf.cursor_row = row;
-                    self.state.body_buf.cursor_col = col;
-                    let visible = self.state.body_buf.visible_height as usize;
-                    if row < self.state.body_buf.scroll.0 as usize {
-                        self.state.body_buf.scroll.0 = row as u16;
-                    } else if row >= self.state.body_buf.scroll.0 as usize + visible {
-                        self.state.body_buf.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
+                    self.state.body_vim.buffer.cursor_row = row;
+                    self.state.body_vim.buffer.cursor_col = col;
+                    let visible = self.state.body_vim.buffer.visible_height as usize;
+                    if row < self.state.body_vim.buffer.scroll.0 as usize {
+                        self.state.body_vim.buffer.scroll.0 = row as u16;
+                    } else if row >= self.state.body_vim.buffer.scroll.0 as usize + visible {
+                        self.state.body_vim.buffer.scroll.0 = (row.saturating_sub(visible / 2)) as u16;
                     }
                 }
                 _ => {}

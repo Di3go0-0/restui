@@ -14,6 +14,7 @@ mod theme;
 mod tui;
 mod ui;
 mod vim_buffer;
+mod vim_instance;
 
 use anyhow::Result;
 use clap::Parser;

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3] - 2026-04-01
+
+### Refactor
+- **VimInstance abstraction**: new `VimInstance` struct combines `VimBuffer` + `VimModeConfig`, replacing scattered buffer fields across the app
+- **Mode-aware vim contexts**: `VimModeConfig` enables per-panel mode restrictions (e.g., read-only panels disable insert mode)
+- **Cleaner state management**: `AppState` now uses `VimInstance` fields (`type_vim`, `type_ts_vim`, `type_csharp_vim`, `resp_vim`) instead of separate buffer fields
+
 ## [0.3.2] - 2026-03-30
 
 ### Improvements

@@ -101,8 +101,8 @@ fn compute_cursor_screen_pos(state: &AppState, request_area: Rect, body_area: Re
     let border = 1u16;
     match state.active_panel {
         Panel::Body => {
-            let cursor_row_on_screen = (state.body_buf.cursor_row as u16).saturating_sub(state.body_buf.scroll.0);
-            let cursor_col_on_screen = (state.body_buf.cursor_col as u16).saturating_sub(state.body_buf.scroll.1);
+            let cursor_row_on_screen = (state.body_vim.buffer.cursor_row as u16).saturating_sub(state.body_vim.buffer.scroll.0);
+            let cursor_col_on_screen = (state.body_vim.buffer.cursor_col as u16).saturating_sub(state.body_vim.buffer.scroll.1);
             let x = body_area.x + border + gutter + cursor_col_on_screen;
             let y = body_area.y + border + 1 + cursor_row_on_screen; // +1 for tab bar
             (x.min(body_area.right()), y.min(body_area.bottom()))
