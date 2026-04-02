@@ -8,6 +8,14 @@
 - **Binary response handling**: responses with binary content types (`image/*`, `audio/*`, `video/*`, etc.) are detected and displayed as an informative colored message instead of crashing
 - **Buffer type generation**: binary endpoints now generate a `Buffer` type in the Type tab, with descriptive TypeScript and C# code snippets showing how to consume the response
 - **Configurable keybindings**: all keybindings can be customized via `~/.config/restui/keybindings.toml` — only overrides needed, defaults follow vim conventions. Run `restui --dump-keybindings` to generate a full default config
+- **Ctrl+S saves request**: `Ctrl+S` now saves the current request (previously toggled SSL). SSL toggle moved to `Ctrl+T`
+- **Response history overlay**: press `H` in the response panel to browse up to 5 previous responses per request — split view with metadata, headers, and body preview. Navigate with `j/k`, load with `Enter`
+
+### Key Remaps
+- `Ctrl+S` → save request (was: toggle SSL)
+- `Ctrl+T` → toggle SSL (new key)
+- `H` in response → response history overlay (was: toggle headers)
+- `E` in response → toggle headers (new key)
 
 ### Bug Fixes
 - **Fix crash on binary responses**: `byte index is not a char boundary` panic when navigating response body with multi-byte or binary content
