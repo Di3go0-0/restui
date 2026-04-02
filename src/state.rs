@@ -539,6 +539,9 @@ pub struct AppState {
 
     // Keybindings
     pub keybindings: KeybindingsConfig,
+
+    // Help scroll
+    pub help_scroll: u16,
 }
 
 impl AppState {
@@ -625,6 +628,7 @@ impl AppState {
             viewing_history: None,
             viewing_diff: None,
             keybindings,
+            help_scroll: 0,
         }
     }
 

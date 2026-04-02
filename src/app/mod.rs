@@ -2210,6 +2210,9 @@ impl App {
                 if matches!(overlay, Overlay::EnvironmentSelector) {
                     self.state.env_selector_state.select(Some(self.state.environments.active.unwrap_or(0)));
                 }
+                if matches!(overlay, Overlay::Help) {
+                    self.state.help_scroll = 0;
+                }
                 self.state.overlay = Some(overlay);
             }
             Action::CloseOverlay => {
@@ -2239,6 +2242,7 @@ impl App {
                     Some(Overlay::History { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ResponseHistory { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ResponseDiffSelect { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::Help) => { self.state.help_scroll = self.state.help_scroll.saturating_sub(1); }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         *selected = selected.saturating_sub(1);
                     }
@@ -2283,6 +2287,7 @@ impl App {
                         let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
+                    Some(Overlay::Help) => { self.state.help_scroll += 1; }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         if let Some(active_idx) = self.state.environments.active {
                             let max = self.state.environments.environments[active_idx].variables.len().saturating_sub(1);

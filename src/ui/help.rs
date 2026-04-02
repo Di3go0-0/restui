@@ -1,19 +1,22 @@
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::state::AppState;
 
-pub fn render(frame: &mut Frame, _state: &AppState) {
-    let area = centered_rect(65, 75, frame.area());
+pub fn render(frame: &mut Frame, state: &AppState) {
+    let t = &state.theme;
+    let area = centered_rect(65, 80, frame.area());
     frame.render_widget(Clear, area);
 
+    let title = format!(" Help — restui v{} ", env!("CARGO_PKG_VERSION"));
     let block = Block::default()
-        .title(" Help — restui ")
+        .title(title)
+        .title_style(Style::default().fg(t.accent).add_modifier(Modifier::BOLD))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(t.accent));
 
     let keybindings = vec![
         (
@@ -125,33 +128,53 @@ pub fn render(frame: &mut Frame, _state: &AppState) {
     lines.push(Line::from(""));
 
     for (section, bindings) in &keybindings {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", section),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )));
+        // Section header with separator
+        lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                format!(" {} ", section),
+                Style::default()
+                    .fg(t.gutter_active)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " ─".repeat(1),
+                Style::default().fg(t.text_dim),
+            ),
+        ]));
 
         for (key, desc) in bindings {
             lines.push(Line::from(vec![
                 Span::styled(
                     format!("    {:17}", key),
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(t.accent)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(*desc, Style::default().fg(Color::White)),
+                Span::styled(*desc, Style::default().fg(t.text)),
             ]));
         }
         lines.push(Line::from(""));
     }
 
-    lines.push(Line::from(Span::styled(
-        "  Press ? or Esc to close",
-        Style::default().fg(Color::DarkGray),
-    )));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("j/k", Style::default().fg(t.accent)),
+        Span::styled(" scroll  ", Style::default().fg(t.text_dim)),
+        Span::styled("?/Esc", Style::default().fg(t.accent)),
+        Span::styled(" close", Style::default().fg(t.text_dim)),
+    ]));
 
-    let paragraph = Paragraph::new(lines).block(block);
+    // Clamp scroll to max
+    let total_lines = lines.len() as u16;
+    let inner_height = area.height.saturating_sub(2); // border top + bottom
+    let max_scroll = total_lines.saturating_sub(inner_height);
+    let scroll = state.help_scroll.min(max_scroll);
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll, 0));
     frame.render_widget(paragraph, area);
 }
 
