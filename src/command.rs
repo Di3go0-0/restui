@@ -180,6 +180,14 @@ pub fn all_commands() -> Vec<Command> {
             action: Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }),
         },
 
+        // Export
+        Command {
+            name: "Export Response",
+            description: "Save response body to file (auto-detects extension)",
+            category: "Export",
+            action: Action::ExportResponse,
+        },
+
         // Display
         Command {
             name: "Toggle Wrap",

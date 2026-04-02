@@ -211,6 +211,9 @@ pub enum Action {
     FindCharForwardBefore(char),
     FindCharBackwardAfter(char),
 
+    // Export
+    ExportResponse,
+
     // App
     Quit,
     Tick,

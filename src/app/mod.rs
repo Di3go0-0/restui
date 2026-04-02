@@ -2170,6 +2170,35 @@ impl App {
                 }
             }
 
+            Action::ExportResponse => {
+                if let Some(ref resp) = self.state.current_response {
+                    let ext = match resp.content_type.as_deref() {
+                        Some(ct) if ct.contains("json") => "json",
+                        Some(ct) if ct.contains("html") => "html",
+                        Some(ct) if ct.contains("xml") => "xml",
+                        Some(ct) if ct.contains("image/png") => "png",
+                        Some(ct) if ct.contains("image/jpeg") || ct.contains("image/jpg") => "jpg",
+                        Some(ct) if ct.contains("image/gif") => "gif",
+                        Some(ct) if ct.contains("image/webp") => "webp",
+                        Some(ct) if ct.contains("pdf") => "pdf",
+                        _ => "txt",
+                    };
+                    let ts = chrono::Local::now().format("%H%M%S");
+                    let filename = format!("response_{}.{}", ts, ext);
+                    let result = if let Some(ref bytes) = resp.body_bytes {
+                        std::fs::write(&filename, bytes)
+                    } else {
+                        std::fs::write(&filename, resp.formatted_body())
+                    };
+                    match result {
+                        Ok(()) => self.state.set_status(format!("Exported to {}", filename)),
+                        Err(e) => self.state.set_status(format!("Export failed: {}", e)),
+                    }
+                } else {
+                    self.state.set_status("No response to export");
+                }
+            }
+
             // === Overlays ===
             Action::OpenOverlay(overlay) => {
                 if matches!(overlay, Overlay::EnvironmentSelector) {
