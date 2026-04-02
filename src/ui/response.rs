@@ -15,7 +15,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
-    let title = if let Some((idx, total, ref ts)) = state.viewing_history {
+    let title = if let Some((ref _diff_text, ref ts)) = state.viewing_diff {
+        format!(" [4] Response [Diff vs {}] ", ts)
+    } else if let Some((idx, total, ref ts)) = state.viewing_history {
         format!(" [4] Response [History {}/{} — {}] ", idx, total, ts)
     } else {
         " [4] Response ".to_string()
@@ -822,7 +824,11 @@ fn render_response_body(
         return;
     }
 
-    let body = resp.formatted_body();
+    let body = if let Some((ref diff_text, _)) = state.viewing_diff {
+        diff_text.clone()
+    } else {
+        resp.formatted_body()
+    };
 
     let body_lines: Vec<&str> = body.lines().collect();
     let total_lines = body_lines.len();
@@ -876,7 +882,11 @@ fn render_response_body(
     while screen_row < visible_height && line_idx < total_lines {
         let full_line = body_lines.get(line_idx).copied().unwrap_or("");
         // Pre-colorize the full line once, then slice spans for each wrap row
-        let full_colored = colorize_response_line(full_line, t);
+        let full_colored = if state.viewing_diff.is_some() {
+            colorize_diff_line(full_line)
+        } else {
+            colorize_response_line(full_line, t)
+        };
 
         // How many visual rows does this line occupy?
         let wrap_rows = if wrap && tw > 0 { (full_line.len().max(1) + tw - 1) / tw } else { 1 };
@@ -1225,6 +1235,16 @@ fn colorize_response_line(line: &str, t: &crate::theme::Theme) -> Line<'static> 
     }
 
     Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
+}
+
+fn colorize_diff_line(line: &str) -> Line<'static> {
+    if line.starts_with("+ ") {
+        Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Green)))
+    } else if line.starts_with("- ") {
+        Line::from(Span::styled(line.to_string(), Style::default().fg(Color::Red)))
+    } else {
+        Line::from(Span::styled(line.to_string(), Style::default().fg(Color::White)))
+    }
 }
 
 fn value_style(val: &str, t: &crate::theme::Theme) -> Style {

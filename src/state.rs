@@ -3,13 +3,6 @@ use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiffTag {
-    Equal,
-    Insert,
-    Delete,
-}
-
 use crate::config::AppConfig;
 use crate::keybinding_config::KeybindingsConfig;
 use crate::model::response::ResponseHistories;
@@ -206,10 +199,6 @@ pub enum Overlay {
     },
     ResponseDiffSelect {
         selected: usize,
-    },
-    ResponseDiffView {
-        diff_lines: Vec<(DiffTag, String)>,
-        scroll: usize,
     },
 }
 
@@ -545,6 +534,8 @@ pub struct AppState {
     pub response_histories: ResponseHistories,
     /// When viewing a historical response: Some((index, total, timestamp)). None = viewing current/live response.
     pub viewing_history: Option<(usize, usize, String)>,
+    /// When viewing a diff: Some((diff_text, timestamp_label)). Rendered in response panel with read-only vim.
+    pub viewing_diff: Option<(String, String)>,
 
     // Keybindings
     pub keybindings: KeybindingsConfig,
@@ -632,6 +623,7 @@ impl AppState {
             collection_items: Vec::new(),
             response_histories: ResponseHistories::load(&crate::config::data_dir().join("response_history.json")),
             viewing_history: None,
+            viewing_diff: None,
             keybindings,
         }
     }

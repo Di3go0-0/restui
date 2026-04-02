@@ -25,7 +25,6 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         Overlay::History { selected } => render_history(frame, state, *selected),
         Overlay::ResponseHistory { selected } => render_response_history(frame, state, *selected),
         Overlay::ResponseDiffSelect { selected } => render_response_diff_select(frame, state, *selected),
-        Overlay::ResponseDiffView { diff_lines, scroll } => render_response_diff_view(frame, diff_lines, *scroll),
     }
 }
 
@@ -649,25 +648,3 @@ fn render_response_diff_select(frame: &mut Frame, state: &AppState, selected: us
     frame.render_stateful_widget(list, inner, &mut list_state);
 }
 
-fn render_response_diff_view(frame: &mut Frame, diff_lines: &[(crate::state::DiffTag, String)], scroll: usize) {
-    let area = centered_rect(90, 80, frame.area());
-    frame.render_widget(Clear, area);
-
-    let block = Block::default()
-        .title(" Response Diff (j/k:scroll  Esc/q:close) ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let visible = inner.height as usize;
-    let lines: Vec<Line> = diff_lines.iter().skip(scroll).take(visible).map(|(tag, text)| {
-        match tag {
-            crate::state::DiffTag::Equal => Line::from(Span::styled(format!("  {}", text), Style::default().fg(Color::White))),
-            crate::state::DiffTag::Insert => Line::from(Span::styled(format!("+ {}", text), Style::default().fg(Color::Green))),
-            crate::state::DiffTag::Delete => Line::from(Span::styled(format!("- {}", text), Style::default().fg(Color::Red))),
-        }
-    }).collect();
-
-    frame.render_widget(Paragraph::new(lines), inner);
-}

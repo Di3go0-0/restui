@@ -122,6 +122,13 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         };
     }
 
+    // Exit diff view with Esc or q
+    if state.viewing_diff.is_some() && state.active_panel == Panel::Response {
+        if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
+            return Some(Action::ExitDiffView);
+        }
+    }
+
     // Cancel in-flight request with Esc
     if state.request_in_flight && key.code == KeyCode::Esc {
         return Some(Action::CancelRequest);
@@ -669,14 +676,6 @@ fn map_overlay_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybinding
                     KeyCode::Char('d') => Some(Action::OverlayDelete),
                     _ => None,
                 }
-            }
-        }
-        Some(Overlay::ResponseDiffView { .. }) => {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('q') => Some(Action::CloseOverlay),
-                KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
-                KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
-                _ => None,
             }
         }
         _ => {

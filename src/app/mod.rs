@@ -2170,6 +2170,12 @@ impl App {
                 }
             }
 
+            Action::ExitDiffView => {
+                self.state.viewing_diff = None;
+                self.state.resp_vim.buffer.scroll = (0, 0);
+                self.state.resp_vim.buffer.cursor_row = 0;
+                self.state.resp_vim.buffer.cursor_col = 0;
+            }
             Action::ExportResponse => {
                 if let Some(ref resp) = self.state.current_response {
                     let ext = match resp.content_type.as_deref() {
@@ -2233,7 +2239,6 @@ impl App {
                     Some(Overlay::History { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ResponseHistory { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ResponseDiffSelect { selected }) => { *selected = selected.saturating_sub(1); }
-                    Some(Overlay::ResponseDiffView { scroll, .. }) => { *scroll = scroll.saturating_sub(1); }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         *selected = selected.saturating_sub(1);
                     }
@@ -2277,10 +2282,6 @@ impl App {
                         });
                         let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
                         *selected = (*selected + 1).min(max);
-                    }
-                    Some(Overlay::ResponseDiffView { scroll, diff_lines, .. }) => {
-                        let max = diff_lines.len().saturating_sub(1);
-                        *scroll = (*scroll + 1).min(max);
                     }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         if let Some(active_idx) = self.state.environments.active {
@@ -2519,17 +2520,22 @@ impl App {
                                         let current_body = current.formatted_body();
                                         let old_body = entry.response.formatted_body();
                                         let diff = similar::TextDiff::from_lines(&old_body, &current_body);
-                                        let mut diff_lines = Vec::new();
+                                        let mut diff_text = String::new();
                                         for change in diff.iter_all_changes() {
-                                            let tag = match change.tag() {
-                                                similar::ChangeTag::Equal => crate::state::DiffTag::Equal,
-                                                similar::ChangeTag::Insert => crate::state::DiffTag::Insert,
-                                                similar::ChangeTag::Delete => crate::state::DiffTag::Delete,
+                                            let prefix = match change.tag() {
+                                                similar::ChangeTag::Equal => "  ",
+                                                similar::ChangeTag::Insert => "+ ",
+                                                similar::ChangeTag::Delete => "- ",
                                             };
-                                            diff_lines.push((tag, change.to_string_lossy().trim_end_matches('\n').to_string()));
+                                            diff_text.push_str(prefix);
+                                            diff_text.push_str(change.to_string_lossy().trim_end_matches('\n'));
+                                            diff_text.push('\n');
                                         }
-                                        self.state.overlay = Some(Overlay::ResponseDiffView { diff_lines, scroll: 0 });
-                                        return Ok(());
+                                        let ts = entry.timestamp.format("%H:%M:%S").to_string();
+                                        self.state.viewing_diff = Some((diff_text, ts));
+                                        self.state.resp_vim.buffer.scroll = (0, 0);
+                                        self.state.resp_vim.buffer.cursor_row = 0;
+                                        self.state.resp_vim.buffer.cursor_col = 0;
                                     }
                                 }
                             }

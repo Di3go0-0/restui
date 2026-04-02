@@ -211,6 +211,9 @@ pub enum Action {
     FindCharForwardBefore(char),
     FindCharBackwardAfter(char),
 
+    // Diff
+    ExitDiffView,
+
     // Export
     ExportResponse,
 
