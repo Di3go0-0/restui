@@ -9,7 +9,10 @@
 - **Buffer type generation**: binary endpoints now generate a `Buffer` type in the Type tab, with descriptive TypeScript and C# code snippets showing how to consume the response
 - **Configurable keybindings**: all keybindings can be customized via `~/.config/restui/keybindings.toml` — only overrides needed, defaults follow vim conventions. Run `restui --dump-keybindings` to generate a full default config
 - **Ctrl+S saves request**: `Ctrl+S` now saves the current request (previously toggled SSL). SSL toggle moved to `Ctrl+T`
-- **Response history overlay**: press `H` in the response panel to browse up to 5 previous responses per request — split view with metadata, headers, and body preview. Navigate with `j/k`, load with `Enter`
+- **Response history overlay**: press `H` in the response panel to browse up to 5 previous responses per request. Select to load with full vim/type/search support. Panel title shows `[History X/N — HH:MM:SS]`
+- **Persistent response history**: response history survives between sessions — stored in `~/.local/share/restui/response_history.json`
+- **Export response**: save response body to file via command palette (`:Export Response`). Auto-detects extension from content-type (`.json`, `.html`, `.png`, etc.)
+- **Response diff**: press `D` in the response panel to compare the current response against a historical one. Shows unified diff with colored additions (+green) and deletions (-red)
 
 ### Key Remaps
 - `Ctrl+S` → save request (was: toggle SSL)
