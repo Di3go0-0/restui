@@ -141,34 +141,24 @@ impl Request {
     /// Fingerprint of request content (method, url, headers, body, params, cookies).
     /// Used to deduplicate response history — same fingerprint = same request.
     pub fn fingerprint(&self) -> String {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        format!("{}", self.method).hash(&mut hasher);
-        self.url.hash(&mut hasher);
+        let mut fp = format!("{}|{}", self.method, self.url);
         for h in &self.headers {
-            h.name.hash(&mut hasher);
-            h.value.hash(&mut hasher);
-            h.enabled.hash(&mut hasher);
+            fp.push_str(&format!("|h:{}={}:{}", h.name, h.value, h.enabled));
         }
         for p in &self.query_params {
-            p.key.hash(&mut hasher);
-            p.value.hash(&mut hasher);
-            p.enabled.hash(&mut hasher);
+            fp.push_str(&format!("|q:{}={}:{}", p.key, p.value, p.enabled));
         }
         for c in &self.cookies {
-            c.name.hash(&mut hasher);
-            c.value.hash(&mut hasher);
-            c.enabled.hash(&mut hasher);
+            fp.push_str(&format!("|c:{}={}:{}", c.name, c.value, c.enabled));
         }
         for p in &self.path_params {
-            p.key.hash(&mut hasher);
-            p.value.hash(&mut hasher);
+            fp.push_str(&format!("|pp:{}={}", p.key, p.value));
         }
-        self.body_json.hash(&mut hasher);
-        self.body_xml.hash(&mut hasher);
-        self.body_form.hash(&mut hasher);
-        self.body_raw.hash(&mut hasher);
-        format!("{:x}", hasher.finish())
+        if let Some(ref b) = self.body_json { fp.push_str(&format!("|bj:{}", b)); }
+        if let Some(ref b) = self.body_xml { fp.push_str(&format!("|bx:{}", b)); }
+        if let Some(ref b) = self.body_form { fp.push_str(&format!("|bf:{}", b)); }
+        if let Some(ref b) = self.body_raw { fp.push_str(&format!("|br:{}", b)); }
+        fp
     }
 
     pub fn display_name(&self) -> String {
