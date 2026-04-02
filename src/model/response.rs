@@ -1,17 +1,36 @@
+use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::time::Duration;
 use chrono::{DateTime, Local};
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
     pub status: u16,
     pub status_text: String,
     pub headers: Vec<(String, String)>,
     pub body: String,
     pub content_type: Option<String>,
+    #[serde(with = "duration_millis")]
     pub elapsed: Duration,
     pub size_bytes: usize,
-    /// Raw bytes for binary responses (images, etc.)
+    /// Raw bytes for binary responses — skipped in serialization
+    #[serde(skip)]
     pub body_bytes: Option<Vec<u8>>,
+}
+
+mod duration_millis {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S: Serializer>(d: &Duration, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_u64(d.as_millis() as u64)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Duration, D::Error> {
+        let ms = u64::deserialize(d)?;
+        Ok(Duration::from_millis(ms))
+    }
 }
 
 impl Response {
@@ -61,10 +80,36 @@ impl Response {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseHistoryEntry {
     pub response: Response,
     pub timestamp: DateTime<Local>,
+}
+
+/// Wrapper for persistence
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ResponseHistories {
+    pub data: std::collections::HashMap<String, VecDeque<ResponseHistoryEntry>>,
+}
+
+impl ResponseHistories {
+    pub fn load(path: &PathBuf) -> Self {
+        if path.exists() {
+            std::fs::read_to_string(path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        } else {
+            Self::default()
+        }
+    }
+
+    pub fn save(&self, path: &PathBuf) {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&PathBuf::from(".")));
+        if let Ok(json) = serde_json::to_string(&self) {
+            let _ = std::fs::write(path, json);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

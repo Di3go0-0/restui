@@ -3,11 +3,9 @@ use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
-use std::collections::VecDeque;
-
 use crate::config::AppConfig;
 use crate::keybinding_config::KeybindingsConfig;
-use crate::model::response::ResponseHistoryEntry;
+use crate::model::response::ResponseHistories;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
@@ -529,8 +527,8 @@ pub struct AppState {
     pub status_message: Option<(String, Instant)>,
     pub collection_items: Vec<String>,
 
-    // Response history per request (max 5 previous responses)
-    pub response_histories: HashMap<String, VecDeque<ResponseHistoryEntry>>,
+    // Response history per request (max 5 previous responses, persisted)
+    pub response_histories: ResponseHistories,
     /// When viewing a historical response: Some((index, total, timestamp)). None = viewing current/live response.
     pub viewing_history: Option<(usize, usize, String)>,
 
@@ -618,7 +616,7 @@ impl AppState {
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),
-            response_histories: HashMap::new(),
+            response_histories: ResponseHistories::load(&crate::config::data_dir().join("response_history.json")),
             viewing_history: None,
             keybindings,
         }

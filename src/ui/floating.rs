@@ -540,7 +540,7 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
         format!("{}/{}", coll, name)
     });
 
-    let entries = key.as_ref().and_then(|k| state.response_histories.get(k));
+    let entries = key.as_ref().and_then(|k| state.response_histories.data.get(k));
 
     if entries.is_none() || entries.is_some_and(|e| e.is_empty()) {
         frame.render_widget(

@@ -2048,11 +2048,12 @@ impl App {
                         response: (*response).clone(),
                         timestamp: chrono::Local::now(),
                     };
-                    let history = self.state.response_histories.entry(key).or_insert_with(std::collections::VecDeque::new);
+                    let history = self.state.response_histories.data.entry(key).or_insert_with(std::collections::VecDeque::new);
                     history.push_front(entry);
                     if history.len() > 5 {
                         history.pop_back();
                     }
+                    self.state.response_histories.save(&crate::config::data_dir().join("response_history.json"));
                 }
 
                 self.state.current_response = Some(*response);
@@ -2235,7 +2236,7 @@ impl App {
                             let coll = self.state.collections.get(self.state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
                             format!("{}/{}", coll, name)
                         });
-                        let max = key.and_then(|k| self.state.response_histories.get(&k).map(|h| h.len())).unwrap_or(0).saturating_sub(1);
+                        let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
@@ -2469,7 +2470,7 @@ impl App {
                                 .map(|c| c.name.as_str())
                                 .unwrap_or("_");
                             let key = format!("{}/{}", collection_name, name);
-                            if let Some(history) = self.state.response_histories.get(&key) {
+                            if let Some(history) = self.state.response_histories.data.get(&key) {
                                 if let Some(entry) = history.get(selected) {
                                     self.state.current_response = Some(entry.response.clone());
                                     self.state.resp_vim.buffer.scroll = (0, 0);
