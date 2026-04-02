@@ -1,6 +1,6 @@
 [package]
 name = "restui"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 description = "A TUI HTTP client with vim keybindings"
 license = "MIT"
