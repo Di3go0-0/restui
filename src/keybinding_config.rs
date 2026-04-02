@@ -253,7 +253,8 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "visual_block", &["Ctrl+v"]); // context-dependent: visual block in normal, paste in insert
         bind(m, "scroll_half_down", &["Ctrl+d"]);
         bind(m, "scroll_half_up", &["Ctrl+u"]);
-        bind(m, "toggle_insecure", &["Ctrl+s"]);
+        bind(m, "save_request", &["Ctrl+s"]);
+        bind(m, "toggle_insecure", &["Ctrl+t"]);
         bind(m, "navigate_left", &["Ctrl+h"]);
         bind(m, "navigate_down", &["Ctrl+j"]);
         bind(m, "navigate_up", &["Ctrl+k"]);
@@ -411,7 +412,8 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "find_before", &["t"]);
         bind(m, "find_after", &["Shift+t"]);
         bind(m, "open_env_selector", &["p"]);
-        bind(m, "toggle_headers", &["Shift+h"]);
+        bind(m, "toggle_headers", &["Shift+e"]);
+        bind(m, "response_history", &["Shift+h"]);
         bind(m, "start_search", &["/"]);
         bind(m, "search_next", &["n"]);
         bind(m, "search_prev", &["Shift+n"]);

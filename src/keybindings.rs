@@ -86,6 +86,7 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
         "scroll_half_down" => Some(Action::ScrollHalfDown),
         "scroll_half_up" => Some(Action::ScrollHalfUp),
         "toggle_insecure" => Some(Action::ToggleInsecureMode),
+        "save_request" => Some(Action::SaveRequest),
         _ => None,
     }
 }
@@ -365,6 +366,7 @@ fn map_response_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Op
         // Response body specific
         "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
         "toggle_headers" => Some(Action::ToggleResponseHeaders),
+        "response_history" => Some(Action::OpenOverlay(Overlay::ResponseHistory { selected: 0 })),
         // Type editor specific (only works when in editor sub-focus)
         "enter_insert" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertMode),
         "enter_insert_start" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertModeStart),
@@ -634,7 +636,7 @@ fn map_overlay_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybinding
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
             _ => None,
         },
-        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) => {
+        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) | Some(Overlay::ResponseHistory { .. }) => {
             if let Some(action) = lookup(&kb.overlay, k) {
                 match action {
                     "close" => return Some(Action::CloseOverlay),
