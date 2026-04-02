@@ -522,7 +522,7 @@ fn render_history(frame: &mut Frame, state: &AppState, selected: usize) {
 }
 
 fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize) {
-    let area = centered_rect(80, 70, frame.area());
+    let area = centered_rect(60, 50, frame.area());
     frame.render_widget(Clear, area);
 
     let block = Block::default()
@@ -532,7 +532,6 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Get the history for the current request
     let key = state.current_request.name.as_ref().map(|name| {
         let coll = state.collections
             .get(state.active_collection)
@@ -555,16 +554,6 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
     }
     let entries = entries.unwrap();
 
-    // Split: left list (40%) | right preview (60%)
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-        .split(inner);
-
-    let list_area = chunks[0];
-    let preview_area = chunks[1];
-
-    // Left: entry list
     let items: Vec<ListItem> = entries
         .iter()
         .enumerate()
@@ -577,15 +566,23 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
                 500..=599 => Color::Magenta,
                 _ => Color::DarkGray,
             };
+            let ct = resp.content_type.as_deref().unwrap_or("");
             let line = Line::from(vec![
                 Span::styled(
-                    format!("{:>3} ", resp.status),
+                    format!("{:>3} {} ", resp.status, resp.status_text),
                     Style::default().fg(status_color).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(resp.elapsed_display(), Style::default().fg(Color::DarkGray)),
-                Span::raw("  "),
                 Span::styled(
-                    entry.timestamp.format("%H:%M:%S").to_string(),
+                    format!("{:<8} ", resp.elapsed_display()),
+                    Style::default().fg(Color::Cyan),
+                ),
+                Span::styled(
+                    format!("{:<8} ", resp.size_display()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(ct.to_string(), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("  {}", entry.timestamp.format("%H:%M:%S")),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]);
@@ -603,75 +600,5 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
     let list = List::new(items)
         .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
         .highlight_symbol("\u{25b8} ");
-    frame.render_stateful_widget(list, list_area, &mut list_state);
-
-    // Right: preview of selected response
-    if let Some(entry) = entries.get(selected) {
-        let resp = &entry.response;
-        let ct = resp.content_type.as_deref().unwrap_or("unknown");
-        let mut lines: Vec<Line> = vec![
-            Line::from(vec![
-                Span::styled(
-                    format!("{} {}", resp.status, resp.status_text),
-                    Style::default().fg(match resp.status {
-                        200..=299 => Color::Green,
-                        300..=399 => Color::Yellow,
-                        400..=499 => Color::Red,
-                        500..=599 => Color::Magenta,
-                        _ => Color::DarkGray,
-                    }).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!(" \u{2022} {}", ct),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]),
-            Line::from(vec![
-                Span::styled(resp.elapsed_display(), Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    format!(" \u{2022} {}", resp.size_display()),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]),
-            Line::from(Span::styled(
-                entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
-                Style::default().fg(Color::DarkGray),
-            )),
-            Line::from(Span::styled(
-                "\u{2500}".repeat(preview_area.width.saturating_sub(2) as usize),
-                Style::default().fg(Color::DarkGray),
-            )),
-        ];
-
-        // Response headers
-        for (name, value) in &resp.headers {
-            lines.push(Line::from(vec![
-                Span::styled(format!("{}: ", name), Style::default().fg(Color::Cyan)),
-                Span::styled(value.clone(), Style::default().fg(Color::White)),
-            ]));
-        }
-
-        // Separator before body
-        lines.push(Line::from(Span::styled(
-            "\u{2500}".repeat(preview_area.width.saturating_sub(2) as usize),
-            Style::default().fg(Color::DarkGray),
-        )));
-
-        // Body preview
-        let body = resp.formatted_body();
-        let max_body_lines = preview_area.height.saturating_sub(lines.len() as u16 + 1) as usize;
-        for line in body.lines().take(max_body_lines) {
-            lines.push(Line::from(Span::raw(line.to_string())));
-        }
-        let remaining = body.lines().count().saturating_sub(max_body_lines);
-        if remaining > 0 {
-            lines.push(Line::from(Span::styled(
-                format!("  ... {} more lines", remaining),
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
-
-        let preview = Paragraph::new(lines);
-        frame.render_widget(preview, preview_area);
-    }
+    frame.render_stateful_widget(list, inner, &mut list_state);
 }

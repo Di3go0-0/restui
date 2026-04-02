@@ -15,8 +15,13 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
+    let title = if let Some((idx, total)) = state.viewing_history {
+        format!(" [4] Response [History {}/{}] ", idx, total)
+    } else {
+        " [4] Response ".to_string()
+    };
     let block = Block::default()
-        .title(" [4] Response ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 

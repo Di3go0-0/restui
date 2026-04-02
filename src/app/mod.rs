@@ -2056,6 +2056,7 @@ impl App {
                 }
 
                 self.state.current_response = Some(*response);
+                self.state.viewing_history = None;
                 self.state.resp_vim.buffer.scroll = (0, 0);
 
                 // Infer type from response
@@ -2482,7 +2483,9 @@ impl App {
                                             self.state.response_type = None;
                                         }
                                     }
-                                    self.state.set_status(format!("Loaded response from {}", entry.timestamp.format("%H:%M:%S")));
+                                    let total = history.len();
+                                    self.state.viewing_history = Some((selected + 1, total));
+                                    self.state.set_status(format!("History {}/{} — {}", selected + 1, total, entry.timestamp.format("%H:%M:%S")));
                                 }
                             }
                         }
