@@ -7,6 +7,7 @@
 - **System clipboard integration for `p`**: paste now reads from the system clipboard (with fallback to internal yank buffer), so you can copy a URL from your browser and paste it directly with `p`
 - **Binary response handling**: responses with binary content types (`image/*`, `audio/*`, `video/*`, etc.) are detected and displayed as an informative colored message instead of crashing
 - **Buffer type generation**: binary endpoints now generate a `Buffer` type in the Type tab, with descriptive TypeScript and C# code snippets showing how to consume the response
+- **Configurable keybindings**: all keybindings can be customized via `~/.config/restui/keybindings.toml` — only overrides needed, defaults follow vim conventions. Run `restui --dump-keybindings` to generate a full default config
 
 ### Bug Fixes
 - **Fix crash on binary responses**: `byte index is not a char boundary` panic when navigating response body with multi-byte or binary content
