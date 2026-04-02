@@ -247,10 +247,8 @@ pub fn default_bindings() -> KeybindingsToml {
         let m = &mut t.global;
         bind(m, "quit", &["q"]);
         bind(m, "help", &["?"]);
-        bind(m, "execute_request", &["Ctrl+r"]);
-        bind(m, "redo", &["Ctrl+r"]);  // context-dependent: redo in vim edit, execute otherwise
-        bind(m, "paste_clipboard", &["Ctrl+v"]);
-        bind(m, "visual_block", &["Ctrl+v"]); // context-dependent: visual block in normal, paste in insert
+        bind(m, "ctrl_r", &["Ctrl+r"]);  // context-dependent: redo in vim edit, execute request otherwise
+        bind(m, "ctrl_v", &["Ctrl+v"]); // context-dependent: visual block in normal, paste in insert
         bind(m, "scroll_half_down", &["Ctrl+d"]);
         bind(m, "scroll_half_up", &["Ctrl+u"]);
         bind(m, "save_request", &["Ctrl+s"]);

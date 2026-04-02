@@ -2047,7 +2047,6 @@ impl App {
                     let entry = crate::model::response::ResponseHistoryEntry {
                         response: (*response).clone(),
                         timestamp: chrono::Local::now(),
-                        request_fingerprint: String::new(),
                     };
                     let history = self.state.response_histories.data.entry(key).or_insert_with(std::collections::VecDeque::new);
                     history.push_front(entry);

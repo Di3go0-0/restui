@@ -84,8 +84,6 @@ impl Response {
 pub struct ResponseHistoryEntry {
     pub response: Response,
     pub timestamp: DateTime<Local>,
-    #[serde(default)]
-    pub request_fingerprint: String,
 }
 
 /// Wrapper for persistence

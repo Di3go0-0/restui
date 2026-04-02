@@ -541,19 +541,19 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
         format!("{}/{}", coll, name)
     });
 
-    let entries = key.as_ref().and_then(|k| state.response_histories.data.get(k));
-
-    if entries.is_none() || entries.is_some_and(|e| e.is_empty()) {
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled(
-                "  No response history for this request.",
-                Style::default().fg(Color::DarkGray),
-            ))),
-            inner,
-        );
-        return;
-    }
-    let entries = entries.unwrap();
+    let entries = match key.as_ref().and_then(|k| state.response_histories.data.get(k)) {
+        Some(e) if !e.is_empty() => e,
+        _ => {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    "  No response history for this request.",
+                    Style::default().fg(Color::DarkGray),
+                ))),
+                inner,
+            );
+            return;
+        }
+    };
 
     let items: Vec<ListItem> = entries
         .iter()
@@ -619,16 +619,16 @@ fn render_response_diff_select(frame: &mut Frame, state: &AppState, selected: us
         let coll = state.collections.get(state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
         format!("{}/{}", coll, name)
     });
-    let entries = key.as_ref().and_then(|k| state.response_histories.data.get(k));
-
-    if entries.is_none() || entries.is_some_and(|e| e.is_empty()) {
-        frame.render_widget(
-            Paragraph::new(Line::from(Span::styled("  No history to compare.", Style::default().fg(Color::DarkGray)))),
-            inner,
-        );
-        return;
-    }
-    let entries = entries.unwrap();
+    let entries = match key.as_ref().and_then(|k| state.response_histories.data.get(k)) {
+        Some(e) if !e.is_empty() => e,
+        _ => {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled("  No history to compare.", Style::default().fg(Color::DarkGray)))),
+                inner,
+            );
+            return;
+        }
+    };
 
     let items: Vec<ListItem> = entries.iter().enumerate().map(|(i, entry)| {
         let resp = &entry.response;

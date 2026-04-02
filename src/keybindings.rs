@@ -66,7 +66,7 @@ fn lookup<'a>(ctx: &'a std::collections::HashMap<KeyBind, String>, key: &KeyBind
 
 fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
     match lookup(&kb.global, k)? {
-        "execute_request" | "redo" => {
+        "ctrl_r" | "execute_request" | "redo" => {
             // Ctrl+R: Redo when in any vim editing context, execute request otherwise
             let in_vim_edit = match state.active_panel {
                 Panel::Body => state.mode == InputMode::Normal,
@@ -76,7 +76,7 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
             };
             if in_vim_edit { Some(Action::Redo) } else { Some(Action::ExecuteRequest) }
         }
-        "paste_clipboard" | "visual_block" => {
+        "ctrl_v" | "paste_clipboard" | "visual_block" => {
             if state.mode == InputMode::Insert {
                 Some(Action::PasteFromClipboard)
             } else {

@@ -824,10 +824,12 @@ fn render_response_body(
         return;
     }
 
+    let diff_body;
     let body = if let Some((ref diff_text, _)) = state.viewing_diff {
-        diff_text.clone()
+        diff_text.as_str()
     } else {
-        resp.formatted_body()
+        diff_body = resp.formatted_body();
+        diff_body.as_str()
     };
 
     let body_lines: Vec<&str> = body.lines().collect();
@@ -1102,6 +1104,10 @@ fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'sta
     let start = min_col.min(line.len());
     let end = max_col.min(line.len());
 
+    // Snap to char boundaries
+    let start = line.char_indices().map(|(i, _)| i).take_while(|&i| i <= start).last().unwrap_or(0);
+    let end = line.char_indices().map(|(i, _)| i).find(|&i| i >= end).unwrap_or(line.len());
+
     let before = &line[..start];
     let selected = &line[start..end];
     let after = &line[end..];
@@ -1175,6 +1181,10 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
     let end_col = if row == er { (ec + 1).min(line.len()) } else { line.len() };
     let end_col = end_col.min(line.len());
     let start_col = start_col.min(end_col);
+
+    // Snap to char boundaries
+    let start_col = line.char_indices().map(|(i, _)| i).take_while(|&i| i <= start_col).last().unwrap_or(0);
+    let end_col = line.char_indices().map(|(i, _)| i).find(|&i| i >= end_col).unwrap_or(line.len());
 
     let before = &line[..start_col];
     let selected = &line[start_col..end_col];
