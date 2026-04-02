@@ -23,6 +23,8 @@ pub struct History {
 
 impl History {
     pub fn add(&mut self, entry: HistoryEntry, limit: usize) {
+        // Remove existing entry with same method + url to avoid duplicates
+        self.entries.retain(|e| !(e.method == entry.method && e.url == entry.url));
         self.entries.insert(0, entry);
         self.entries.truncate(limit);
     }
