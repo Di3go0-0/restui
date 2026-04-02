@@ -12,7 +12,8 @@
 - **Response history overlay**: press `H` in the response panel to browse up to 5 previous responses per request. Select to load with full vim/type/search support. Panel title shows `[History X/N — HH:MM:SS]`
 - **Persistent response history**: response history survives between sessions — stored in `~/.local/share/restui/response_history.json`
 - **Export response**: save response body to file via command palette (`:Export Response`). Auto-detects extension from content-type (`.json`, `.html`, `.png`, etc.)
-- **Response diff**: press `D` in the response panel to compare the current response against a historical one. Shows unified diff with colored additions (+green) and deletions (-red)
+- **Response diff**: press `D` in the response panel to compare the current response against a historical one. Full vim navigation (read-only) with colored additions (+green) and deletions (-red)
+- **Request history deduplication**: the global request history (`Shift+H`) no longer fills up with duplicates — same method+URL replaces the previous entry
 
 ### Key Remaps
 - `Ctrl+S` → save request (was: toggle SSL)
