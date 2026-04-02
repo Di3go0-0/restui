@@ -950,10 +950,16 @@ fn render_response_body(
                 highlight_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
                     is_focused && line_idx == cursor_row, col_offset)
             } else if is_focused && line_idx == cursor_row && cursor_col >= col_offset && cursor_col < col_offset + tw && !is_visual && !is_visual_block {
-                render_resp_cursor_line(line_text_ref, cursor_col.saturating_sub(col_offset), t)
+                if state.viewing_diff.is_some() {
+                    render_diff_cursor_line(line_text_ref, cursor_col.saturating_sub(col_offset))
+                } else {
+                    render_resp_cursor_line(line_text_ref, cursor_col.saturating_sub(col_offset), t)
+                }
             } else if wrap && col_offset > 0 {
                 // Wrapped continuation: slice spans from the pre-colorized full line
                 slice_colored_line(&full_colored, col_offset, col_offset + line_text.len())
+            } else if state.viewing_diff.is_some() {
+                colorize_diff_line(line_text_ref)
             } else {
                 colorize_response_line(line_text_ref, t)
             };
@@ -1235,6 +1241,39 @@ fn colorize_response_line(line: &str, t: &crate::theme::Theme) -> Line<'static> 
     }
 
     Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
+}
+
+fn diff_line_color(line: &str) -> Color {
+    if line.starts_with("+ ") { Color::Green }
+    else if line.starts_with("- ") { Color::Red }
+    else { Color::White }
+}
+
+fn render_diff_cursor_line(line: &str, cursor_col: usize) -> Line<'static> {
+    let fg = diff_line_color(line);
+    let line_style = Style::default().fg(fg).bg(Color::DarkGray);
+    let cursor_style = Style::default().fg(Color::Black).bg(fg);
+
+    if line.is_empty() {
+        return Line::from(vec![Span::styled(" ", cursor_style)]);
+    }
+    let col = cursor_col.min(line.len());
+    if col >= line.len() {
+        return Line::from(vec![
+            Span::styled(line.to_string(), line_style),
+            Span::styled(" ", cursor_style),
+        ]);
+    }
+    let char_start = line.char_indices().map(|(i, _)| i).take_while(|&i| i <= col).last().unwrap_or(0);
+    let char_end = line.char_indices().map(|(i, _)| i).find(|&i| i > char_start).unwrap_or(line.len());
+    let before = &line[..char_start];
+    let cursor_char = &line[char_start..char_end];
+    let after = &line[char_end..];
+    Line::from(vec![
+        Span::styled(before.to_string(), line_style),
+        Span::styled(cursor_char.to_string(), cursor_style),
+        Span::styled(after.to_string(), line_style),
+    ])
 }
 
 fn colorize_diff_line(line: &str) -> Line<'static> {
