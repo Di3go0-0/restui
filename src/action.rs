@@ -90,6 +90,7 @@ pub enum Action {
     // Visual mode actions
     VisualYank,
     VisualDelete,
+    VisualPaste,
     Paste,
     PasteFromClipboard,
 

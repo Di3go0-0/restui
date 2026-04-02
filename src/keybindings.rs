@@ -326,6 +326,7 @@ fn map_visual_mode_key(key: KeyEvent) -> Option<Action> {
         KeyCode::Char('G') => Some(Action::ScrollBottom),
         KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
         KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
+        KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::VisualPaste),
         KeyCode::Char('f') => Some(Action::PendingKey('f')),
         KeyCode::Char('F') => Some(Action::PendingKey('F')),
         KeyCode::Char('t') => Some(Action::PendingKey('t')),

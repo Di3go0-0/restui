@@ -1134,19 +1134,51 @@ impl App {
                     _ => {}
                 }
             }
+            Action::VisualPaste => {
+                let paste = crate::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
+                if paste.is_empty() {
+                    self.state.mode = InputMode::Normal;
+                } else {
+                    match self.state.active_panel {
+                        Panel::Body => {
+                            let is_block = self.state.mode == InputMode::VisualBlock;
+                            self.push_body_undo();
+                            if is_block {
+                                self.delete_block_selection();
+                            } else {
+                                self.delete_visual_selection();
+                            }
+                            self.state.mode = InputMode::Normal;
+                            self.paste_text_at_cursor(&paste);
+                        }
+                        Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                            self.state.type_vim.buffer.push_undo(&self.state.response_type_text);
+                            self.state.type_vim.buffer.delete_visual_selection(&mut self.state.response_type_text);
+                            self.state.type_vim.buffer.paste(&mut self.state.response_type_text, &paste);
+                            self.state.response_type_locked = true;
+                            self.state.mode = InputMode::Normal;
+                        }
+                        Panel::Request if self.state.request_field_editing => {
+                            self.push_request_undo();
+                            self.delete_request_visual_selection();
+                            self.paste_request_text(&paste);
+                            self.state.mode = InputMode::Normal;
+                        }
+                        _ => {}
+                    }
+                }
+            }
             Action::Paste => {
+                let paste = crate::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
                 if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
                     self.state.type_vim.buffer.push_undo(&self.state.response_type_text);
-                    let paste = self.state.yank_buffer.clone();
                     self.state.type_vim.buffer.paste(&mut self.state.response_type_text, &paste);
                     self.state.response_type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
-                    let paste = self.state.yank_buffer.clone();
                     self.paste_text_at_cursor(&paste);
                 } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
                     self.push_request_undo();
-                    let paste = self.state.yank_buffer.clone();
                     self.paste_request_text(&paste);
                 }
             }
@@ -2015,9 +2047,12 @@ impl App {
                 self.state.current_response = Some(*response);
                 self.state.resp_vim.buffer.scroll = (0, 0);
 
-                // Infer type from JSON response
+                // Infer type from response
                 if let Some(ref resp) = self.state.current_response {
-                    if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                    if resp.body_bytes.is_some() {
+                        // Binary response — type is Buffer
+                        self.state.response_type = Some(crate::model::response_type::JsonType::Buffer);
+                    } else if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
                         self.state.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
                     } else {
                         self.state.response_type = None;
@@ -2028,12 +2063,38 @@ impl App {
                 // Auto-generate type text (unless user has locked it)
                 if !self.state.response_type_locked {
                     if let Some(ref rt) = self.state.response_type {
-                        self.state.response_type_text = rt.to_display_lines(0).join("\n");
                         let type_name = self.state.current_request.name.as_deref()
                             .map(|n| { let mut c = n.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().to_string() + c.as_str() } })
                             .unwrap_or_else(|| "ResponseType".to_string());
-                        self.state.type_ts_text = rt.to_typescript(&type_name);
-                        self.state.type_csharp_text = rt.to_csharp(&type_name);
+
+                        if matches!(rt, crate::model::response_type::JsonType::Buffer) {
+                            let ct = self.state.current_response.as_ref()
+                                .and_then(|r| r.content_type.as_deref())
+                                .unwrap_or("application/octet-stream");
+                            self.state.response_type_text = format!("Buffer ({})", ct);
+                            self.state.type_ts_text = format!(
+                                "// Content-Type: {ct}\n\
+                                 // Returns binary data as a Buffer\n\
+                                 type {type_name} = Buffer | ArrayBuffer\n\
+                                 \n\
+                                 // Usage:\n\
+                                 // const res = await fetch(url)\n\
+                                 // const buffer = await res.arrayBuffer()");
+                            self.state.type_csharp_text = format!(
+                                "// Content-Type: {ct}\n\
+                                 // Returns binary data as a byte array\n\
+                                 \n\
+                                 // Usage:\n\
+                                 // HttpResponseMessage response = await client.GetAsync(url);\n\
+                                 // byte[] {name} = await response.Content.ReadAsByteArrayAsync();\n\
+                                 // or\n\
+                                 // Stream {name} = await response.Content.ReadAsStreamAsync();",
+                                name = type_name.to_lowercase());
+                        } else {
+                            self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                            self.state.type_ts_text = rt.to_typescript(&type_name);
+                            self.state.type_csharp_text = rt.to_csharp(&type_name);
+                        }
                     } else {
                         self.state.response_type_text.clear();
                         self.state.type_ts_text.clear();
