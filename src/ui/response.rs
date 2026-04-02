@@ -15,8 +15,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
     let border_color = t.border_for_mode(is_focused, state.mode);
 
-    let title = if let Some((idx, total)) = state.viewing_history {
-        format!(" [4] Response [History {}/{}] ", idx, total)
+    let title = if let Some((idx, total, ref ts)) = state.viewing_history {
+        format!(" [4] Response [History {}/{} — {}] ", idx, total, ts)
     } else {
         " [4] Response ".to_string()
     };

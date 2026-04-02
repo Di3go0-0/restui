@@ -531,8 +531,8 @@ pub struct AppState {
 
     // Response history per request (max 5 previous responses)
     pub response_histories: HashMap<String, VecDeque<ResponseHistoryEntry>>,
-    /// When viewing a historical response: Some((index, total)). None = viewing current/live response.
-    pub viewing_history: Option<(usize, usize)>,
+    /// When viewing a historical response: Some((index, total, timestamp)). None = viewing current/live response.
+    pub viewing_history: Option<(usize, usize, String)>,
 
     // Keybindings
     pub keybindings: KeybindingsConfig,

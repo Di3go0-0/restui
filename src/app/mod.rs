@@ -2484,7 +2484,8 @@ impl App {
                                         }
                                     }
                                     let total = history.len();
-                                    self.state.viewing_history = Some((selected + 1, total));
+                                    let ts = entry.timestamp.format("%H:%M:%S").to_string();
+                                    self.state.viewing_history = Some((selected + 1, total, ts));
                                     self.state.set_status(format!("History {}/{} — {}", selected + 1, total, entry.timestamp.format("%H:%M:%S")));
                                 }
                             }
