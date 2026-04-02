@@ -24,6 +24,8 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         Overlay::Help => {}
         Overlay::History { selected } => render_history(frame, state, *selected),
         Overlay::ResponseHistory { selected } => render_response_history(frame, state, *selected),
+        Overlay::ResponseDiffSelect { selected } => render_response_diff_select(frame, state, *selected),
+        Overlay::ResponseDiffView { diff_lines, scroll } => render_response_diff_view(frame, diff_lines, *scroll),
     }
 }
 
@@ -601,4 +603,71 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
         .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
         .highlight_symbol("\u{25b8} ");
     frame.render_stateful_widget(list, inner, &mut list_state);
+}
+
+fn render_response_diff_select(frame: &mut Frame, state: &AppState, selected: usize) {
+    let area = centered_rect(60, 50, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Diff: select response to compare (j/k  Enter  Esc) ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let key = state.current_request.name.as_ref().map(|name| {
+        let coll = state.collections.get(state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+        format!("{}/{}", coll, name)
+    });
+    let entries = key.as_ref().and_then(|k| state.response_histories.data.get(k));
+
+    if entries.is_none() || entries.is_some_and(|e| e.is_empty()) {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled("  No history to compare.", Style::default().fg(Color::DarkGray)))),
+            inner,
+        );
+        return;
+    }
+    let entries = entries.unwrap();
+
+    let items: Vec<ListItem> = entries.iter().enumerate().map(|(i, entry)| {
+        let resp = &entry.response;
+        let status_color = match resp.status { 200..=299 => Color::Green, 300..=399 => Color::Yellow, 400..=499 => Color::Red, 500..=599 => Color::Magenta, _ => Color::DarkGray };
+        let line = Line::from(vec![
+            Span::styled(format!("{:>3} {} ", resp.status, resp.status_text), Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{:<8} ", resp.elapsed_display()), Style::default().fg(Color::Cyan)),
+            Span::styled(entry.timestamp.format("%H:%M:%S").to_string(), Style::default().fg(Color::DarkGray)),
+        ]);
+        let style = if i == selected { Style::default().bg(Color::DarkGray).fg(Color::White) } else { Style::default() };
+        ListItem::new(line).style(style)
+    }).collect();
+
+    let mut list_state = ratatui::widgets::ListState::default();
+    list_state.select(Some(selected));
+    let list = List::new(items).highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White)).highlight_symbol("\u{25b8} ");
+    frame.render_stateful_widget(list, inner, &mut list_state);
+}
+
+fn render_response_diff_view(frame: &mut Frame, diff_lines: &[(crate::state::DiffTag, String)], scroll: usize) {
+    let area = centered_rect(90, 80, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Response Diff (j/k:scroll  Esc/q:close) ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let visible = inner.height as usize;
+    let lines: Vec<Line> = diff_lines.iter().skip(scroll).take(visible).map(|(tag, text)| {
+        match tag {
+            crate::state::DiffTag::Equal => Line::from(Span::styled(format!("  {}", text), Style::default().fg(Color::White))),
+            crate::state::DiffTag::Insert => Line::from(Span::styled(format!("+ {}", text), Style::default().fg(Color::Green))),
+            crate::state::DiffTag::Delete => Line::from(Span::styled(format!("- {}", text), Style::default().fg(Color::Red))),
+        }
+    }).collect();
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }

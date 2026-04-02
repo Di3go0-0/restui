@@ -2232,6 +2232,8 @@ impl App {
                     Some(Overlay::ThemeSelector { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::History { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ResponseHistory { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::ResponseDiffSelect { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::ResponseDiffView { scroll, .. }) => { *scroll = scroll.saturating_sub(1); }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         *selected = selected.saturating_sub(1);
                     }
@@ -2267,6 +2269,18 @@ impl App {
                         });
                         let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
                         *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::ResponseDiffSelect { selected }) => {
+                        let key = self.state.current_request.name.as_ref().map(|name| {
+                            let coll = self.state.collections.get(self.state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+                            format!("{}/{}", coll, name)
+                        });
+                        let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
+                        *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::ResponseDiffView { scroll, diff_lines, .. }) => {
+                        let max = diff_lines.len().saturating_sub(1);
+                        *scroll = (*scroll + 1).min(max);
                     }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         if let Some(active_idx) = self.state.environments.active {
@@ -2489,6 +2503,36 @@ impl App {
                             }
                         } else {
                             self.state.set_status("Invalid number");
+                        }
+                    }
+                    Some(Overlay::ResponseDiffSelect { selected }) => {
+                        // Diff current response vs selected historical response
+                        if let Some(ref current) = self.state.current_response {
+                            if let Some(ref name) = self.state.current_request.name {
+                                let collection_name = self.state.collections
+                                    .get(self.state.active_collection)
+                                    .map(|c| c.name.as_str())
+                                    .unwrap_or("_");
+                                let key = format!("{}/{}", collection_name, name);
+                                if let Some(history) = self.state.response_histories.data.get(&key) {
+                                    if let Some(entry) = history.get(selected) {
+                                        let current_body = current.formatted_body();
+                                        let old_body = entry.response.formatted_body();
+                                        let diff = similar::TextDiff::from_lines(&old_body, &current_body);
+                                        let mut diff_lines = Vec::new();
+                                        for change in diff.iter_all_changes() {
+                                            let tag = match change.tag() {
+                                                similar::ChangeTag::Equal => crate::state::DiffTag::Equal,
+                                                similar::ChangeTag::Insert => crate::state::DiffTag::Insert,
+                                                similar::ChangeTag::Delete => crate::state::DiffTag::Delete,
+                                            };
+                                            diff_lines.push((tag, change.to_string_lossy().trim_end_matches('\n').to_string()));
+                                        }
+                                        self.state.overlay = Some(Overlay::ResponseDiffView { diff_lines, scroll: 0 });
+                                        return Ok(());
+                                    }
+                                }
+                            }
                         }
                     }
                     Some(Overlay::ResponseHistory { selected }) => {

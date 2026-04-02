@@ -367,6 +367,7 @@ fn map_response_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Op
         "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
         "toggle_headers" => Some(Action::ToggleResponseHeaders),
         "response_history" => Some(Action::OpenOverlay(Overlay::ResponseHistory { selected: 0 })),
+        "response_diff" => Some(Action::OpenOverlay(Overlay::ResponseDiffSelect { selected: 0 })),
         // Type editor specific (only works when in editor sub-focus)
         "enter_insert" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertMode),
         "enter_insert_start" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertModeStart),
@@ -636,7 +637,7 @@ fn map_overlay_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybinding
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
             _ => None,
         },
-        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) | Some(Overlay::ResponseHistory { .. }) => {
+        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) | Some(Overlay::ResponseHistory { .. }) | Some(Overlay::ResponseDiffSelect { .. }) => {
             if let Some(action) = lookup(&kb.overlay, k) {
                 match action {
                     "close" => return Some(Action::CloseOverlay),
@@ -668,6 +669,14 @@ fn map_overlay_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybinding
                     KeyCode::Char('d') => Some(Action::OverlayDelete),
                     _ => None,
                 }
+            }
+        }
+        Some(Overlay::ResponseDiffView { .. }) => {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => Some(Action::CloseOverlay),
+                KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
+                KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
+                _ => None,
             }
         }
         _ => {

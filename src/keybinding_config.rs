@@ -414,6 +414,7 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "open_env_selector", &["p"]);
         bind(m, "toggle_headers", &["Shift+e"]);
         bind(m, "response_history", &["Shift+h"]);
+        bind(m, "response_diff", &["Shift+d"]);
         bind(m, "start_search", &["/"]);
         bind(m, "search_next", &["n"]);
         bind(m, "search_prev", &["Shift+n"]);

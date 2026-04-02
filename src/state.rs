@@ -3,6 +3,13 @@ use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffTag {
+    Equal,
+    Insert,
+    Delete,
+}
+
 use crate::config::AppConfig;
 use crate::keybinding_config::KeybindingsConfig;
 use crate::model::response::ResponseHistories;
@@ -196,6 +203,13 @@ pub enum Overlay {
     },
     ResponseHistory {
         selected: usize,
+    },
+    ResponseDiffSelect {
+        selected: usize,
+    },
+    ResponseDiffView {
+        diff_lines: Vec<(DiffTag, String)>,
+        scroll: usize,
     },
 }
 

@@ -29,6 +29,7 @@ clap = { version = "4", features = ["derive"] }
 arboard = "3"
 unicode-width = "0.2.2"
 fuzzy-matcher = "0.3.7"
+similar = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
