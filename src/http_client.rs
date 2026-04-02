@@ -95,7 +95,32 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         .map(String::from);
     let body_bytes = resp.bytes().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
     let size_bytes = body_bytes.len();
-    let body = String::from_utf8_lossy(&body_bytes).to_string();
+
+    let is_binary = content_type.as_deref().is_some_and(|ct| {
+        ct.starts_with("image/")
+            || ct.starts_with("audio/")
+            || ct.starts_with("video/")
+            || ct == "application/octet-stream"
+            || ct == "application/pdf"
+            || ct == "application/zip"
+    });
+
+    let (body, raw_bytes) = if is_binary {
+        let ct_display = content_type.as_deref().unwrap_or("binary");
+        let size_display = if size_bytes < 1024 {
+            format!("{}B", size_bytes)
+        } else if size_bytes < 1024 * 1024 {
+            format!("{:.1}KB", size_bytes as f64 / 1024.0)
+        } else {
+            format!("{:.1}MB", size_bytes as f64 / (1024.0 * 1024.0))
+        };
+        (
+            format!("Binary response ({}, {})", ct_display, size_display),
+            Some(body_bytes.to_vec()),
+        )
+    } else {
+        (String::from_utf8_lossy(&body_bytes).to_string(), None)
+    };
 
     Ok(Response {
         status,
@@ -105,6 +130,7 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         content_type,
         elapsed,
         size_bytes,
+        body_bytes: raw_bytes,
     })
 }
 

@@ -9,6 +9,8 @@ pub struct Response {
     pub content_type: Option<String>,
     pub elapsed: Duration,
     pub size_bytes: usize,
+    /// Raw bytes for binary responses (images, etc.)
+    pub body_bytes: Option<Vec<u8>>,
 }
 
 impl Response {

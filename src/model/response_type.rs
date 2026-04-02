@@ -6,6 +6,7 @@ pub enum JsonType {
     Bool,
     Number,
     String,
+    Buffer,
     Array(Box<JsonType>),
     Object(Vec<(std::string::String, JsonType)>),
     Enum(Vec<std::string::String>),
@@ -43,6 +44,7 @@ impl JsonType {
             JsonType::Bool => "boolean",
             JsonType::Number => "number",
             JsonType::String => "string",
+            JsonType::Buffer => "Buffer",
             JsonType::Array(_) => "array",
             JsonType::Object(_) => "object",
             JsonType::Enum(_) => "enum",
@@ -57,6 +59,7 @@ impl JsonType {
             JsonType::Bool => vec![format!("{}boolean", pad)],
             JsonType::Number => vec![format!("{}number", pad)],
             JsonType::String => vec![format!("{}string", pad)],
+            JsonType::Buffer => vec![format!("{}Buffer", pad)],
             JsonType::Enum(values) => {
                 let enum_str = values.iter()
                     .map(|v| format!("\"{}\"", v))
@@ -136,6 +139,7 @@ impl JsonType {
             JsonType::Bool => "boolean".to_string(),
             JsonType::Number => "number".to_string(),
             JsonType::String => "string".to_string(),
+            JsonType::Buffer => "Buffer".to_string(),
             JsonType::Enum(values) => values.iter()
                 .map(|v| format!("\"{}\"", v))
                 .collect::<Vec<_>>()
@@ -189,6 +193,7 @@ impl JsonType {
             JsonType::Bool => "bool".to_string(),
             JsonType::Number => "int".to_string(),
             JsonType::String => "string".to_string(),
+            JsonType::Buffer => "byte[]".to_string(),
             JsonType::Enum(_) => "string".to_string(),
             JsonType::Array(inner) => format!("List<{}>", inner.csharp_type()),
             JsonType::Object(fields) => {
@@ -238,6 +243,7 @@ impl JsonType {
             (JsonType::Bool, serde_json::Value::Bool(_)) => {}
             (JsonType::Number, serde_json::Value::Number(_)) => {}
             (JsonType::String, serde_json::Value::String(_)) => {}
+            (JsonType::Buffer, _) => {} // Buffer matches any binary response
             (JsonType::Enum(allowed), serde_json::Value::String(s)) => {
                 if !allowed.iter().any(|v| v == s) {
                     mismatches.push(TypeMismatch {
@@ -409,6 +415,7 @@ impl<'a> TypeParser<'a> {
             "number" => JsonType::Number,
             "boolean" => JsonType::Bool,
             "null" => JsonType::Null,
+            "Buffer" => JsonType::Buffer,
             "" => return Err("Expected type keyword".to_string()),
             other => return Err(format!("Unknown type: {}", other)),
         };

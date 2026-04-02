@@ -800,6 +800,23 @@ fn render_response_body(
     is_visual_block: bool,
 ) {
     let t = &state.theme;
+
+    // Binary responses: show info message instead of trying to render raw bytes
+    if resp.body_bytes.is_some() {
+        let ct = resp.content_type.as_deref().unwrap_or("unknown");
+        let line = Line::from(vec![
+            Span::styled("  Response is a picture ", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+            Span::styled("(", Style::default().fg(t.text_dim)),
+            Span::styled(ct.to_string(), Style::default().fg(t.json_string)),
+            Span::styled(", ", Style::default().fg(t.text_dim)),
+            Span::styled(resp.size_display(), Style::default().fg(t.json_number)),
+            Span::styled(")", Style::default().fg(t.text_dim)),
+        ]);
+        let p = Paragraph::new(line).block(Block::default());
+        frame.render_widget(p, body_area);
+        return;
+    }
+
     let body = resp.formatted_body();
 
     let body_lines: Vec<&str> = body.lines().collect();
@@ -1108,9 +1125,22 @@ fn render_resp_cursor_line(line: &str, cursor_col: usize, t: &crate::theme::Them
         ]);
     }
 
-    let before = &line[..col];
-    let cursor_char = &line[col..col + 1];
-    let after = &line[col + 1..];
+    // Find the char boundary at col
+    let char_start = line
+        .char_indices()
+        .map(|(i, _)| i)
+        .take_while(|&i| i <= col)
+        .last()
+        .unwrap_or(0);
+    let char_end = line
+        .char_indices()
+        .map(|(i, _)| i)
+        .find(|&i| i > char_start)
+        .unwrap_or(line.len());
+
+    let before = &line[..char_start];
+    let cursor_char = &line[char_start..char_end];
+    let after = &line[char_end..];
 
     Line::from(vec![
         Span::styled(before.to_string(), line_style),
