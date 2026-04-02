@@ -64,7 +64,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             if is_collection_header {
                 // Collection header line: "● name" or "○ name"
                 ListItem::new(Line::from(vec![Span::styled(
-                    item.clone(),
+                    format!(" {}", item),
                     Style::default()
                         .fg(t.gutter_active)
                         .add_modifier(Modifier::BOLD),
@@ -96,14 +96,14 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                     _ => t.text,
                 };
                 ListItem::new(Line::from(vec![
-                    Span::styled(tree_prefix.to_string(), Style::default().fg(t.text_dim)),
+                    Span::styled(format!(" {}", tree_prefix), Style::default().fg(t.text_dim)),
                     Span::styled(
                         format!("{:7}", method),
                         Style::default().fg(method_color),
                     ),
                     Span::raw(" "),
                     Span::styled(
-                        truncate_url(rest, area.width.saturating_sub(16) as usize),
+                        truncate_url(rest, area.width.saturating_sub(17) as usize),
                         Style::default().fg(t.text),
                     ),
                 ]))

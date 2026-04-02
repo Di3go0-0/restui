@@ -282,6 +282,7 @@ fn render_body_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
                 format!("[{}]", tab.label()),
                 Style::default()
                     .fg(if is_focused { t.accent } else { t.text })
+                    .bg(t.bg_highlight)
                     .add_modifier(Modifier::BOLD),
             ));
         } else {

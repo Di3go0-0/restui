@@ -74,8 +74,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     } else {
         ""
     };
-    // Truncate to available width
-    let truncated_url: String = visible_url.chars().take(url_area_width).collect();
+    // Truncate to available width, reserving space for overflow indicator
+    let url_char_count = visible_url.chars().count();
+    let url_overflows = !is_url_editing && url_char_count > url_area_width && url_area_width > 1;
+    let take_width = if url_overflows { url_area_width - 1 } else { url_area_width };
+    let truncated_url: String = visible_url.chars().take(take_width).collect();
 
     let url_base_style = if is_url_editing {
         Style::default().fg(t.text).add_modifier(Modifier::UNDERLINED)
@@ -108,6 +111,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         Span::raw(" "),
     ];
     method_spans.extend(url_spans);
+    if url_overflows {
+        method_spans.push(Span::styled("…", Style::default().fg(t.text_dim)));
+    }
     frame.render_widget(Paragraph::new(Line::from(method_spans)), chunks[0]);
 
     // Cursor when in insert mode (blinking line cursor)
@@ -156,6 +162,7 @@ fn render_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
                 format!("[{}]", tab.label()),
                 Style::default()
                     .fg(if is_focused { t.accent } else { t.text })
+                    .bg(t.bg_highlight)
                     .add_modifier(Modifier::BOLD),
             ));
         } else {
@@ -218,8 +225,16 @@ fn render_headers_tab(
         };
         let toggle = if header.enabled { "●" } else { "○" };
 
+        let toggle_style = if header.enabled {
+            Style::default().fg(t.status_ok)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+
         let row_y = content_area.y + y_offset;
         let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_part = format!(" {} ", prefix);
+        let toggle_part = format!("{} ", toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_header_focused && (is_editing || is_visual) {
@@ -274,7 +289,12 @@ fn render_headers_tab(
             };
 
             let mut spans = vec![
-                Span::styled(&prefix_span, Style::default().fg(t.border_insert)),
+                Span::styled(&prefix_part, Style::default().fg(t.border_insert)),
+                Span::styled(&toggle_part, if header.enabled {
+                    Style::default().fg(t.status_ok)
+                } else {
+                    Style::default().fg(t.border_insert)
+                }),
             ];
             spans.extend(name_spans);
             spans.push(Span::styled(": ", style));
@@ -308,7 +328,8 @@ fn render_headers_tab(
                 if is_header_focused { t.accent } else { t.text_dim },
             );
             let line = Line::from(vec![
-                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&prefix_part, prefix_style),
+                Span::styled(&toggle_part, toggle_style),
                 Span::styled(&header.name, style.add_modifier(Modifier::BOLD)),
                 Span::styled(": ", style),
                 Span::styled(&header.value, style),
@@ -370,8 +391,16 @@ fn render_queries_tab(
         };
         let toggle = if param.enabled { "●" } else { "○" };
 
+        let toggle_style = if param.enabled {
+            Style::default().fg(t.status_ok)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+
         let row_y = content_area.y + y_offset;
         let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_part = format!(" {} ", prefix);
+        let toggle_part = format!("{} ", toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_param_focused && (is_editing || is_visual) {
@@ -422,7 +451,14 @@ fn render_queries_tab(
                 (vec![Span::styled(visible_key, key_style)], vec![Span::styled(visible_value, value_style)])
             };
 
-            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            let mut spans = vec![
+                Span::styled(&prefix_part, Style::default().fg(t.border_insert)),
+                Span::styled(&toggle_part, if param.enabled {
+                    Style::default().fg(t.status_ok)
+                } else {
+                    Style::default().fg(t.border_insert)
+                }),
+            ];
             spans.extend(key_spans);
             spans.push(Span::styled(" = ", style));
             spans.extend(value_spans);
@@ -449,7 +485,8 @@ fn render_queries_tab(
                 if is_param_focused { t.accent } else { t.text_dim },
             );
             let line = Line::from(vec![
-                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&prefix_part, prefix_style),
+                Span::styled(&toggle_part, toggle_style),
                 Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
                 Span::styled(" = ", style),
                 Span::styled(&param.value, style),
@@ -506,8 +543,16 @@ fn render_cookies_tab(
         };
         let toggle = if cookie.enabled { "●" } else { "○" };
 
+        let toggle_style = if cookie.enabled {
+            Style::default().fg(t.status_ok)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+
         let row_y = content_area.y + y_offset;
         let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_part = format!(" {} ", prefix);
+        let toggle_part = format!("{} ", toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_cookie_focused && (is_editing || is_visual) {
@@ -558,7 +603,14 @@ fn render_cookies_tab(
                 (vec![Span::styled(visible_name, name_style)], vec![Span::styled(visible_value, value_style)])
             };
 
-            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            let mut spans = vec![
+                Span::styled(&prefix_part, Style::default().fg(t.border_insert)),
+                Span::styled(&toggle_part, if cookie.enabled {
+                    Style::default().fg(t.status_ok)
+                } else {
+                    Style::default().fg(t.border_insert)
+                }),
+            ];
             spans.extend(name_spans);
             spans.push(Span::styled("=", style));
             spans.extend(value_spans);
@@ -585,7 +637,8 @@ fn render_cookies_tab(
                 if is_cookie_focused { t.accent } else { t.text_dim },
             );
             let line = Line::from(vec![
-                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&prefix_part, prefix_style),
+                Span::styled(&toggle_part, toggle_style),
                 Span::styled(&cookie.name, style.add_modifier(Modifier::BOLD)),
                 Span::styled("=", style),
                 Span::styled(&cookie.value, style),
@@ -643,8 +696,16 @@ fn render_path_params_tab(
         };
         let toggle = if param.enabled { "●" } else { "○" };
 
+        let toggle_style = if param.enabled {
+            Style::default().fg(t.status_ok)
+        } else {
+            Style::default().fg(t.text_dim)
+        };
+
         let row_y = content_area.y + y_offset;
         let prefix_span = format!(" {} {} ", prefix, toggle);
+        let prefix_part = format!(" {} ", prefix);
+        let toggle_part = format!("{} ", toggle);
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_param_focused && (is_editing || is_visual) {
@@ -695,7 +756,14 @@ fn render_path_params_tab(
                 (vec![Span::styled(visible_key, key_style)], vec![Span::styled(visible_value, value_style)])
             };
 
-            let mut spans = vec![Span::styled(&prefix_span, Style::default().fg(t.border_insert))];
+            let mut spans = vec![
+                Span::styled(&prefix_part, Style::default().fg(t.border_insert)),
+                Span::styled(&toggle_part, if param.enabled {
+                    Style::default().fg(t.status_ok)
+                } else {
+                    Style::default().fg(t.border_insert)
+                }),
+            ];
             spans.extend(key_spans);
             spans.push(Span::styled(" = ", style));
             spans.extend(value_spans);
@@ -722,7 +790,8 @@ fn render_path_params_tab(
                 if is_param_focused { t.accent } else { t.text_dim },
             );
             let line = Line::from(vec![
-                Span::styled(&prefix_span, prefix_style),
+                Span::styled(&prefix_part, prefix_style),
+                Span::styled(&toggle_part, toggle_style),
                 Span::styled(&param.key, style.add_modifier(Modifier::BOLD)),
                 Span::styled(" = ", style),
                 Span::styled(&param.value, style),
