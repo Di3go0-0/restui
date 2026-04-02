@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.3] - 2026-04-01
+## [0.3.3] - 2026-04-02
 
 ### New Features
 - **Visual paste (`p` in visual mode)**: select text with `v` + motion, then press `p` to replace the selection with the yank buffer — works in URL, headers, body, and all editable fields
