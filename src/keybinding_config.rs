@@ -623,13 +623,19 @@ pub fn build_config(user: Option<KeybindingsToml>) -> KeybindingsConfig {
 
 // ── Load from file ─────────────────────────────────────────────────────────
 
-pub fn load_keybindings_toml() -> Option<KeybindingsToml> {
+pub fn load_keybindings_toml() -> Result<Option<KeybindingsToml>, String> {
     let path = crate::config::config_dir().join("keybindings.toml");
-    if path.exists() {
-        let content = std::fs::read_to_string(&path).ok()?;
-        toml::from_str(&content).ok()
-    } else {
-        None
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    match toml::from_str::<KeybindingsToml>(&content) {
+        Ok(toml) => Ok(Some(toml)),
+        Err(e) => {
+            let msg = format!("keybindings.toml syntax error: {}", e);
+            Err(msg)
+        }
     }
 }
 

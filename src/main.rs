@@ -88,7 +88,13 @@ async fn main() -> Result<()> {
     };
 
     let config = config::AppConfig::load().unwrap_or_default();
-    let kb_toml = keybinding_config::load_keybindings_toml();
+    let kb_toml = match keybinding_config::load_keybindings_toml() {
+        Ok(toml) => toml,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
     let keybindings = keybinding_config::build_config(kb_toml);
     let mut app = app::App::new(config.clone(), keybindings);
 
