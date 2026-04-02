@@ -138,6 +138,39 @@ impl Default for Request {
 }
 
 impl Request {
+    /// Fingerprint of request content (method, url, headers, body, params, cookies).
+    /// Used to deduplicate response history — same fingerprint = same request.
+    pub fn fingerprint(&self) -> String {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        format!("{}", self.method).hash(&mut hasher);
+        self.url.hash(&mut hasher);
+        for h in &self.headers {
+            h.name.hash(&mut hasher);
+            h.value.hash(&mut hasher);
+            h.enabled.hash(&mut hasher);
+        }
+        for p in &self.query_params {
+            p.key.hash(&mut hasher);
+            p.value.hash(&mut hasher);
+            p.enabled.hash(&mut hasher);
+        }
+        for c in &self.cookies {
+            c.name.hash(&mut hasher);
+            c.value.hash(&mut hasher);
+            c.enabled.hash(&mut hasher);
+        }
+        for p in &self.path_params {
+            p.key.hash(&mut hasher);
+            p.value.hash(&mut hasher);
+        }
+        self.body_json.hash(&mut hasher);
+        self.body_xml.hash(&mut hasher);
+        self.body_form.hash(&mut hasher);
+        self.body_raw.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
+
     pub fn display_name(&self) -> String {
         if let Some(ref name) = self.name {
             name.clone()

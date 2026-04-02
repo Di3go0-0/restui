@@ -2043,15 +2043,22 @@ impl App {
                     let key = format!("{}/{}", collection_name, name);
                     self.cache_response(key.clone(), (*response).clone());
 
-                    // Store in per-request response history (max 5)
+                    // Store in per-request response history (max 5, deduplicated)
+                    let fingerprint = self.state.current_request.fingerprint();
                     let entry = crate::model::response::ResponseHistoryEntry {
                         response: (*response).clone(),
                         timestamp: chrono::Local::now(),
+                        request_fingerprint: fingerprint.clone(),
                     };
                     let history = self.state.response_histories.data.entry(key).or_insert_with(std::collections::VecDeque::new);
-                    history.push_front(entry);
-                    if history.len() > 5 {
-                        history.pop_back();
+                    // If the most recent entry has the same request fingerprint, replace it
+                    if history.front().is_some_and(|front| front.request_fingerprint == fingerprint) {
+                        history[0] = entry;
+                    } else {
+                        history.push_front(entry);
+                        if history.len() > 5 {
+                            history.pop_back();
+                        }
                     }
                     self.state.response_histories.save(&crate::config::data_dir().join("response_history.json"));
                 }
