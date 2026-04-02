@@ -6,6 +6,7 @@ mod config;
 mod event;
 mod highlight;
 mod http_client;
+mod keybinding_config;
 mod keybindings;
 mod model;
 mod parser;
@@ -44,6 +45,10 @@ struct Cli {
     /// Enable debug logging to ~/.local/share/restui/restui.log
     #[arg(long)]
     debug: bool,
+
+    /// Print default keybindings config to stdout and exit
+    #[arg(long)]
+    dump_keybindings: bool,
 }
 
 #[tokio::main]
@@ -56,6 +61,11 @@ async fn main() -> Result<()> {
     }));
 
     let cli = Cli::parse();
+
+    if cli.dump_keybindings {
+        print!("{}", keybinding_config::generate_default_toml());
+        return Ok(());
+    }
 
     // Set up file-based logging (only when --debug is passed)
     let _log_guard = if cli.debug {
@@ -78,7 +88,9 @@ async fn main() -> Result<()> {
     };
 
     let config = config::AppConfig::load().unwrap_or_default();
-    let mut app = app::App::new(config.clone());
+    let kb_toml = keybinding_config::load_keybindings_toml();
+    let keybindings = keybinding_config::build_config(kb_toml);
+    let mut app = app::App::new(config.clone(), keybindings);
 
     let mut dirs = config.general.http_file_dirs.clone();
     if let Some(dir) = cli.dir {

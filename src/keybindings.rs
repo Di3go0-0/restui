@@ -1,70 +1,51 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::Action;
+use crate::keybinding_config::{KeyBind, KeybindingsConfig};
 use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, PENDING_KEY_TIMEOUT};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+    let kb = &state.keybindings;
+    let k = KeyBind::from_event(key);
+
     // 0. Command Palette consumes all input when open
     if state.command_palette.open {
-        return map_command_palette_key(key);
+        return map_command_palette_key(&k, key, kb);
     }
 
     // 0.5. Search mode consumes input when active
     if state.search.active {
-        return map_search_key(key);
+        return map_search_key(&k, key, kb);
     }
 
     // 0.6. Collections filter mode consumes input when active
     if state.collections_filter_active {
-        return map_collections_filter_key(key);
+        return map_collections_filter_key(&k, key, kb);
     }
 
     // 1. Overlays consume input first
     if state.overlay.is_some() {
-        return map_overlay_key(key, state);
+        return map_overlay_key(&k, key, state, kb);
     }
 
-    // 2. Ctrl shortcuts (work in all modes)
+    // 2. Global ctrl shortcuts (work in all modes)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
-        match key.code {
-            KeyCode::Char('r') => {
-                // Ctrl+R: Redo when in any vim editing context, execute request otherwise
-                let in_vim_edit = match state.active_panel {
-                    Panel::Body => state.mode == InputMode::Normal,
-                    Panel::Request => state.request_field_editing,
-                    Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => state.mode == InputMode::Normal,
-                    _ => false,
-                };
-                if in_vim_edit {
-                    return Some(Action::Redo);
-                }
-                return Some(Action::ExecuteRequest);
-            }
-            KeyCode::Char('v') => {
-                // Ctrl+V: Visual Block in normal mode on Body/Response, paste in insert mode
-                if state.mode == InputMode::Insert {
-                    return Some(Action::PasteFromClipboard);
-                }
-                return Some(Action::EnterVisualBlockMode);
-            }
-            KeyCode::Char('d') => return Some(Action::ScrollHalfDown),
-            KeyCode::Char('u') => return Some(Action::ScrollHalfUp),
-            KeyCode::Char('s') => return Some(Action::ToggleInsecureMode),
-            _ => {}
+        if let Some(action) = map_global_ctrl(&k, state, kb) {
+            return Some(action);
         }
     }
 
     // 3. Visual mode (both Visual and VisualBlock)
     if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
-        return map_visual_mode_key(key);
+        return map_visual_mode_key(&k, kb);
     }
 
     // 4. Insert mode
     if state.mode == InputMode::Insert {
-        return map_insert_mode_key(key, state);
+        return map_insert_mode_key(&k, key, state, kb);
     }
 
-    // 5. Check pending key (for dd, yy)
+    // 5. Check pending key (for dd, yy, etc.)
     if let Some((pending, instant)) = state.pending_key {
         if instant.elapsed() < PENDING_KEY_TIMEOUT {
             return map_pending_key(pending, key, state);
@@ -72,33 +53,70 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     }
 
     // 6. Normal mode
-    map_normal_mode_key(key, state)
+    map_normal_mode_key(&k, key, state, kb)
 }
 
-fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+fn lookup<'a>(ctx: &'a std::collections::HashMap<KeyBind, String>, key: &KeyBind) -> Option<&'a str> {
+    KeybindingsConfig::lookup(ctx, key)
+}
+
+// ── Global Ctrl shortcuts ──────────────────────────────────────────────────
+
+fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.global, k)? {
+        "execute_request" | "redo" => {
+            // Ctrl+R: Redo when in any vim editing context, execute request otherwise
+            let in_vim_edit = match state.active_panel {
+                Panel::Body => state.mode == InputMode::Normal,
+                Panel::Request => state.request_field_editing,
+                Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => state.mode == InputMode::Normal,
+                _ => false,
+            };
+            if in_vim_edit { Some(Action::Redo) } else { Some(Action::ExecuteRequest) }
+        }
+        "paste_clipboard" | "visual_block" => {
+            if state.mode == InputMode::Insert {
+                Some(Action::PasteFromClipboard)
+            } else {
+                Some(Action::EnterVisualBlockMode)
+            }
+        }
+        "scroll_half_down" => Some(Action::ScrollHalfDown),
+        "scroll_half_up" => Some(Action::ScrollHalfUp),
+        "toggle_insecure" => Some(Action::ToggleInsecureMode),
+        _ => None,
+    }
+}
+
+// ── Normal mode ────────────────────────────────────────────────────────────
+
+fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
     // Ctrl+J/K: sub-focus navigation within Type tab (before panel navigation)
     if key.modifiers.contains(KeyModifiers::CONTROL)
         && state.active_panel == Panel::Response
         && state.response_tab == ResponseTab::Type
     {
-        match key.code {
-            KeyCode::Char('j') if state.type_sub_focus == TypeSubFocus::Editor => {
+        if let KeyCode::Char('j') = key.code {
+            if state.type_sub_focus == TypeSubFocus::Editor {
                 return Some(Action::TypeSubFocusDown);
             }
-            KeyCode::Char('k') if state.type_sub_focus == TypeSubFocus::Preview => {
+        }
+        if let KeyCode::Char('k') = key.code {
+            if state.type_sub_focus == TypeSubFocus::Preview {
                 return Some(Action::TypeSubFocusUp);
             }
-            _ => {} // fall through to panel navigation
         }
     }
 
     // Ctrl+h/j/k/l for panel navigation
     if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('h') => Some(Action::NavigatePanel(Direction::Left)),
-            KeyCode::Char('j') => Some(Action::NavigatePanel(Direction::Down)),
-            KeyCode::Char('k') => Some(Action::NavigatePanel(Direction::Up)),
-            KeyCode::Char('l') => Some(Action::NavigatePanel(Direction::Right)),
+        return match lookup(&kb.global, k)? {
+            "navigate_left" => Some(Action::NavigatePanel(Direction::Left)),
+            "navigate_down" => Some(Action::NavigatePanel(Direction::Down)),
+            "navigate_up" => Some(Action::NavigatePanel(Direction::Up)),
+            "navigate_right" => Some(Action::NavigatePanel(Direction::Right)),
             _ => None,
         };
     }
@@ -109,155 +127,330 @@ fn map_normal_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     }
 
     // Global normal mode keys
-    match key.code {
-        KeyCode::Char('q') => return Some(Action::Quit),
-        KeyCode::Char('?') => return Some(Action::OpenOverlay(Overlay::Help)),
-        // T/H are global shortcuts ONLY when not in an editable panel (they conflict with vim motions)
-        KeyCode::Char('T') if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
-            return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }));
+    if let Some(action) = lookup(&kb.global, k) {
+        match action {
+            "quit" => return Some(Action::Quit),
+            "help" => return Some(Action::OpenOverlay(Overlay::Help)),
+            "open_theme_selector" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+                return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }));
+            }
+            "open_history" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+                return Some(Action::OpenOverlay(Overlay::History { selected: 0 }));
+            }
+            "open_env_editor" => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
+                selected: 0, editing_key: false, new_key: String::new(), new_value: String::new(), cursor: 0,
+            })),
+            "open_command_palette" => return Some(Action::OpenCommandPalette),
+            "focus_panel_1" if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Collections)),
+            "focus_panel_2" if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Request)),
+            "focus_panel_3" if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Body)),
+            "focus_panel_4" if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Response)),
+            _ => {}
         }
-        KeyCode::Char('H') if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
-            return Some(Action::OpenOverlay(Overlay::History { selected: 0 }));
+    }
+
+    // Count prefix accumulation (hardcoded — numeric input concern, not keybinding)
+    if let KeyCode::Char(c @ '1'..='9') = key.code {
+        if state.count_prefix.is_some() {
+            return Some(Action::AccumulateCount(c.to_digit(10).unwrap()));
         }
-        KeyCode::Char('E') => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
-            selected: 0,
-            editing_key: false,
-            new_key: String::new(),
-            new_value: String::new(),
-            cursor: 0,
-        })),
-        KeyCode::Char(':') => return Some(Action::OpenCommandPalette),
-        // Panel aliases: 1=Collections, 2=Request, 3=Body, 4=Response (only without count prefix)
-        KeyCode::Char('1') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Collections)),
-        KeyCode::Char('2') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Request)),
-        KeyCode::Char('3') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Body)),
-        KeyCode::Char('4') if state.count_prefix.is_none() => return Some(Action::FocusPanel(Panel::Response)),
-        // Count prefix accumulation (5-9 always, 1-4 when count already started, 0 when count started)
-        KeyCode::Char(c @ '1'..='9') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
-        KeyCode::Char(c @ '5'..='9') => return Some(Action::AccumulateCount(c.to_digit(10).unwrap())),
-        KeyCode::Char('0') if state.count_prefix.is_some() => return Some(Action::AccumulateCount(0)),
-        _ => {}
+    }
+    if let KeyCode::Char(c @ '5'..='9') = key.code {
+        return Some(Action::AccumulateCount(c.to_digit(10).unwrap()));
+    }
+    if let KeyCode::Char('0') = key.code {
+        if state.count_prefix.is_some() {
+            return Some(Action::AccumulateCount(0));
+        }
     }
 
     // Panel-specific normal mode
     match state.active_panel {
-        Panel::Collections => map_collections_key(key),
-        Panel::Request => map_request_normal_key(key, state),
-        Panel::Body => map_body_normal_key(key),
-        Panel::Response => map_response_key(key, state),
+        Panel::Collections => map_collections_key(k, kb),
+        Panel::Request => map_request_normal_key(k, state, kb),
+        Panel::Body => map_body_normal_key(k, kb),
+        Panel::Response => map_response_key(k, state, kb),
     }
 }
 
-fn map_command_palette_key(key: KeyEvent) -> Option<Action> {
-    // Ctrl shortcuts inside palette
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('n') | KeyCode::Char('j') => Some(Action::CommandPaletteDown),
-            KeyCode::Char('p') | KeyCode::Char('k') => Some(Action::CommandPaletteUp),
-            _ => None,
-        };
-    }
+// ── Collections ────────────────────────────────────────────────────────────
 
-    match key.code {
-        KeyCode::Esc => Some(Action::CommandPaletteClose),
-        KeyCode::Enter => Some(Action::CommandPaletteConfirm),
-        KeyCode::Char(c) => Some(Action::CommandPaletteInput(c)),
-        KeyCode::Backspace => Some(Action::CommandPaletteBackspace),
-        KeyCode::Up | KeyCode::BackTab => Some(Action::CommandPaletteUp),
-        KeyCode::Down | KeyCode::Tab => Some(Action::CommandPaletteDown),
+fn map_collections_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.collections, k)? {
+        "scroll_down" => Some(Action::ScrollDown),
+        "scroll_up" => Some(Action::ScrollUp),
+        "scroll_top" => Some(Action::ScrollTop),
+        "scroll_bottom" => Some(Action::ScrollBottom),
+        "toggle_collapse" => Some(Action::ToggleCollapse),
+        "select_request" => Some(Action::SelectRequest),
+        "create_collection" => Some(Action::CreateCollection),
+        "save_request" => Some(Action::SaveRequest),
+        "save_request_as" => Some(Action::SaveRequestAs),
+        "add_request" => Some(Action::AddRequestToCollection),
+        "new_empty_request" => Some(Action::NewEmptyRequest),
+        "rename_request" => Some(Action::RenameRequest),
+        "delete_pending" => Some(Action::PendingKey('d')),
+        "move_request" => Some(Action::MoveRequest),
+        "yank_pending" => Some(Action::PendingKey('y')),
+        "paste_request" => Some(Action::PasteRequest),
+        "copy_as_curl" => Some(Action::CopyAsCurl),
+        "next_collection" => Some(Action::NextCollection),
+        "prev_collection" => Some(Action::PrevCollection),
+        "start_filter" => Some(Action::StartCollectionsFilter),
+        "fold_pending" => Some(Action::PendingKey('z')),
         _ => None,
     }
 }
 
-fn map_overlay_key(key: KeyEvent, state: &AppState) -> Option<Action> {
-    // Ctrl+N / Ctrl+P for cmp-style navigation in all overlays
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('n') | KeyCode::Char('j') => Some(Action::OverlayDown),
-            KeyCode::Char('p') | KeyCode::Char('k') => Some(Action::OverlayUp),
-            _ => None,
-        };
+// ── Request (panel navigation) ─────────────────────────────────────────────
+
+fn map_request_normal_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    if state.request_field_editing {
+        return map_request_field_edit_key(k, kb);
     }
 
-    match &state.overlay {
-        Some(Overlay::HeaderAutocomplete { .. }) => match key.code {
-            KeyCode::Esc => Some(Action::CloseOverlay),
-            KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
-            KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
-            KeyCode::Enter => Some(Action::OverlayConfirm),
+    match lookup(&kb.request, k)? {
+        "focus_down" => Some(Action::RequestFocusDown),
+        "focus_up" => Some(Action::RequestFocusUp),
+        "next_method" => Some(Action::NextMethod),
+        "prev_method" => Some(Action::PrevMethod),
+        "next_tab" => Some(Action::RequestNextTab),
+        "prev_tab" => Some(Action::RequestPrevTab),
+        "toggle_enabled" => Some(Action::ToggleItemEnabled),
+        "enter_field_edit" => Some(Action::EnterRequestFieldEdit),
+        "add_item" => match state.request_tab {
+            RequestTab::Headers => Some(Action::AddHeader),
+            RequestTab::Queries => Some(Action::AddParam),
+            RequestTab::Cookies => Some(Action::AddCookie),
+            RequestTab::Params => Some(Action::AddPathParam),
+        },
+        "show_autocomplete" => Some(Action::ShowHeaderAutocomplete),
+        "delete_pending" => Some(Action::PendingKey('d')),
+        "delete_item" => match state.request_focus {
+            RequestFocus::Header(_) => Some(Action::DeleteHeader),
+            RequestFocus::Param(_) => Some(Action::DeleteParam),
+            RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
+            RequestFocus::PathParam(_) => Some(Action::DeletePathParam),
             _ => None,
         },
-        Some(Overlay::NewCollection { .. }) | Some(Overlay::RenameRequest { .. }) | Some(Overlay::SetCacheTTL { .. }) => match key.code {
-            KeyCode::Esc => Some(Action::CloseOverlay),
-            KeyCode::Enter => Some(Action::OverlayConfirm),
-            KeyCode::Backspace => Some(Action::OverlayBackspace),
-            KeyCode::Char(c) => Some(Action::OverlayInput(c)),
-            _ => None,
-        },
-        Some(Overlay::ConfirmDelete { .. }) => match key.code {
-            KeyCode::Esc | KeyCode::Char('n') => Some(Action::CloseOverlay),
-            KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
-            _ => None,
-        },
-        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) => match key.code {
-            KeyCode::Esc => Some(Action::CloseOverlay),
-            KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
-            KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
-            KeyCode::Enter => Some(Action::OverlayConfirm),
-            _ => None,
-        },
-        Some(Overlay::EnvironmentEditor { cursor, editing_key, .. }) => {
-            let editing = *cursor > 0 || *editing_key;
-            if editing {
-                // In editing mode: typing into key or value
-                match key.code {
-                    KeyCode::Esc => Some(Action::CloseOverlay),  // cancel edit
-                    KeyCode::Enter => Some(Action::OverlayConfirm), // confirm edit
-                    KeyCode::Backspace => Some(Action::OverlayBackspace),
-                    KeyCode::Char(c) => Some(Action::OverlayInput(c)),
-                    _ => None,
-                }
-            } else {
-                // Navigation mode
-                match key.code {
-                    KeyCode::Esc => Some(Action::CloseOverlay),
-                    KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
-                    KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
-                    KeyCode::Char('e') | KeyCode::Enter => Some(Action::OverlayConfirm), // start editing value
-                    KeyCode::Char('a') => Some(Action::OverlayInput('a')), // add new
-                    KeyCode::Char('d') => Some(Action::OverlayDelete),     // delete
-                    _ => None,
-                }
-            }
-        },
-        _ => match key.code {
-            KeyCode::Esc | KeyCode::Char('?') => Some(Action::CloseOverlay),
-            KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
-            KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
-            KeyCode::Enter => Some(Action::OverlayConfirm),
-            _ => None,
-        },
+        "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
+        "copy_response" => Some(Action::CopyResponseBody),
+        "copy_as_curl" => Some(Action::CopyAsCurl),
+        _ => None,
     }
 }
 
-fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
-    // Ctrl combos in insert mode
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('h') => Some(Action::NavigatePanel(Direction::Left)),
-            KeyCode::Char('j') => Some(Action::NavigatePanel(Direction::Down)),
-            KeyCode::Char('k') => Some(Action::NavigatePanel(Direction::Up)),
-            KeyCode::Char('l') => Some(Action::NavigatePanel(Direction::Right)),
-            // nvim-cmp style autocomplete
-            KeyCode::Char('n') => Some(Action::AutocompleteNext),
-            KeyCode::Char('p') => Some(Action::AutocompletePrev),
-            KeyCode::Char('y') => Some(Action::AutocompleteAccept),
-            _ => None,
-        };
+// ── Request field edit (vim normal inside a field) ──────────────────────────
+
+fn map_request_field_edit_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.request_field, k)? {
+        "cursor_left" => Some(Action::InlineCursorLeft),
+        "cursor_right" => Some(Action::InlineCursorRight),
+        "word_forward" => Some(Action::BodyWordForward),
+        "word_backward" => Some(Action::BodyWordBackward),
+        "word_end" => Some(Action::BodyWordEnd),
+        "line_home" => Some(Action::InlineCursorHome),
+        "line_end" => Some(Action::InlineCursorEnd),
+        "enter_insert" => Some(Action::EnterInsertMode),
+        "enter_insert_start" => Some(Action::EnterInsertModeStart),
+        "enter_append" => Some(Action::EnterAppendMode),
+        "enter_append_end" => Some(Action::EnterAppendModeEnd),
+        "enter_visual" => Some(Action::EnterVisualMode),
+        "delete_char" => Some(Action::DeleteCharUnderCursor),
+        "substitute" => Some(Action::Substitute),
+        "change_to_end" => Some(Action::ChangeToEnd),
+        "delete_to_end" => Some(Action::DeleteToEnd),
+        "change_pending" => Some(Action::PendingKey('c')),
+        "delete_pending" => Some(Action::PendingKey('d')),
+        "replace_pending" => Some(Action::PendingKey('r')),
+        "yank_pending" => Some(Action::PendingKey('y')),
+        "undo" => Some(Action::Undo),
+        "paste" => Some(Action::Paste),
+        "find_forward" => Some(Action::PendingKey('f')),
+        "find_backward" => Some(Action::PendingKey('F')),
+        "find_before" => Some(Action::PendingKey('t')),
+        "find_after" => Some(Action::PendingKey('T')),
+        "tab" => Some(Action::InlineTab),
+        "exit_field_edit" => Some(Action::ExitRequestFieldEdit),
+        _ => None,
+    }
+}
+
+// ── Body ───────────────────────────────────────────────────────────────────
+
+fn map_body_normal_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.body, k)? {
+        "next_tab" => Some(Action::BodyNextTab),
+        "prev_tab" => Some(Action::BodyPrevTab),
+        "scroll_down" => Some(Action::ScrollDown),
+        "scroll_up" => Some(Action::ScrollUp),
+        "scroll_top" => Some(Action::ScrollTop),
+        "scroll_bottom" => Some(Action::ScrollBottom),
+        "word_forward" => Some(Action::BodyWordForward),
+        "word_backward" => Some(Action::BodyWordBackward),
+        "word_end" => Some(Action::BodyWordEnd),
+        "line_home" => Some(Action::BodyLineHome),
+        "line_end" => Some(Action::BodyLineEnd),
+        "enter_insert" => Some(Action::EnterInsertMode),
+        "enter_insert_start" => Some(Action::EnterInsertModeStart),
+        "enter_append" => Some(Action::EnterAppendMode),
+        "enter_append_end" => Some(Action::EnterAppendModeEnd),
+        "open_line_below" => Some(Action::OpenLineBelow),
+        "open_line_above" => Some(Action::OpenLineAbove),
+        "enter_visual" => Some(Action::EnterVisualMode),
+        "delete_char" => Some(Action::DeleteCharUnderCursor),
+        "substitute" => Some(Action::Substitute),
+        "change_line" => Some(Action::ChangeLine),
+        "change_to_end" => Some(Action::ChangeToEnd),
+        "delete_to_end_line" => Some(Action::DeleteToEnd),
+        "change_pending" => Some(Action::PendingKey('c')),
+        "replace_pending" => Some(Action::PendingKey('r')),
+        "undo" => Some(Action::Undo),
+        "paste" => Some(Action::Paste),
+        "delete_pending" => Some(Action::PendingKey('d')),
+        "yank_pending" => Some(Action::PendingKey('y')),
+        "find_forward" => Some(Action::PendingKey('f')),
+        "find_backward" => Some(Action::PendingKey('F')),
+        "find_before" => Some(Action::PendingKey('t')),
+        "find_after" => Some(Action::PendingKey('T')),
+        "start_search" => Some(Action::StartSearch),
+        "search_next" => Some(Action::SearchNext),
+        "search_prev" => Some(Action::SearchPrev),
+        _ => None,
+    }
+}
+
+// ── Response ───────────────────────────────────────────────────────────────
+
+fn map_response_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    // Tab switching is shared across all response sub-tabs
+    // Check the specific sub-context map first for tab actions
+    let ctx = response_context(state, kb);
+
+    // Type language sub-tab switching (only in Type tab)
+    if state.response_tab == ResponseTab::Type {
+        if let Some(action) = lookup(ctx, k) {
+            match action {
+                "type_lang_next" => return Some(Action::TypeLangNext),
+                "type_lang_prev" => return Some(Action::TypeLangPrev),
+                _ => {}
+            }
+        }
     }
 
+    match lookup(ctx, k)? {
+        "scroll_down" => Some(Action::ScrollDown),
+        "scroll_up" => Some(Action::ScrollUp),
+        "cursor_left" => Some(Action::InlineCursorLeft),
+        "cursor_right" => Some(Action::InlineCursorRight),
+        "scroll_top" => Some(Action::ScrollTop),
+        "scroll_bottom" => Some(Action::ScrollBottom),
+        "word_forward" => Some(Action::BodyWordForward),
+        "word_backward" => Some(Action::BodyWordBackward),
+        "word_end" => Some(Action::BodyWordEnd),
+        "line_home" => Some(Action::BodyLineHome),
+        "line_end" => Some(Action::BodyLineEnd),
+        "enter_visual" => Some(Action::EnterVisualMode),
+        "copy_response" => Some(Action::CopyResponseBody),
+        "copy_as_curl" => Some(Action::CopyAsCurl),
+        "find_forward" => Some(Action::PendingKey('f')),
+        "find_backward" => Some(Action::PendingKey('F')),
+        "find_before" => Some(Action::PendingKey('t')),
+        "find_after" => Some(Action::PendingKey('T')),
+        "start_search" => Some(Action::StartSearch),
+        "search_next" => Some(Action::SearchNext),
+        "search_prev" => Some(Action::SearchPrev),
+        "next_tab" => Some(Action::ResponseNextTab),
+        "prev_tab" => Some(Action::ResponsePrevTab),
+        // Response body specific
+        "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
+        "toggle_headers" => Some(Action::ToggleResponseHeaders),
+        // Type editor specific (only works when in editor sub-focus)
+        "enter_insert" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertMode),
+        "enter_insert_start" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertModeStart),
+        "enter_append" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterAppendMode),
+        "enter_append_end" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterAppendModeEnd),
+        "open_line_below" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::OpenLineBelow),
+        "open_line_above" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::OpenLineAbove),
+        "delete_char" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteCharUnderCursor),
+        "substitute" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Substitute),
+        "change_line" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ChangeLine),
+        "change_to_end" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ChangeToEnd),
+        "delete_to_end_line" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteToEnd),
+        "change_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('c')),
+        "replace_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('r')),
+        "delete_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('d')),
+        "yank_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('y')),
+        "undo" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Undo),
+        "paste" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Paste),
+        "regenerate_type" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
+        _ => None,
+    }
+}
+
+fn response_context<'a>(state: &AppState, kb: &'a KeybindingsConfig) -> &'a std::collections::HashMap<KeyBind, String> {
+    if state.response_tab == ResponseTab::Type {
+        if state.type_sub_focus == TypeSubFocus::Editor {
+            &kb.response_type_editor
+        } else {
+            &kb.response_type_preview
+        }
+    } else {
+        &kb.response_body
+    }
+}
+
+// ── Visual mode ────────────────────────────────────────────────────────────
+
+fn map_visual_mode_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.visual, k)? {
+        "exit_visual" => Some(Action::ExitVisualMode),
+        "yank" => Some(Action::VisualYank),
+        "delete" => Some(Action::VisualDelete),
+        "paste" => Some(Action::VisualPaste),
+        "cursor_down" => Some(Action::InlineCursorDown),
+        "cursor_up" => Some(Action::InlineCursorUp),
+        "cursor_left" => Some(Action::InlineCursorLeft),
+        "cursor_right" => Some(Action::InlineCursorRight),
+        "word_forward" => Some(Action::BodyWordForward),
+        "word_backward" => Some(Action::BodyWordBackward),
+        "word_end" => Some(Action::BodyWordEnd),
+        "scroll_top" => Some(Action::ScrollTop),
+        "scroll_bottom" => Some(Action::ScrollBottom),
+        "line_home" => Some(Action::BodyLineHome),
+        "line_end" => Some(Action::BodyLineEnd),
+        "find_forward" => Some(Action::PendingKey('f')),
+        "find_backward" => Some(Action::PendingKey('F')),
+        "find_before" => Some(Action::PendingKey('t')),
+        "find_after" => Some(Action::PendingKey('T')),
+        "navigate_left" => Some(Action::NavigatePanel(Direction::Left)),
+        "navigate_down" => Some(Action::NavigatePanel(Direction::Down)),
+        "navigate_up" => Some(Action::NavigatePanel(Direction::Up)),
+        "navigate_right" => Some(Action::NavigatePanel(Direction::Right)),
+        _ => None,
+    }
+}
+
+// ── Insert mode ────────────────────────────────────────────────────────────
+
+fn map_insert_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    // Check configurable bindings first
+    if let Some(action) = lookup(&kb.insert, k) {
+        match action {
+            "exit_insert" => return Some(Action::ExitInsertMode),
+            "navigate_left" => return Some(Action::NavigatePanel(Direction::Left)),
+            "navigate_down" => return Some(Action::NavigatePanel(Direction::Down)),
+            "navigate_up" => return Some(Action::NavigatePanel(Direction::Up)),
+            "navigate_right" => return Some(Action::NavigatePanel(Direction::Right)),
+            "autocomplete_next" => return Some(Action::AutocompleteNext),
+            "autocomplete_prev" => return Some(Action::AutocompletePrev),
+            "autocomplete_accept" => return Some(Action::AutocompleteAccept),
+            _ => {}
+        }
+    }
+
+    // Non-configurable: raw character/key input
     match key.code {
-        KeyCode::Esc => Some(Action::ExitInsertMode),
         KeyCode::Char(c) => Some(Action::InlineInput(c)),
         KeyCode::Backspace => Some(Action::InlineBackspace),
         KeyCode::Delete => Some(Action::InlineDelete),
@@ -280,18 +473,10 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             Panel::Body => Some(Action::InlineNewline),
             Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineNewline),
             Panel::Request => match state.request_focus {
-                RequestFocus::Header(_) if state.header_edit_field == 0 => {
-                    Some(Action::InlineTab)
-                }
-                RequestFocus::Param(_) if state.param_edit_field == 0 => {
-                    Some(Action::InlineTab)
-                }
-                RequestFocus::Cookie(_) if state.cookie_edit_field == 0 => {
-                    Some(Action::InlineTab)
-                }
-                RequestFocus::PathParam(_) if state.path_param_edit_field == 0 => {
-                    Some(Action::InlineTab)
-                }
+                RequestFocus::Header(_) if state.header_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::Param(_) if state.param_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::Cookie(_) if state.cookie_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::PathParam(_) if state.path_param_edit_field == 0 => Some(Action::InlineTab),
                 _ => Some(Action::ExitInsertMode),
             },
             _ => Some(Action::ExitInsertMode),
@@ -300,40 +485,10 @@ fn map_insert_mode_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     }
 }
 
-fn map_visual_mode_key(key: KeyEvent) -> Option<Action> {
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
-        return match key.code {
-            KeyCode::Char('h') => Some(Action::NavigatePanel(Direction::Left)),
-            KeyCode::Char('j') => Some(Action::NavigatePanel(Direction::Down)),
-            KeyCode::Char('k') => Some(Action::NavigatePanel(Direction::Up)),
-            KeyCode::Char('l') => Some(Action::NavigatePanel(Direction::Right)),
-            _ => None,
-        };
-    }
-
-    match key.code {
-        KeyCode::Esc => Some(Action::ExitVisualMode),
-        KeyCode::Char('y') => Some(Action::VisualYank),
-        KeyCode::Char('d') | KeyCode::Char('x') => Some(Action::VisualDelete),
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::InlineCursorDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::InlineCursorUp),
-        KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
-        KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
-        KeyCode::Char('w') => Some(Action::BodyWordForward),
-        KeyCode::Char('b') => Some(Action::BodyWordBackward),
-        KeyCode::Char('e') => Some(Action::BodyWordEnd),
-        KeyCode::Char('g') => Some(Action::ScrollTop),
-        KeyCode::Char('G') => Some(Action::ScrollBottom),
-        KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
-        KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
-        KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::VisualPaste),
-        KeyCode::Char('f') => Some(Action::PendingKey('f')),
-        KeyCode::Char('F') => Some(Action::PendingKey('F')),
-        KeyCode::Char('t') => Some(Action::PendingKey('t')),
-        KeyCode::Char('T') => Some(Action::PendingKey('T')),
-        _ => None,
-    }
-}
+// ── Pending keys (dd, yy, cw, etc.) ────────────────────────────────────────
+// The pending system stays hardcoded because it follows vim grammar:
+// operator (d/c/y/r/z/f/F/t/T) + motion (d/w/b/$/'0/G/etc.)
+// The TRIGGER keys for operators are configurable in each context.
 
 fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Action> {
     match (pending, key.code) {
@@ -370,14 +525,11 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
         ('y', KeyCode::Char('$')) => Some(Action::YankToEnd),
         ('y', KeyCode::Char('0')) => Some(Action::YankToStart),
         ('y', KeyCode::Char('G')) => Some(Action::YankToBottom),
-        ('r', KeyCode::Char(c)) => {
-            // r + char: replace character under cursor
-            match state.active_panel {
-                Panel::Body => Some(Action::ReplaceChar(c)),
-                Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
-                Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ReplaceChar(c)),
-                _ => None,
-            }
+        ('r', KeyCode::Char(c)) => match state.active_panel {
+            Panel::Body => Some(Action::ReplaceChar(c)),
+            Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
+            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ReplaceChar(c)),
+            _ => None,
         },
         // z-fold keys (collections panel)
         ('z', KeyCode::Char('o')) if state.active_panel == Panel::Collections => Some(Action::ExpandCollection),
@@ -385,304 +537,154 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
         ('z', KeyCode::Char('a')) if state.active_panel == Panel::Collections => Some(Action::ToggleCollapse),
         ('z', KeyCode::Char('M')) if state.active_panel == Panel::Collections => Some(Action::CollapseAll),
         ('z', KeyCode::Char('R')) if state.active_panel == Panel::Collections => Some(Action::ExpandAll),
-        // f/F/t/T find char motions
+        // f/F/t/T find char motions (hardcoded — the char IS the data)
         ('f', KeyCode::Char(c)) => Some(Action::FindCharForward(c)),
         ('F', KeyCode::Char(c)) => Some(Action::FindCharBackward(c)),
         ('t', KeyCode::Char(c)) => Some(Action::FindCharForwardBefore(c)),
         ('T', KeyCode::Char(c)) => Some(Action::FindCharBackwardAfter(c)),
-        _ => map_normal_mode_key(key, state),
+        _ => map_normal_mode_key(&KeyBind::from_event(key), key, state, &state.keybindings),
     }
 }
 
-fn map_collections_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-        KeyCode::Char('g') => Some(Action::ScrollTop),
-        KeyCode::Char('G') => Some(Action::ScrollBottom),
-        KeyCode::Char(' ') => Some(Action::ToggleCollapse),
-        KeyCode::Enter => Some(Action::SelectRequest),
-        KeyCode::Char('n') => Some(Action::CreateCollection),
-        KeyCode::Char('s') => Some(Action::SaveRequest),
-        KeyCode::Char('S') => Some(Action::SaveRequestAs),
-        KeyCode::Char('a') => Some(Action::AddRequestToCollection),
-        KeyCode::Char('C') => Some(Action::NewEmptyRequest),
-        KeyCode::Char('r') => Some(Action::RenameRequest),
-        KeyCode::Char('d') => Some(Action::PendingKey('d')),
-        KeyCode::Char('m') => Some(Action::MoveRequest),
-        KeyCode::Char('y') => Some(Action::PendingKey('y')),
-        KeyCode::Char('p') => Some(Action::PasteRequest),
-        KeyCode::Char('Y') => Some(Action::CopyAsCurl),
-        KeyCode::Char('L') | KeyCode::Char('}') => Some(Action::NextCollection),
-        KeyCode::Char('H') | KeyCode::Char('{') => Some(Action::PrevCollection),
-        KeyCode::Char('/') => Some(Action::StartCollectionsFilter),
-        KeyCode::Char('z') => Some(Action::PendingKey('z')),
-        _ => None,
-    }
-}
+// ── Command palette ────────────────────────────────────────────────────────
 
-fn map_request_normal_key(key: KeyEvent, state: &AppState) -> Option<Action> {
-    // Field-edit normal mode: vim motions inside a field
-    if state.request_field_editing {
-        return map_request_field_edit_key(key);
-    }
-
-    // Panel navigation mode: move between fields
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::RequestFocusDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::RequestFocusUp),
-        KeyCode::Char(']') => Some(Action::NextMethod),
-        KeyCode::Char('[') => Some(Action::PrevMethod),
-        KeyCode::Char('}') => Some(Action::RequestNextTab),
-        KeyCode::Char('{') => Some(Action::RequestPrevTab),
-        KeyCode::Char(' ') => Some(Action::ToggleItemEnabled),
-        KeyCode::Char('e') => Some(Action::EnterRequestFieldEdit),
-        KeyCode::Char('a') => match state.request_tab {
-            RequestTab::Headers => Some(Action::AddHeader),
-            RequestTab::Queries => Some(Action::AddParam),
-            RequestTab::Cookies => Some(Action::AddCookie),
-            RequestTab::Params => Some(Action::AddPathParam),
-        },
-        KeyCode::Char('A') => Some(Action::ShowHeaderAutocomplete),
-        KeyCode::Char('d') => Some(Action::PendingKey('d')),
-        KeyCode::Char('x') => match state.request_focus {
-            RequestFocus::Header(_) => Some(Action::DeleteHeader),
-            RequestFocus::Param(_) => Some(Action::DeleteParam),
-            RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
-            RequestFocus::PathParam(_) => Some(Action::DeletePathParam),
-            _ => None,
-        },
-        KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
-        KeyCode::Char('y') => Some(Action::CopyResponseBody),
-        KeyCode::Char('Y') => Some(Action::CopyAsCurl),
-        _ => None,
-    }
-}
-
-fn map_request_field_edit_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        // Vim motions
-        KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
-        KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
-        KeyCode::Char('w') => Some(Action::BodyWordForward),
-        KeyCode::Char('b') => Some(Action::BodyWordBackward),
-        KeyCode::Char('e') => Some(Action::BodyWordEnd),
-        KeyCode::Char('0') | KeyCode::Home => Some(Action::InlineCursorHome),
-        KeyCode::Char('$') | KeyCode::End => Some(Action::InlineCursorEnd),
-        // Enter insert mode
-        KeyCode::Char('i') => Some(Action::EnterInsertMode),
-        KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
-        KeyCode::Char('a') => Some(Action::EnterAppendMode),
-        KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
-        // Visual mode
-        KeyCode::Char('v') => Some(Action::EnterVisualMode),
-        // Edit
-        KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
-        KeyCode::Char('s') => Some(Action::Substitute),
-        KeyCode::Char('C') => Some(Action::ChangeToEnd),
-        KeyCode::Char('D') => Some(Action::DeleteToEnd),
-        KeyCode::Char('c') => Some(Action::PendingKey('c')),
-        KeyCode::Char('d') => Some(Action::PendingKey('d')),
-        KeyCode::Char('r') => Some(Action::PendingKey('r')),
-        KeyCode::Char('y') => Some(Action::PendingKey('y')),
-        KeyCode::Char('u') => Some(Action::Undo),
-        KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
-        // Find char motions
-        KeyCode::Char('f') => Some(Action::PendingKey('f')),
-        KeyCode::Char('F') => Some(Action::PendingKey('F')),
-        KeyCode::Char('t') => Some(Action::PendingKey('t')),
-        KeyCode::Char('T') => Some(Action::PendingKey('T')),
-        // Tab to switch between name/value sub-fields
-        KeyCode::Tab => Some(Action::InlineTab),
-        // Exit field editing
-        KeyCode::Esc => Some(Action::ExitRequestFieldEdit),
-        _ => None,
-    }
-}
-
-fn map_body_normal_key(key: KeyEvent) -> Option<Action> {
-    match key.code {
-        // Body tab switching
-        KeyCode::Char('}') => return Some(Action::BodyNextTab),
-        KeyCode::Char('{') => return Some(Action::BodyPrevTab),
-        // Vim motions
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-        KeyCode::Char('g') => Some(Action::ScrollTop),
-        KeyCode::Char('G') => Some(Action::ScrollBottom),
-        KeyCode::Char('w') => Some(Action::BodyWordForward),
-        KeyCode::Char('b') => Some(Action::BodyWordBackward),
-        KeyCode::Char('e') => Some(Action::BodyWordEnd),
-        KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
-        KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
-        // Enter modes
-        KeyCode::Char('i') => Some(Action::EnterInsertMode),
-        KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
-        KeyCode::Char('a') => Some(Action::EnterAppendMode),
-        KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
-        KeyCode::Char('o') => Some(Action::OpenLineBelow),
-        KeyCode::Char('O') => Some(Action::OpenLineAbove),
-        KeyCode::Char('v') => Some(Action::EnterVisualMode),
-        // Edit
-        KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
-        KeyCode::Char('s') => Some(Action::Substitute),
-        KeyCode::Char('S') => Some(Action::ChangeLine),
-        KeyCode::Char('C') => Some(Action::ChangeToEnd),
-        KeyCode::Char('D') => Some(Action::DeleteToEnd),
-        KeyCode::Char('c') => Some(Action::PendingKey('c')),
-        KeyCode::Char('r') => Some(Action::PendingKey('r')),
-        KeyCode::Char('u') => Some(Action::Undo),
-        KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
-        KeyCode::Char('d') => Some(Action::PendingKey('d')),
-        KeyCode::Char('y') => Some(Action::PendingKey('y')),
-        // Body type (use T for cycle, t for find-char-before)
-        KeyCode::Char('f') => Some(Action::PendingKey('f')),
-        KeyCode::Char('F') => Some(Action::PendingKey('F')),
-        KeyCode::Char('t') => Some(Action::PendingKey('t')),
-        KeyCode::Char('T') => Some(Action::PendingKey('T')),
-        // Search
-        KeyCode::Char('/') => Some(Action::StartSearch),
-        KeyCode::Char('n') => Some(Action::SearchNext),
-        KeyCode::Char('N') => Some(Action::SearchPrev),
-        _ => None,
-    }
-}
-
-fn map_response_key(key: KeyEvent, state: &AppState) -> Option<Action> {
-    // Tab switching (works in both Body and Type tabs)
-    match key.code {
-        KeyCode::Char('}') => return Some(Action::ResponseNextTab),
-        KeyCode::Char('{') => return Some(Action::ResponsePrevTab),
-        _ => {}
-    }
-
-    // Type language sub-tab switching [ ] (only in Type tab)
-    if state.response_tab == ResponseTab::Type {
-        match key.code {
-            KeyCode::Char(']') => return Some(Action::TypeLangNext),
-            KeyCode::Char('[') => return Some(Action::TypeLangPrev),
+fn map_command_palette_key(k: &KeyBind, key: KeyEvent, kb: &KeybindingsConfig) -> Option<Action> {
+    // Check configurable bindings first
+    if let Some(action) = lookup(&kb.command_palette, k) {
+        match action {
+            "close" => return Some(Action::CommandPaletteClose),
+            "confirm" => return Some(Action::CommandPaletteConfirm),
+            "nav_up" => return Some(Action::CommandPaletteUp),
+            "nav_down" => return Some(Action::CommandPaletteDown),
             _ => {}
         }
     }
 
-    if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Preview {
-        // Type tab: response body preview (read-only navigation + copy)
-        return match key.code {
-            KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-            KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-            KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
-            KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
-            KeyCode::Char('w') => Some(Action::BodyWordForward),
-            KeyCode::Char('b') => Some(Action::BodyWordBackward),
-            KeyCode::Char('e') => Some(Action::BodyWordEnd),
-            KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
-            KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
-            KeyCode::Char('g') => Some(Action::ScrollTop),
-            KeyCode::Char('G') => Some(Action::ScrollBottom),
-            KeyCode::Char('v') => Some(Action::EnterVisualMode),
-            KeyCode::Char('y') => Some(Action::CopyResponseBody),
-            KeyCode::Char('f') => Some(Action::PendingKey('f')),
-            KeyCode::Char('F') => Some(Action::PendingKey('F')),
-            KeyCode::Char('t') => Some(Action::PendingKey('t')),
-            KeyCode::Char('T') => Some(Action::PendingKey('T')),
-            KeyCode::Char('/') => Some(Action::StartSearch),
-            KeyCode::Char('n') => Some(Action::SearchNext),
-            KeyCode::Char('N') => Some(Action::SearchPrev),
-            _ => None,
-        };
-    }
-
-    if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor {
-        // Type editor: full vim normal mode (editable)
-        return match key.code {
-            // Cursor movement
-            KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-            KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-            KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
-            KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
-            KeyCode::Char('w') => Some(Action::BodyWordForward),
-            KeyCode::Char('b') => Some(Action::BodyWordBackward),
-            KeyCode::Char('e') => Some(Action::BodyWordEnd),
-            KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
-            KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
-            KeyCode::Char('g') => Some(Action::ScrollTop),
-            KeyCode::Char('G') => Some(Action::ScrollBottom),
-            // Mode transitions
-            KeyCode::Char('i') => Some(Action::EnterInsertMode),
-            KeyCode::Char('I') => Some(Action::EnterInsertModeStart),
-            KeyCode::Char('a') => Some(Action::EnterAppendMode),
-            KeyCode::Char('A') => Some(Action::EnterAppendModeEnd),
-            KeyCode::Char('o') => Some(Action::OpenLineBelow),
-            KeyCode::Char('O') => Some(Action::OpenLineAbove),
-            KeyCode::Char('v') => Some(Action::EnterVisualMode),
-            // Edit operations
-            KeyCode::Char('x') => Some(Action::DeleteCharUnderCursor),
-            KeyCode::Char('s') => Some(Action::Substitute),
-            KeyCode::Char('S') => Some(Action::ChangeLine),
-            KeyCode::Char('C') => Some(Action::ChangeToEnd),
-            KeyCode::Char('D') => Some(Action::DeleteToEnd),
-            KeyCode::Char('c') => Some(Action::PendingKey('c')),
-            KeyCode::Char('r') => Some(Action::PendingKey('r')),
-            KeyCode::Char('d') => Some(Action::PendingKey('d')),
-            KeyCode::Char('y') => Some(Action::PendingKey('y')),
-            KeyCode::Char('u') => Some(Action::Undo),
-            KeyCode::Char('p') | KeyCode::Char('P') => Some(Action::Paste),
-            // Find char
-            KeyCode::Char('f') => Some(Action::PendingKey('f')),
-            KeyCode::Char('F') => Some(Action::PendingKey('F')),
-            KeyCode::Char('t') => Some(Action::PendingKey('t')),
-            KeyCode::Char('T') => Some(Action::PendingKey('T')),
-            // Type-specific
-            KeyCode::Char('R') => Some(Action::RegenerateType),
-            _ => None,
-        };
-    }
-
-    // Response Body tab (read-only: normal + visual only)
+    // Non-configurable: text input
     match key.code {
-        KeyCode::Char('j') | KeyCode::Down => Some(Action::ScrollDown),
-        KeyCode::Char('k') | KeyCode::Up => Some(Action::ScrollUp),
-        KeyCode::Char('h') | KeyCode::Left => Some(Action::InlineCursorLeft),
-        KeyCode::Char('l') | KeyCode::Right => Some(Action::InlineCursorRight),
-        KeyCode::Char('g') => Some(Action::ScrollTop),
-        KeyCode::Char('G') => Some(Action::ScrollBottom),
-        KeyCode::Char('w') => Some(Action::BodyWordForward),
-        KeyCode::Char('b') => Some(Action::BodyWordBackward),
-        KeyCode::Char('e') => Some(Action::BodyWordEnd),
-        KeyCode::Char('0') | KeyCode::Home => Some(Action::BodyLineHome),
-        KeyCode::Char('$') | KeyCode::End => Some(Action::BodyLineEnd),
-        KeyCode::Char('v') => Some(Action::EnterVisualMode),
-        KeyCode::Char('y') => Some(Action::CopyResponseBody),
-        KeyCode::Char('Y') => Some(Action::CopyAsCurl),
-        KeyCode::Char('f') => Some(Action::PendingKey('f')),
-        KeyCode::Char('F') => Some(Action::PendingKey('F')),
-        KeyCode::Char('t') => Some(Action::PendingKey('t')),
-        KeyCode::Char('T') => Some(Action::PendingKey('T')),
-        KeyCode::Char('p') => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
-        KeyCode::Char('H') => Some(Action::ToggleResponseHeaders),
-        KeyCode::Char('/') => Some(Action::StartSearch),
-        KeyCode::Char('n') => Some(Action::SearchNext),
-        KeyCode::Char('N') => Some(Action::SearchPrev),
+        KeyCode::Char(c) => Some(Action::CommandPaletteInput(c)),
+        KeyCode::Backspace => Some(Action::CommandPaletteBackspace),
         _ => None,
     }
 }
 
-fn map_search_key(key: KeyEvent) -> Option<Action> {
+// ── Search ─────────────────────────────────────────────────────────────────
+
+fn map_search_key(k: &KeyBind, key: KeyEvent, kb: &KeybindingsConfig) -> Option<Action> {
+    if let Some(action) = lookup(&kb.search, k) {
+        match action {
+            "cancel" => return Some(Action::SearchCancel),
+            "confirm" => return Some(Action::SearchConfirm),
+            _ => {}
+        }
+    }
+
+    // Non-configurable: text input
     match key.code {
-        KeyCode::Esc => Some(Action::SearchCancel),
-        KeyCode::Enter => Some(Action::SearchConfirm),
         KeyCode::Backspace => Some(Action::SearchBackspace),
         KeyCode::Char(c) => Some(Action::SearchInput(c)),
         _ => None,
     }
 }
 
-fn map_collections_filter_key(key: KeyEvent) -> Option<Action> {
+// ── Collections filter ─────────────────────────────────────────────────────
+
+fn map_collections_filter_key(k: &KeyBind, key: KeyEvent, kb: &KeybindingsConfig) -> Option<Action> {
+    if let Some(action) = lookup(&kb.collections_filter, k) {
+        match action {
+            "cancel" => return Some(Action::CollectionsFilterCancel),
+            "confirm" => return Some(Action::CollectionsFilterConfirm),
+            _ => {}
+        }
+    }
+
     match key.code {
-        KeyCode::Esc => Some(Action::CollectionsFilterCancel),
-        KeyCode::Enter => Some(Action::CollectionsFilterConfirm),
         KeyCode::Backspace => Some(Action::CollectionsFilterBackspace),
         KeyCode::Char(c) => Some(Action::CollectionsFilterInput(c)),
         _ => None,
+    }
+}
+
+// ── Overlay ────────────────────────────────────────────────────────────────
+
+fn map_overlay_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    // Overlay-specific behavior stays hardcoded since each overlay type has unique input needs
+    match &state.overlay {
+        Some(Overlay::HeaderAutocomplete { .. }) => {
+            if let Some(action) = lookup(&kb.overlay, k) {
+                match action {
+                    "close" => return Some(Action::CloseOverlay),
+                    "nav_down" => return Some(Action::OverlayDown),
+                    "nav_up" => return Some(Action::OverlayUp),
+                    "confirm" => return Some(Action::OverlayConfirm),
+                    _ => {}
+                }
+            }
+            None
+        }
+        Some(Overlay::NewCollection { .. }) | Some(Overlay::RenameRequest { .. }) | Some(Overlay::SetCacheTTL { .. }) => match key.code {
+            KeyCode::Esc => Some(Action::CloseOverlay),
+            KeyCode::Enter => Some(Action::OverlayConfirm),
+            KeyCode::Backspace => Some(Action::OverlayBackspace),
+            KeyCode::Char(c) => Some(Action::OverlayInput(c)),
+            _ => None,
+        },
+        Some(Overlay::ConfirmDelete { .. }) => match key.code {
+            KeyCode::Esc | KeyCode::Char('n') => Some(Action::CloseOverlay),
+            KeyCode::Enter | KeyCode::Char('y') => Some(Action::OverlayConfirm),
+            _ => None,
+        },
+        Some(Overlay::MoveRequest { .. }) | Some(Overlay::ThemeSelector { .. }) => {
+            if let Some(action) = lookup(&kb.overlay, k) {
+                match action {
+                    "close" => return Some(Action::CloseOverlay),
+                    "nav_down" => return Some(Action::OverlayDown),
+                    "nav_up" => return Some(Action::OverlayUp),
+                    "confirm" => return Some(Action::OverlayConfirm),
+                    _ => {}
+                }
+            }
+            None
+        }
+        Some(Overlay::EnvironmentEditor { cursor, editing_key, .. }) => {
+            let editing = *cursor > 0 || *editing_key;
+            if editing {
+                match key.code {
+                    KeyCode::Esc => Some(Action::CloseOverlay),
+                    KeyCode::Enter => Some(Action::OverlayConfirm),
+                    KeyCode::Backspace => Some(Action::OverlayBackspace),
+                    KeyCode::Char(c) => Some(Action::OverlayInput(c)),
+                    _ => None,
+                }
+            } else {
+                match key.code {
+                    KeyCode::Esc => Some(Action::CloseOverlay),
+                    KeyCode::Char('j') | KeyCode::Down => Some(Action::OverlayDown),
+                    KeyCode::Char('k') | KeyCode::Up => Some(Action::OverlayUp),
+                    KeyCode::Char('e') | KeyCode::Enter => Some(Action::OverlayConfirm),
+                    KeyCode::Char('a') => Some(Action::OverlayInput('a')),
+                    KeyCode::Char('d') => Some(Action::OverlayDelete),
+                    _ => None,
+                }
+            }
+        }
+        _ => {
+            if let Some(action) = lookup(&kb.overlay, k) {
+                match action {
+                    "close" => return Some(Action::CloseOverlay),
+                    "nav_down" => return Some(Action::OverlayDown),
+                    "nav_up" => return Some(Action::OverlayUp),
+                    "confirm" => return Some(Action::OverlayConfirm),
+                    _ => {}
+                }
+            }
+            // Help overlay can also be closed with '?'
+            if let KeyCode::Char('?') = key.code {
+                if matches!(state.overlay, Some(Overlay::Help)) {
+                    return Some(Action::CloseOverlay);
+                }
+            }
+            None
+        }
     }
 }

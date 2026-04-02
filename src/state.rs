@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use ratatui::widgets::ListState;
 
 use crate::config::AppConfig;
+use crate::keybinding_config::KeybindingsConfig;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
@@ -521,10 +522,13 @@ pub struct AppState {
     pub should_quit: bool,
     pub status_message: Option<(String, Instant)>,
     pub collection_items: Vec<String>,
+
+    // Keybindings
+    pub keybindings: KeybindingsConfig,
 }
 
 impl AppState {
-    pub fn new(config: AppConfig) -> Self {
+    pub fn new(config: AppConfig, keybindings: KeybindingsConfig) -> Self {
         let mut collections_state = ListState::default();
         collections_state.select(Some(0));
 
@@ -603,6 +607,7 @@ impl AppState {
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),
+            keybindings,
         }
     }
 

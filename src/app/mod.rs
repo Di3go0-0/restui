@@ -27,10 +27,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: AppConfig) -> Self {
+    pub fn new(config: AppConfig, keybindings: crate::keybinding_config::KeybindingsConfig) -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         Self {
-            state: AppState::new(config),
+            state: AppState::new(config, keybindings),
             action_tx,
             action_rx,
         }
