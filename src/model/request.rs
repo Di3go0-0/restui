@@ -138,29 +138,6 @@ impl Default for Request {
 }
 
 impl Request {
-    /// Fingerprint of request content (method, url, headers, body, params, cookies).
-    /// Used to deduplicate response history — same fingerprint = same request.
-    pub fn fingerprint(&self) -> String {
-        let mut fp = format!("{}|{}", self.method, self.url);
-        for h in &self.headers {
-            fp.push_str(&format!("|h:{}={}:{}", h.name, h.value, h.enabled));
-        }
-        for p in &self.query_params {
-            fp.push_str(&format!("|q:{}={}:{}", p.key, p.value, p.enabled));
-        }
-        for c in &self.cookies {
-            fp.push_str(&format!("|c:{}={}:{}", c.name, c.value, c.enabled));
-        }
-        for p in &self.path_params {
-            fp.push_str(&format!("|pp:{}={}", p.key, p.value));
-        }
-        if let Some(ref b) = self.body_json { fp.push_str(&format!("|bj:{}", b)); }
-        if let Some(ref b) = self.body_xml { fp.push_str(&format!("|bx:{}", b)); }
-        if let Some(ref b) = self.body_form { fp.push_str(&format!("|bf:{}", b)); }
-        if let Some(ref b) = self.body_raw { fp.push_str(&format!("|br:{}", b)); }
-        fp
-    }
-
     pub fn display_name(&self) -> String {
         if let Some(ref name) = self.name {
             name.clone()
