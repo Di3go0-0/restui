@@ -182,7 +182,9 @@ impl App {
     // === Response & Type cursor helpers ===
 
     pub(super) fn get_response_body_text(&self) -> String {
-        if let Some(ref resp) = self.state.current_response {
+        if let Some((ref diff_text, _)) = self.state.viewing_diff {
+            diff_text.clone()
+        } else if let Some(ref resp) = self.state.current_response {
             resp.formatted_body()
         } else {
             String::new()
