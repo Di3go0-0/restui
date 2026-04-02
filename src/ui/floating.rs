@@ -23,6 +23,7 @@ pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
         }
         Overlay::Help => {}
         Overlay::History { selected } => render_history(frame, state, *selected),
+        Overlay::ResponseHistory { selected } => render_response_history(frame, state, *selected),
     }
 }
 
@@ -518,4 +519,159 @@ fn render_history(frame: &mut Frame, state: &AppState, selected: usize) {
         .highlight_symbol("\u{25b8} ");
 
     frame.render_stateful_widget(list, inner, &mut list_state);
+}
+
+fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize) {
+    let area = centered_rect(80, 70, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Response History (j/k  Enter:load  Esc:close) ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Get the history for the current request
+    let key = state.current_request.name.as_ref().map(|name| {
+        let coll = state.collections
+            .get(state.active_collection)
+            .map(|c| c.name.as_str())
+            .unwrap_or("_");
+        format!("{}/{}", coll, name)
+    });
+
+    let entries = key.as_ref().and_then(|k| state.response_histories.get(k));
+
+    if entries.is_none() || entries.is_some_and(|e| e.is_empty()) {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "  No response history for this request.",
+                Style::default().fg(Color::DarkGray),
+            ))),
+            inner,
+        );
+        return;
+    }
+    let entries = entries.unwrap();
+
+    // Split: left list (40%) | right preview (60%)
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(inner);
+
+    let list_area = chunks[0];
+    let preview_area = chunks[1];
+
+    // Left: entry list
+    let items: Vec<ListItem> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| {
+            let resp = &entry.response;
+            let status_color = match resp.status {
+                200..=299 => Color::Green,
+                300..=399 => Color::Yellow,
+                400..=499 => Color::Red,
+                500..=599 => Color::Magenta,
+                _ => Color::DarkGray,
+            };
+            let line = Line::from(vec![
+                Span::styled(
+                    format!("{:>3} ", resp.status),
+                    Style::default().fg(status_color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(resp.elapsed_display(), Style::default().fg(Color::DarkGray)),
+                Span::raw("  "),
+                Span::styled(
+                    entry.timestamp.format("%H:%M:%S").to_string(),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]);
+            let style = if i == selected {
+                Style::default().bg(Color::DarkGray).fg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(line).style(style)
+        })
+        .collect();
+
+    let mut list_state = ratatui::widgets::ListState::default();
+    list_state.select(Some(selected));
+    let list = List::new(items)
+        .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
+        .highlight_symbol("\u{25b8} ");
+    frame.render_stateful_widget(list, list_area, &mut list_state);
+
+    // Right: preview of selected response
+    if let Some(entry) = entries.get(selected) {
+        let resp = &entry.response;
+        let ct = resp.content_type.as_deref().unwrap_or("unknown");
+        let mut lines: Vec<Line> = vec![
+            Line::from(vec![
+                Span::styled(
+                    format!("{} {}", resp.status, resp.status_text),
+                    Style::default().fg(match resp.status {
+                        200..=299 => Color::Green,
+                        300..=399 => Color::Yellow,
+                        400..=499 => Color::Red,
+                        500..=599 => Color::Magenta,
+                        _ => Color::DarkGray,
+                    }).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" \u{2022} {}", ct),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(resp.elapsed_display(), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!(" \u{2022} {}", resp.size_display()),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]),
+            Line::from(Span::styled(
+                entry.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(Span::styled(
+                "\u{2500}".repeat(preview_area.width.saturating_sub(2) as usize),
+                Style::default().fg(Color::DarkGray),
+            )),
+        ];
+
+        // Response headers
+        for (name, value) in &resp.headers {
+            lines.push(Line::from(vec![
+                Span::styled(format!("{}: ", name), Style::default().fg(Color::Cyan)),
+                Span::styled(value.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
+
+        // Separator before body
+        lines.push(Line::from(Span::styled(
+            "\u{2500}".repeat(preview_area.width.saturating_sub(2) as usize),
+            Style::default().fg(Color::DarkGray),
+        )));
+
+        // Body preview
+        let body = resp.formatted_body();
+        let max_body_lines = preview_area.height.saturating_sub(lines.len() as u16 + 1) as usize;
+        for line in body.lines().take(max_body_lines) {
+            lines.push(Line::from(Span::raw(line.to_string())));
+        }
+        let remaining = body.lines().count().saturating_sub(max_body_lines);
+        if remaining > 0 {
+            lines.push(Line::from(Span::styled(
+                format!("  ... {} more lines", remaining),
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+
+        let preview = Paragraph::new(lines);
+        frame.render_widget(preview, preview_area);
+    }
 }

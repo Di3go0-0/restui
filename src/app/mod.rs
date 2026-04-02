@@ -2041,7 +2041,18 @@ impl App {
                         .map(|c| c.name.as_str())
                         .unwrap_or("_");
                     let key = format!("{}/{}", collection_name, name);
-                    self.cache_response(key, (*response).clone());
+                    self.cache_response(key.clone(), (*response).clone());
+
+                    // Store in per-request response history (max 5)
+                    let entry = crate::model::response::ResponseHistoryEntry {
+                        response: (*response).clone(),
+                        timestamp: chrono::Local::now(),
+                    };
+                    let history = self.state.response_histories.entry(key).or_insert_with(std::collections::VecDeque::new);
+                    history.push_front(entry);
+                    if history.len() > 5 {
+                        history.pop_back();
+                    }
                 }
 
                 self.state.current_response = Some(*response);
@@ -2189,6 +2200,7 @@ impl App {
                     Some(Overlay::MoveRequest { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::ThemeSelector { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::History { selected }) => { *selected = selected.saturating_sub(1); }
+                    Some(Overlay::ResponseHistory { selected }) => { *selected = selected.saturating_sub(1); }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
                         *selected = selected.saturating_sub(1);
                     }
@@ -2215,6 +2227,14 @@ impl App {
                     }
                     Some(Overlay::History { selected }) => {
                         let max = self.state.history.entries.len().saturating_sub(1);
+                        *selected = (*selected + 1).min(max);
+                    }
+                    Some(Overlay::ResponseHistory { selected }) => {
+                        let key = self.state.current_request.name.as_ref().map(|name| {
+                            let coll = self.state.collections.get(self.state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+                            format!("{}/{}", coll, name)
+                        });
+                        let max = key.and_then(|k| self.state.response_histories.get(&k).map(|h| h.len())).unwrap_or(0).saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
                     Some(Overlay::EnvironmentEditor { selected, cursor, .. }) if *cursor == 0 => {
@@ -2438,6 +2458,33 @@ impl App {
                             }
                         } else {
                             self.state.set_status("Invalid number");
+                        }
+                    }
+                    Some(Overlay::ResponseHistory { selected }) => {
+                        // Load selected historical response
+                        if let Some(ref name) = self.state.current_request.name {
+                            let collection_name = self.state.collections
+                                .get(self.state.active_collection)
+                                .map(|c| c.name.as_str())
+                                .unwrap_or("_");
+                            let key = format!("{}/{}", collection_name, name);
+                            if let Some(history) = self.state.response_histories.get(&key) {
+                                if let Some(entry) = history.get(selected) {
+                                    self.state.current_response = Some(entry.response.clone());
+                                    self.state.resp_vim.buffer.scroll = (0, 0);
+                                    // Re-infer type
+                                    if let Some(ref resp) = self.state.current_response {
+                                        if resp.body_bytes.is_some() {
+                                            self.state.response_type = Some(crate::model::response_type::JsonType::Buffer);
+                                        } else if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                                            self.state.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                                        } else {
+                                            self.state.response_type = None;
+                                        }
+                                    }
+                                    self.state.set_status(format!("Loaded response from {}", entry.timestamp.format("%H:%M:%S")));
+                                }
+                            }
                         }
                     }
                     _ => {}

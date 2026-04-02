@@ -1,4 +1,5 @@
 use std::time::Duration;
+use chrono::{DateTime, Local};
 
 #[derive(Debug, Clone)]
 pub struct Response {
@@ -58,6 +59,12 @@ impl Response {
             format!("{:.1}MB", self.size_bytes as f64 / (1024.0 * 1024.0))
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResponseHistoryEntry {
+    pub response: Response,
+    pub timestamp: DateTime<Local>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

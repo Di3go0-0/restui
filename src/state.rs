@@ -3,8 +3,11 @@ use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
+use std::collections::VecDeque;
+
 use crate::config::AppConfig;
 use crate::keybinding_config::KeybindingsConfig;
+use crate::model::response::ResponseHistoryEntry;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
@@ -192,6 +195,9 @@ pub enum Overlay {
         new_key: String,
         new_value: String,
         cursor: usize,
+    },
+    ResponseHistory {
+        selected: usize,
     },
 }
 
@@ -523,6 +529,9 @@ pub struct AppState {
     pub status_message: Option<(String, Instant)>,
     pub collection_items: Vec<String>,
 
+    // Response history per request (max 5 previous responses)
+    pub response_histories: HashMap<String, VecDeque<ResponseHistoryEntry>>,
+
     // Keybindings
     pub keybindings: KeybindingsConfig,
 }
@@ -607,6 +616,7 @@ impl AppState {
             should_quit: false,
             status_message: None,
             collection_items: Vec::new(),
+            response_histories: HashMap::new(),
             keybindings,
         }
     }
