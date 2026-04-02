@@ -2,6 +2,15 @@
 
 ## [0.3.3] - 2026-04-01
 
+### New Features
+- **Visual paste (`p` in visual mode)**: select text with `v` + motion, then press `p` to replace the selection with the yank buffer — works in URL, headers, body, and all editable fields
+- **System clipboard integration for `p`**: paste now reads from the system clipboard (with fallback to internal yank buffer), so you can copy a URL from your browser and paste it directly with `p`
+- **Binary response handling**: responses with binary content types (`image/*`, `audio/*`, `video/*`, etc.) are detected and displayed as an informative colored message instead of crashing
+- **Buffer type generation**: binary endpoints now generate a `Buffer` type in the Type tab, with descriptive TypeScript and C# code snippets showing how to consume the response
+
+### Bug Fixes
+- **Fix crash on binary responses**: `byte index is not a char boundary` panic when navigating response body with multi-byte or binary content
+
 ### Refactor
 - **VimInstance abstraction**: new `VimInstance` struct combines `VimBuffer` + `VimModeConfig`, replacing scattered buffer fields across the app
 - **Mode-aware vim contexts**: `VimModeConfig` enables per-panel mode restrictions (e.g., read-only panels disable insert mode)
