@@ -2051,14 +2051,13 @@ impl App {
                         request_fingerprint: fingerprint.clone(),
                     };
                     let history = self.state.response_histories.data.entry(key).or_insert_with(std::collections::VecDeque::new);
-                    // If the most recent entry has the same request fingerprint, replace it
-                    if history.front().is_some_and(|front| front.request_fingerprint == fingerprint) {
-                        history[0] = entry;
-                    } else {
-                        history.push_front(entry);
-                        if history.len() > 5 {
-                            history.pop_back();
-                        }
+                    // If any entry has the same request fingerprint, replace it and move to front
+                    if let Some(pos) = history.iter().position(|e| e.request_fingerprint == fingerprint) {
+                        history.remove(pos);
+                    }
+                    history.push_front(entry);
+                    if history.len() > 5 {
+                        history.pop_back();
                     }
                     self.state.response_histories.save(&crate::config::data_dir().join("response_history.json"));
                 }
