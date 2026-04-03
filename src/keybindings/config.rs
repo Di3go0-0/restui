@@ -35,9 +35,10 @@ impl KeyBind {
         let mut modifiers = event.modifiers;
         let code = event.code;
 
-        // Normalize: for uppercase letters, strip SHIFT flag
+        // Normalize: strip SHIFT for characters that already encode the shift
+        // (uppercase letters, shifted symbols like : ? ! @ # $ etc.)
         if let KeyCode::Char(c) = code {
-            if c.is_ascii_uppercase() {
+            if c.is_ascii_uppercase() || !c.is_ascii_lowercase() {
                 modifiers -= KeyModifiers::SHIFT;
             }
         }
