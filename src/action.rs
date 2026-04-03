@@ -1,3 +1,5 @@
+use crossterm::event::KeyEvent;
+
 use crate::model::response::Response;
 use crate::state::{Direction, Overlay, Panel};
 
@@ -216,6 +218,9 @@ pub enum Action {
 
     // Export
     ExportResponse,
+
+    // Body panel vim delegation
+    BodyVimInput(KeyEvent),
 
     // App
     Quit,

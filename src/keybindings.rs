@@ -35,6 +35,34 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         }
     }
 
+    // 2.5. Body panel: delegate to VimEditor for all vim operations
+    if state.active_panel == Panel::Body {
+        // Visual mode → all to VimEditor
+        if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
+            return Some(Action::BodyVimInput(key));
+        }
+
+        // Insert mode → check autocomplete first, then VimEditor
+        if state.mode == InputMode::Insert {
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('n') => return Some(Action::AutocompleteNext),
+                    KeyCode::Char('p') => return Some(Action::AutocompletePrev),
+                    KeyCode::Char('y') => return Some(Action::AutocompleteAccept),
+                    _ => {}
+                }
+            }
+            return Some(Action::BodyVimInput(key));
+        }
+
+        // Normal mode → check app keys, then VimEditor
+        // (skip pending key handling — VimEditor handles operator+motion internally)
+        if let Some(action) = map_body_app_key(&k, kb) {
+            return Some(action);
+        }
+        return Some(Action::BodyVimInput(key));
+    }
+
     // 3. Visual mode (both Visual and VisualBlock)
     if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
         return map_visual_mode_key(&k, kb);
@@ -181,7 +209,7 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
     match state.active_panel {
         Panel::Collections => map_collections_key(k, kb),
         Panel::Request => map_request_normal_key(k, state, kb),
-        Panel::Body => map_body_normal_key(k, kb),
+        Panel::Body => map_body_app_key(k, kb),
         Panel::Response => map_response_key(k, state, kb),
     }
 }
@@ -289,45 +317,12 @@ fn map_request_field_edit_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Act
     }
 }
 
-// ── Body ───────────────────────────────────────────────────────────────────
+// ── Body (app-specific keys only; all vim ops go through BodyVimInput) ───
 
-fn map_body_normal_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
+fn map_body_app_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
     match lookup(&kb.body, k)? {
         "next_tab" => Some(Action::BodyNextTab),
         "prev_tab" => Some(Action::BodyPrevTab),
-        "cursor_left" => Some(Action::InlineCursorLeft),
-        "cursor_right" => Some(Action::InlineCursorRight),
-        "scroll_down" => Some(Action::ScrollDown),
-        "scroll_up" => Some(Action::ScrollUp),
-        "scroll_top" => Some(Action::ScrollTop),
-        "scroll_bottom" => Some(Action::ScrollBottom),
-        "word_forward" => Some(Action::BodyWordForward),
-        "word_backward" => Some(Action::BodyWordBackward),
-        "word_end" => Some(Action::BodyWordEnd),
-        "line_home" => Some(Action::BodyLineHome),
-        "line_end" => Some(Action::BodyLineEnd),
-        "enter_insert" => Some(Action::EnterInsertMode),
-        "enter_insert_start" => Some(Action::EnterInsertModeStart),
-        "enter_append" => Some(Action::EnterAppendMode),
-        "enter_append_end" => Some(Action::EnterAppendModeEnd),
-        "open_line_below" => Some(Action::OpenLineBelow),
-        "open_line_above" => Some(Action::OpenLineAbove),
-        "enter_visual" => Some(Action::EnterVisualMode),
-        "delete_char" => Some(Action::DeleteCharUnderCursor),
-        "substitute" => Some(Action::Substitute),
-        "change_line" => Some(Action::ChangeLine),
-        "change_to_end" => Some(Action::ChangeToEnd),
-        "delete_to_end_line" => Some(Action::DeleteToEnd),
-        "change_pending" => Some(Action::PendingKey('c')),
-        "replace_pending" => Some(Action::PendingKey('r')),
-        "undo" => Some(Action::Undo),
-        "paste" => Some(Action::Paste),
-        "delete_pending" => Some(Action::PendingKey('d')),
-        "yank_pending" => Some(Action::PendingKey('y')),
-        "find_forward" => Some(Action::PendingKey('f')),
-        "find_backward" => Some(Action::PendingKey('F')),
-        "find_before" => Some(Action::PendingKey('t')),
-        "find_after" => Some(Action::PendingKey('T')),
         "start_search" => Some(Action::StartSearch),
         "search_next" => Some(Action::SearchNext),
         "search_prev" => Some(Action::SearchPrev),
@@ -474,12 +469,10 @@ fn map_insert_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         KeyCode::Left => Some(Action::InlineCursorLeft),
         KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Up => match state.active_panel {
-            Panel::Body => Some(Action::InlineCursorUp),
             Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorUp),
             _ => None,
         },
         KeyCode::Down => match state.active_panel {
-            Panel::Body => Some(Action::InlineCursorDown),
             Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorDown),
             _ => None,
         },
@@ -487,7 +480,6 @@ fn map_insert_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         KeyCode::End => Some(Action::InlineCursorEnd),
         KeyCode::Tab => Some(Action::InlineTab),
         KeyCode::Enter => match state.active_panel {
-            Panel::Body => Some(Action::InlineNewline),
             Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineNewline),
             Panel::Request => match state.request_focus {
                 RequestFocus::Header(_) if state.header_edit_field == 0 => Some(Action::InlineTab),

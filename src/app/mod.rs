@@ -82,6 +82,8 @@ impl App {
         if let Some(collection) = self.state.collections.first() {
             if let Some(req) = collection.requests.first() {
                 self.state.current_request = req.clone();
+                let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                self.state.body_vim.set_content(&body);
             }
         }
     }
@@ -889,8 +891,7 @@ impl App {
                 self.state.current_request = Request::default();
                 self.state.current_response = None;
                 self.state.last_error = None;
-                self.state.body_vim.cursor_row = 0;
-                self.state.body_vim.cursor_col = 0;
+                self.state.body_vim.set_content("");
                 self.state.request_focus = RequestFocus::Url;
                 self.state.set_status("New empty request");
             }
@@ -930,8 +931,7 @@ impl App {
                     self.state.current_request = new_req;
                     self.state.current_response = None;
                     self.state.last_error = None;
-                    self.state.body_vim.cursor_row = 0;
-                    self.state.body_vim.cursor_col = 0;
+                    self.state.body_vim.set_content("");
                     self.state.request_focus = RequestFocus::Url;
 
                     // Expand and select the new request
@@ -2010,19 +2010,40 @@ impl App {
             }
             Action::BodyNextTab => {
                 self.state.body_type = self.state.body_type.next();
-                self.state.body_vim.cursor_row = 0;
-                self.state.body_vim.cursor_col = 0;
-                self.state.body_vim.undo_stack.clear();
-                self.state.body_vim.redo_stack.clear();
+                let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                self.state.body_vim.set_content(&body);
                 self.state.validate_body();
             }
             Action::BodyPrevTab => {
                 self.state.body_type = self.state.body_type.prev();
-                self.state.body_vim.cursor_row = 0;
-                self.state.body_vim.cursor_col = 0;
-                self.state.body_vim.undo_stack.clear();
-                self.state.body_vim.redo_stack.clear();
+                let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                self.state.body_vim.set_content(&body);
                 self.state.validate_body();
+            }
+
+            // === Body Vim Delegation ===
+            Action::BodyVimInput(key) => {
+                if self.state.active_panel == Panel::Body {
+                    self.sync_body_to_vim();
+                    // Sync app mode into body_vim before handling key
+                    self.state.body_vim.mode = match self.state.mode {
+                        InputMode::Normal => VimMode::Normal,
+                        InputMode::Insert => VimMode::Insert,
+                        InputMode::Visual => VimMode::Visual(VisualKind::Char),
+                        InputMode::VisualBlock => VimMode::Visual(VisualKind::Block),
+                    };
+                    let action = self.state.body_vim.handle_key(key);
+                    self.sync_vim_to_body();
+                    self.sync_mode_from_vim();
+                    self.state.validate_body();
+
+                    match action {
+                        vimltui::EditorAction::Save => {
+                            self.state.set_status("Body saved");
+                        }
+                        _ => {}
+                    }
+                }
             }
 
             // === Response Tabs ===
@@ -2454,6 +2475,8 @@ impl App {
                                         } else {
                                             self.state.current_request = Request::default();
                                         }
+                                        let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                                        self.state.body_vim.set_content(&body);
                                         self.state.current_response = None;
                                         self.state.set_status(format!("Deleted collection '{}'", coll_name));
                                     }
@@ -3187,6 +3210,34 @@ impl App {
         }
     }
 
+    /// Sync body text from the request into body_vim.lines (without resetting cursor/undo).
+    fn sync_body_to_vim(&mut self) {
+        let body = self.state.current_request.get_body(self.state.body_type).to_string();
+        let lines: Vec<String> = if body.is_empty() {
+            vec![String::new()]
+        } else {
+            body.lines().map(String::from).collect()
+        };
+        self.state.body_vim.lines = lines;
+    }
+
+    /// Sync body_vim content back to the request body.
+    fn sync_vim_to_body(&mut self) {
+        let new_body = self.state.body_vim.content();
+        let value = if new_body.is_empty() { None } else { Some(new_body) };
+        self.state.current_request.set_body(self.state.body_type, value);
+    }
+
+    /// Sync app input mode from body_vim's mode.
+    fn sync_mode_from_vim(&mut self) {
+        self.state.mode = match &self.state.body_vim.mode {
+            VimMode::Normal => InputMode::Normal,
+            VimMode::Insert => InputMode::Insert,
+            VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
+            VimMode::Visual(_) => InputMode::Visual,
+        };
+    }
+
     /// Save a snapshot of the current request field for undo.
     fn push_request_undo(&mut self) {
         let focus = self.state.request_focus;
@@ -3351,6 +3402,8 @@ impl App {
                 self.state.current_request = req.clone();
                 self.state.current_response = None;
                 self.state.last_error = None;
+                let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                self.state.body_vim.set_content(&body);
             }
             self.state.set_status(format!("Collection: {}", coll.name));
         }
@@ -4700,6 +4753,8 @@ impl App {
                 self.state.current_response = None;
                 self.state.last_error = None;
                 self.state.active_collection = ci;
+                let body = self.state.current_request.get_body(self.state.body_type).to_string();
+                self.state.body_vim.set_content(&body);
             }
         }
     }
