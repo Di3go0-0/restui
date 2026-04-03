@@ -227,7 +227,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 is_normal_focused && line_idx == cursor_row, hscroll)
         } else {
             // Highlight current line background in normal mode + block cursor
-            if is_normal_focused && line_idx == cursor_row {
+            // (skip block cursor when pending_replace — terminal cursor will be underline)
+            if is_normal_focused && line_idx == cursor_row && !state.body_vim.pending_replace {
                 render_normal_cursor_line(line_text_ref, adj_cursor_col, t)
             } else {
                 colorize_json_line(line_text_ref, t)
@@ -263,8 +264,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         render_scrollbar(frame, scrollbar_area, scroll_y, total_lines, visible_height, t.text_dim);
     }
 
-    // Cursor position
-    if is_insert || is_visual || is_visual_block {
+    // Cursor position (terminal cursor for insert, visual, pending_replace)
+    let needs_terminal_cursor = is_insert || is_visual || is_visual_block
+        || (is_focused && state.body_vim.pending_replace);
+    if needs_terminal_cursor {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < inner.height {
             let cursor_x = text_area_x + state.body_vim.cursor_col.saturating_sub(hscroll) as u16;
