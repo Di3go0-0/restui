@@ -80,8 +80,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
 
-    // Line number gutter width
-    let body_lines: Vec<&str> = if body_text.is_empty() {
+    // Use preview lines (live substitution) if available, otherwise body text
+    let preview = &state.body_vim.preview_lines;
+    let body_lines: Vec<&str> = if let Some(plines) = preview {
+        plines.iter().map(|s| s.as_str()).collect()
+    } else if body_text.is_empty() {
         vec![""]
     } else {
         let mut lines: Vec<&str> = body_text.lines().collect();
@@ -160,11 +163,21 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         // Adjust cursor col and visual anchors for hscroll
         let adj_cursor_col = state.body_vim.cursor_col.saturating_sub(hscroll);
 
-        // Prepare search info
-        let search_query_lower = state.search.query.to_lowercase();
-        let has_body_search = !search_query_lower.is_empty()
-            && !state.search.matches.is_empty()
-            && state.active_panel == Panel::Body;
+        // Prepare search info (restui search OR vim search pattern from :s preview)
+        let vim_search = &state.body_vim.search.pattern;
+        let search_query_lower = if !vim_search.is_empty() {
+            vim_search.to_lowercase()
+        } else {
+            state.search.query.to_lowercase()
+        };
+        let has_body_search = if !vim_search.is_empty() {
+            // Vim :s preview — always highlight when pattern exists
+            state.active_panel == Panel::Body
+        } else {
+            !search_query_lower.is_empty()
+                && !state.search.matches.is_empty()
+                && state.active_panel == Panel::Body
+        };
 
         // Check for yank highlight
         let yank_hl = &state.body_vim.yank_highlight;
