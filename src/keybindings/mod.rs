@@ -78,21 +78,22 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             && state.response_view.type_sub_focus == TypeSubFocus::Editor;
 
         if is_type_editor {
+            // Type editor: Ctrl+J always goes to response preview below,
+            // Ctrl+K is blocked (nothing above the type editor within this panel)
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('j') => return Some(Action::TypeSubFocusDown),
+                    KeyCode::Char('k') => return None, // nothing above type editor
+                    KeyCode::Char('h') => return Some(Action::NavigatePanel(Direction::Left)),
+                    KeyCode::Char('l') => return Some(Action::NavigatePanel(Direction::Right)),
+                    _ => {}
+                }
+            }
             // Type editor: full vim editing via VimEditor
             if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
                 return Some(Action::TypeVimInput(key));
             }
             if state.mode == InputMode::Insert {
-                // Panel navigation works even in insert mode
-                if key.modifiers.contains(KeyModifiers::CONTROL) {
-                    match key.code {
-                        KeyCode::Char('h') => return Some(Action::NavigatePanel(Direction::Left)),
-                        KeyCode::Char('j') => return Some(Action::NavigatePanel(Direction::Down)),
-                        KeyCode::Char('k') => return Some(Action::NavigatePanel(Direction::Up)),
-                        KeyCode::Char('l') => return Some(Action::NavigatePanel(Direction::Right)),
-                        _ => {}
-                    }
-                }
                 return Some(Action::TypeVimInput(key));
             }
             // Normal mode: check app keys + global shortcuts first
@@ -103,6 +104,19 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 return Some(action);
             }
             return Some(Action::TypeVimInput(key));
+        }
+
+        // Response body / type preview with Type tab active:
+        // Ctrl+K goes up to type editor, Ctrl+J blocked (nothing below)
+        if state.response_view.tab == ResponseTab::Type
+            && state.response_view.type_sub_focus == TypeSubFocus::Preview
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            match key.code {
+                KeyCode::Char('k') => return Some(Action::TypeSubFocusUp),
+                KeyCode::Char('j') => return None, // nothing below response preview
+                _ => {}
+            }
         }
 
         // Response body / type preview: read-only vim (scroll, visual, search)
@@ -172,8 +186,19 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
         "toggle_insecure" => Some(Action::ToggleInsecureMode),
         "save_request" => Some(Action::SaveRequest),
         "navigate_left" => Some(Action::NavigatePanel(Direction::Left)),
-        "navigate_down" => Some(Action::NavigatePanel(Direction::Down)),
-        "navigate_up" => Some(Action::NavigatePanel(Direction::Up)),
+        "navigate_down" => {
+            // When Type tab is active, let the Response panel handler manage J/K sub-focus
+            if state.active_panel == Panel::Response && state.response_view.tab == ResponseTab::Type {
+                return None;
+            }
+            Some(Action::NavigatePanel(Direction::Down))
+        }
+        "navigate_up" => {
+            if state.active_panel == Panel::Response && state.response_view.tab == ResponseTab::Type {
+                return None;
+            }
+            Some(Action::NavigatePanel(Direction::Up))
+        }
         "navigate_right" => Some(Action::NavigatePanel(Direction::Right)),
         _ => None,
     }
