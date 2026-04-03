@@ -42,13 +42,18 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             return Some(Action::BodyVimInput(key));
         }
 
-        // Insert mode → check autocomplete first, then VimEditor
+        // Insert mode → check app keys first, then VimEditor
         if state.mode == InputMode::Insert {
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match key.code {
                     KeyCode::Char('n') => return Some(Action::AutocompleteNext),
                     KeyCode::Char('p') => return Some(Action::AutocompletePrev),
                     KeyCode::Char('y') => return Some(Action::AutocompleteAccept),
+                    // Panel navigation works even in insert mode
+                    KeyCode::Char('h') => return Some(Action::NavigatePanel(Direction::Left)),
+                    KeyCode::Char('j') => return Some(Action::NavigatePanel(Direction::Down)),
+                    KeyCode::Char('k') => return Some(Action::NavigatePanel(Direction::Up)),
+                    KeyCode::Char('l') => return Some(Action::NavigatePanel(Direction::Right)),
                     _ => {}
                 }
             }
@@ -61,6 +66,47 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             return Some(action);
         }
         return Some(Action::BodyVimInput(key));
+    }
+
+    // 2.6. Response panel: delegate to VimEditor
+    if state.active_panel == Panel::Response {
+        let is_type_editor = state.response_tab == ResponseTab::Type
+            && state.type_sub_focus == TypeSubFocus::Editor;
+
+        if is_type_editor {
+            // Type editor: full vim editing via VimEditor
+            if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
+                return Some(Action::TypeVimInput(key));
+            }
+            if state.mode == InputMode::Insert {
+                // Panel navigation works even in insert mode
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    match key.code {
+                        KeyCode::Char('h') => return Some(Action::NavigatePanel(Direction::Left)),
+                        KeyCode::Char('j') => return Some(Action::NavigatePanel(Direction::Down)),
+                        KeyCode::Char('k') => return Some(Action::NavigatePanel(Direction::Up)),
+                        KeyCode::Char('l') => return Some(Action::NavigatePanel(Direction::Right)),
+                        _ => {}
+                    }
+                }
+                return Some(Action::TypeVimInput(key));
+            }
+            // Normal mode: check app keys first
+            if let Some(action) = map_response_app_key(&k, state, kb) {
+                return Some(action);
+            }
+            return Some(Action::TypeVimInput(key));
+        }
+
+        // Response body / type preview: read-only vim (scroll, visual, search)
+        if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
+            return Some(Action::RespVimInput(key));
+        }
+        // Normal mode: check app keys first
+        if let Some(action) = map_response_app_key(&k, state, kb) {
+            return Some(action);
+        }
+        return Some(Action::RespVimInput(key));
     }
 
     // 3. Visual mode (both Visual and VisualBlock)
@@ -330,7 +376,30 @@ fn map_body_app_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
     }
 }
 
-// ── Response ───────────────────────────────────────────────────────────────
+// ── Response (app-specific keys only; vim ops go through RespVimInput/TypeVimInput) ──
+
+fn map_response_app_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    let ctx = response_context(state, kb);
+    match lookup(ctx, k)? {
+        "next_tab" => Some(Action::ResponseNextTab),
+        "prev_tab" => Some(Action::ResponsePrevTab),
+        "copy_response" => Some(Action::CopyResponseBody),
+        "copy_as_curl" => Some(Action::CopyAsCurl),
+        "start_search" => Some(Action::StartSearch),
+        "search_next" => Some(Action::SearchNext),
+        "search_prev" => Some(Action::SearchPrev),
+        "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
+        "toggle_headers" => Some(Action::ToggleResponseHeaders),
+        "response_history" => Some(Action::OpenOverlay(Overlay::ResponseHistory { selected: 0 })),
+        "response_diff" => Some(Action::OpenOverlay(Overlay::ResponseDiffSelect { selected: 0 })),
+        "type_lang_next" if state.response_tab == ResponseTab::Type => Some(Action::TypeLangNext),
+        "type_lang_prev" if state.response_tab == ResponseTab::Type => Some(Action::TypeLangPrev),
+        "regenerate_type" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
+        "export_response" => Some(Action::ExportResponse),
+        "toggle_wrap" => Some(Action::ToggleWrap),
+        _ => None,
+    }
+}
 
 fn map_response_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
     // Tab switching is shared across all response sub-tabs

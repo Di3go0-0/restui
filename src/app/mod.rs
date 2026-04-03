@@ -2046,6 +2046,49 @@ impl App {
                 }
             }
 
+            Action::RespVimInput(key) => {
+                if self.state.active_panel == Panel::Response {
+                    // Sync response body into resp_vim
+                    let resp_text = self.get_response_body_text();
+                    self.state.resp_vim.lines = if resp_text.is_empty() {
+                        vec![String::new()]
+                    } else {
+                        resp_text.lines().map(String::from).collect()
+                    };
+                    self.state.resp_vim.mode = match self.state.mode {
+                        InputMode::Normal => VimMode::Normal,
+                        InputMode::Insert => VimMode::Insert,
+                        InputMode::Visual => VimMode::Visual(VisualKind::Char),
+                        InputMode::VisualBlock => VimMode::Visual(VisualKind::Block),
+                    };
+                    let _action = self.state.resp_vim.handle_key(key);
+                    // Read-only: no text sync back
+                    self.sync_mode_from_vim_resp();
+                }
+            }
+
+            Action::TypeVimInput(key) => {
+                if self.state.active_panel == Panel::Response {
+                    // Sync type text into type_vim
+                    let type_text = self.state.response_type_text.clone();
+                    self.state.type_vim.lines = if type_text.is_empty() {
+                        vec![String::new()]
+                    } else {
+                        type_text.lines().map(String::from).collect()
+                    };
+                    self.state.type_vim.mode = match self.state.mode {
+                        InputMode::Normal => VimMode::Normal,
+                        InputMode::Insert => VimMode::Insert,
+                        InputMode::Visual => VimMode::Visual(VisualKind::Char),
+                        InputMode::VisualBlock => VimMode::Visual(VisualKind::Block),
+                    };
+                    let _action = self.state.type_vim.handle_key(key);
+                    // Sync text back
+                    self.state.response_type_text = self.state.type_vim.content();
+                    self.sync_mode_from_vim_type();
+                }
+            }
+
             // === Response Tabs ===
             Action::ResponseNextTab => {
                 self.state.response_tab = self.state.response_tab.next();
@@ -3231,6 +3274,24 @@ impl App {
     /// Sync app input mode from body_vim's mode.
     fn sync_mode_from_vim(&mut self) {
         self.state.mode = match &self.state.body_vim.mode {
+            VimMode::Normal => InputMode::Normal,
+            VimMode::Insert => InputMode::Insert,
+            VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
+            VimMode::Visual(_) => InputMode::Visual,
+        };
+    }
+
+    fn sync_mode_from_vim_resp(&mut self) {
+        self.state.mode = match &self.state.resp_vim.mode {
+            VimMode::Normal => InputMode::Normal,
+            VimMode::Insert => InputMode::Insert,
+            VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
+            VimMode::Visual(_) => InputMode::Visual,
+        };
+    }
+
+    fn sync_mode_from_vim_type(&mut self) {
+        self.state.mode = match &self.state.type_vim.mode {
             VimMode::Normal => InputMode::Normal,
             VimMode::Insert => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,

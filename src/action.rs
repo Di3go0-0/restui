@@ -219,8 +219,10 @@ pub enum Action {
     // Export
     ExportResponse,
 
-    // Body panel vim delegation
+    // Vim delegation — keys handled by VimEditor.handle_key()
     BodyVimInput(KeyEvent),
+    RespVimInput(KeyEvent),
+    TypeVimInput(KeyEvent),
 
     // App
     Quit,
