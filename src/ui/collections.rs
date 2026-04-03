@@ -4,7 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 
-use crate::state::{AppState, Panel};
+use crate::core::state::{AppState, Panel};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Collections;

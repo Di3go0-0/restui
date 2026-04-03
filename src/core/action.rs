@@ -1,7 +1,7 @@
 use crossterm::event::KeyEvent;
 
 use crate::model::response::Response;
-use crate::state::{Direction, Overlay, Panel};
+use crate::core::state::{Direction, Overlay, Panel};
 
 #[derive(Debug, Clone)]
 pub enum Action {

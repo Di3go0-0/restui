@@ -6,8 +6,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
-use crate::command::{Command, all_commands};
-use crate::state::AppState;
+use crate::core::command::{Command, all_commands};
+use crate::core::state::AppState;
 
 /// Returns the filtered + scored commands for the current input.
 pub fn filtered_commands(input: &str) -> Vec<Command> {

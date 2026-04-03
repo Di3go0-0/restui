@@ -1,4 +1,4 @@
-use crate::state::{Panel, ResponseTab, TypeSubFocus};
+use crate::core::state::{Panel, ResponseTab, TypeSubFocus};
 use vimltui::SCROLLOFF;
 
 use super::App;
@@ -226,7 +226,7 @@ impl App {
         if self.state.response_view.type_vim.cursor_row > 0 {
             self.state.response_view.type_vim.cursor_row -= 1;
             let line_len = self.state.response_view.type_vim.lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
-            let max = if self.state.mode == crate::state::InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            let max = if self.state.mode == crate::core::state::InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
             self.state.response_view.type_vim.cursor_col = self.state.response_view.type_vim.cursor_col.min(max);
         }
         self.state.response_view.type_vim.ensure_cursor_visible();
@@ -237,7 +237,7 @@ impl App {
         if self.state.response_view.type_vim.cursor_row + 1 < line_count {
             self.state.response_view.type_vim.cursor_row += 1;
             let line_len = self.state.response_view.type_vim.lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
-            let max = if self.state.mode == crate::state::InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
+            let max = if self.state.mode == crate::core::state::InputMode::Insert { line_len } else { line_len.saturating_sub(1) };
             self.state.response_view.type_vim.cursor_col = self.state.response_view.type_vim.cursor_col.min(max);
         }
         self.state.response_view.type_vim.ensure_cursor_visible();

@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 
-use crate::state::{AppState, Overlay};
+use crate::core::state::{AppState, Overlay};
 
 pub fn render(frame: &mut Frame, state: &AppState, overlay: &Overlay) {
     match overlay {
@@ -103,7 +103,7 @@ fn render_header_autocomplete(
     // Position near the request panel header being edited
     let right_x = (full.width as u32 * 20 / 100) as u16; // collections panel = 20%
     let header_row = match state.request_edit.focus {
-        crate::state::RequestFocus::Header(i) => 3 + i as u16, // border + URL + tab bar + header index
+        crate::core::state::RequestFocus::Header(i) => 3 + i as u16, // border + URL + tab bar + header index
         _ => 3,
     };
     let popup_width = 50u16.min(full.width.saturating_sub(right_x + 2));
@@ -316,7 +316,7 @@ fn render_cache_ttl(frame: &mut Frame, state: &AppState, input: &str) {
 }
 
 fn render_theme_selector(frame: &mut Frame, selected: usize) {
-    use crate::theme::THEME_NAMES;
+    use crate::ui::theme::THEME_NAMES;
 
     let area = centered_rect(40, 30, frame.area());
     frame.render_widget(Clear, area);

@@ -1,8 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::action::Action;
-use crate::keybinding_config::{KeyBind, KeybindingsConfig};
-use crate::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, PENDING_KEY_TIMEOUT};
+use crate::core::action::Action;
+pub mod config;
+
+use self::config::{KeyBind, KeybindingsConfig};
+use crate::core::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, PENDING_KEY_TIMEOUT};
 
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     let kb = &state.keybindings;

@@ -1,4 +1,4 @@
-use crate::state::{InputMode, Panel, ResponseTab};
+use crate::core::state::{InputMode, Panel, ResponseTab};
 use vimltui::{VimMode, VisualKind};
 
 use super::App;
@@ -7,12 +7,12 @@ impl App {
     /// Save current active type text/buf to the storage for the current lang.
     pub(super) fn swap_type_lang_out(&mut self) {
         match self.state.response_view.type_lang {
-            crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
-            crate::state::TypeLang::TypeScript => {
+            crate::core::state::TypeLang::Inferred => {} // response_type_text IS the active text
+            crate::core::state::TypeLang::TypeScript => {
                 std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_ts_text);
                 std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_ts_vim);
             }
-            crate::state::TypeLang::CSharp => {
+            crate::core::state::TypeLang::CSharp => {
                 std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_csharp_text);
                 std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_csharp_vim);
             }
@@ -22,12 +22,12 @@ impl App {
     /// Load the type text/buf for the new lang into the active slots.
     pub(super) fn swap_type_lang_in(&mut self) {
         match self.state.response_view.type_lang {
-            crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
-            crate::state::TypeLang::TypeScript => {
+            crate::core::state::TypeLang::Inferred => {} // response_type_text IS the active text
+            crate::core::state::TypeLang::TypeScript => {
                 std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_ts_text);
                 std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_ts_vim);
             }
-            crate::state::TypeLang::CSharp => {
+            crate::core::state::TypeLang::CSharp => {
                 std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_csharp_text);
                 std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_csharp_vim);
             }
@@ -129,7 +129,7 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 self.state.response_view.type_vim.find_char_forward(target, before);
             }
             Panel::Response => {
@@ -183,7 +183,7 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 self.state.response_view.type_vim.find_char_backward(target, after);
             }
             Panel::Response => {

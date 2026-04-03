@@ -1,4 +1,4 @@
-use crate::state::{ChainAutocomplete, Panel};
+use crate::core::state::{ChainAutocomplete, Panel};
 
 use super::App;
 
@@ -67,7 +67,7 @@ impl App {
                         items,
                         selected: 0,
                         anchor_panel: panel,
-                        kind: crate::state::AutocompleteKind::Env,
+                        kind: crate::core::state::AutocompleteKind::Env,
                     });
                     return;
                 }
@@ -131,7 +131,7 @@ impl App {
                 items,
                 selected: 0,
                 anchor_panel: panel,
-                kind: crate::state::AutocompleteKind::Chain,
+                kind: crate::core::state::AutocompleteKind::Chain,
             });
         } else {
             // Has path — suggest fields from type
@@ -157,7 +157,7 @@ impl App {
                     items: vec![("(no type \u{2014} execute request first)".to_string(), String::new())],
                     selected: 0,
                     anchor_panel: panel,
-                    kind: crate::state::AutocompleteKind::Chain,
+                    kind: crate::core::state::AutocompleteKind::Chain,
                 });
                 return;
             };
@@ -175,7 +175,7 @@ impl App {
                         items: vec![("(field not found)".to_string(), String::new())],
                         selected: 0,
                         anchor_panel: panel,
-                        kind: crate::state::AutocompleteKind::Chain,
+                        kind: crate::core::state::AutocompleteKind::Chain,
                     });
                     return;
                 }
@@ -230,7 +230,7 @@ impl App {
                 items,
                 selected: 0,
                 anchor_panel: panel,
-                kind: crate::state::AutocompleteKind::Chain,
+                kind: crate::core::state::AutocompleteKind::Chain,
             });
         }
     }

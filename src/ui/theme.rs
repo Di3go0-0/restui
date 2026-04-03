@@ -131,14 +131,14 @@ impl Theme {
         }
     }
 
-    pub fn border_for_mode(&self, focused: bool, mode: crate::state::InputMode) -> Color {
+    pub fn border_for_mode(&self, focused: bool, mode: crate::core::state::InputMode) -> Color {
         if !focused {
             return self.border_unfocused;
         }
         match mode {
-            crate::state::InputMode::Insert => self.border_insert,
-            crate::state::InputMode::Visual | crate::state::InputMode::VisualBlock => self.border_visual,
-            crate::state::InputMode::Normal => self.border_focused,
+            crate::core::state::InputMode::Insert => self.border_insert,
+            crate::core::state::InputMode::Visual | crate::core::state::InputMode::VisualBlock => self.border_visual,
+            crate::core::state::InputMode::Normal => self.border_focused,
         }
     }
 
@@ -317,7 +317,7 @@ fn theme_path(name: &str) -> PathBuf {
     if p.exists() { return p; }
 
     // 2. User config dir (~/.config/restui/themes/)
-    let p = crate::config::config_dir().join(&filename);
+    let p = crate::core::config::config_dir().join(&filename);
     if p.exists() { return p; }
 
     // 3. Next to the executable

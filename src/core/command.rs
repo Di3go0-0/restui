@@ -1,5 +1,5 @@
-use crate::action::Action;
-use crate::state::Overlay;
+use crate::core::action::Action;
+use crate::core::state::Overlay;
 
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -129,25 +129,25 @@ pub fn all_commands() -> Vec<Command> {
             name: "Focus Collections",
             description: "Switch to collections panel",
             category: "Navigation",
-            action: Action::FocusPanel(crate::state::Panel::Collections),
+            action: Action::FocusPanel(crate::core::state::Panel::Collections),
         },
         Command {
             name: "Focus Request",
             description: "Switch to request panel",
             category: "Navigation",
-            action: Action::FocusPanel(crate::state::Panel::Request),
+            action: Action::FocusPanel(crate::core::state::Panel::Request),
         },
         Command {
             name: "Focus Body",
             description: "Switch to body panel",
             category: "Navigation",
-            action: Action::FocusPanel(crate::state::Panel::Body),
+            action: Action::FocusPanel(crate::core::state::Panel::Body),
         },
         Command {
             name: "Focus Response",
             description: "Switch to response panel",
             category: "Navigation",
-            action: Action::FocusPanel(crate::state::Panel::Response),
+            action: Action::FocusPanel(crate::core::state::Panel::Response),
         },
 
         // Chain Cache TTL

@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 
 use ratatui::widgets::ListState;
 
-use crate::config::AppConfig;
-use crate::keybinding_config::KeybindingsConfig;
+use crate::core::config::AppConfig;
+use crate::keybindings::config::KeybindingsConfig;
 use crate::model::response::ResponseHistories;
 use crate::model::collection::Collection;
 use crate::model::environment::EnvironmentStore;
@@ -574,7 +574,7 @@ pub struct AppState {
     pub env_selector_state: ListState,
 
     // Theme
-    pub theme: crate::theme::Theme,
+    pub theme: crate::ui::theme::Theme,
 
     // Config
     pub config: AppConfig,
@@ -622,7 +622,7 @@ impl AppState {
             last_middle_panel: Panel::Request,
             collections: Vec::new(),
             environments: EnvironmentStore::default(),
-            history: History::load(&crate::config::data_dir().join("history.json")),
+            history: History::load(&crate::core::config::data_dir().join("history.json")),
             current_request: Request::default(),
             current_response: None,
             last_error: None,
@@ -646,7 +646,7 @@ impl AppState {
             command_palette: CommandPaletteState::default(),
             overlay: None,
             env_selector_state: ListState::default(),
-            theme: crate::theme::Theme::default(),
+            theme: crate::ui::theme::Theme::default(),
             config,
             wrap_enabled: false,
             search: SearchState::default(),
@@ -655,7 +655,7 @@ impl AppState {
             last_response_info: None,
             should_quit: false,
             status_message: None,
-            response_histories: ResponseHistories::load(&crate::config::data_dir().join("response_history.json")),
+            response_histories: ResponseHistories::load(&crate::core::config::data_dir().join("response_history.json")),
             viewing_history: None,
             viewing_diff: None,
             keybindings,

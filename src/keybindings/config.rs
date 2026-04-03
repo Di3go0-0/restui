@@ -627,7 +627,7 @@ pub fn build_config(user: Option<KeybindingsToml>) -> KeybindingsConfig {
 // ── Load from file ─────────────────────────────────────────────────────────
 
 pub fn load_keybindings_toml() -> Result<Option<KeybindingsToml>, String> {
-    let path = crate::config::config_dir().join("keybindings.toml");
+    let path = crate::core::config::config_dir().join("keybindings.toml");
     if !path.exists() {
         return Ok(None);
     }

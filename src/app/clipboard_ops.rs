@@ -1,9 +1,9 @@
 use anyhow::Result;
 
-use crate::action::Action;
-use crate::http_client;
-use crate::state::{InputMode, Panel, ResponseTab};
-use crate::vim_buffer::row_col_to_offset as vim_row_col_to_offset;
+use crate::core::action::Action;
+use crate::core::http_client;
+use crate::core::state::{InputMode, Panel, ResponseTab};
+use super::vim_buffer::row_col_to_offset as vim_row_col_to_offset;
 use vimltui::Register;
 
 use super::inline_edit::{is_word_char, is_punct_char, row_col_to_offset};
@@ -17,7 +17,7 @@ impl App {
                 let text = match self.state.active_panel {
                     Panel::Body if is_block => Some(self.get_block_selection()),
                     Panel::Body => Some(self.get_visual_selection()),
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         Some(self.state.response_view.type_vim.selected_text().unwrap_or_default())
                     }
                     Panel::Response if is_block => Some(self.get_response_block_selection()),
@@ -27,7 +27,7 @@ impl App {
                 };
                 if let Some(text) = text {
                     self.state.yank_buffer = text.clone();
-                    match crate::clipboard::copy_to_clipboard(&text) {
+                    match super::clipboard::copy_to_clipboard(&text) {
                         Ok(()) => self.state.set_status("Yanked"),
                         Err(e) => self.state.set_status(e),
                     }
@@ -48,10 +48,10 @@ impl App {
                         }
                         self.state.mode = InputMode::Normal;
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         let text = self.state.response_view.type_vim.selected_text().unwrap_or_default();
                         self.state.yank_buffer = text;
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.state.response_view.type_vim.visual_delete();
                         self.sync_type_vim_text();
                         self.state.response_view.type_locked = true;
@@ -68,7 +68,7 @@ impl App {
                 }
             }
             Action::VisualPaste => {
-                let paste = crate::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
+                let paste = super::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
                 if paste.is_empty() {
                     self.state.mode = InputMode::Normal;
                 } else {
@@ -84,7 +84,7 @@ impl App {
                             self.state.mode = InputMode::Normal;
                             self.paste_text_at_cursor(&paste);
                         }
-                        Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                             self.state.response_view.type_vim.visual_delete();
                             self.state.response_view.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
                             self.state.response_view.type_vim.paste_after();
@@ -103,8 +103,8 @@ impl App {
                 }
             }
             Action::Paste => {
-                let paste = crate::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                let paste = super::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     self.state.response_view.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
                     self.state.response_view.type_vim.paste_after();
@@ -119,10 +119,10 @@ impl App {
                 }
             }
             Action::PasteFromClipboard => {
-                if let Ok(text) = crate::clipboard::read_clipboard() {
+                if let Ok(text) = super::clipboard::read_clipboard() {
                     if self.state.active_panel == Panel::Body {
                         // Auto-format JSON if body type is JSON
-                        let text = if self.state.body_type == crate::state::BodyType::Json {
+                        let text = if self.state.body_type == crate::core::state::BodyType::Json {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
                                 serde_json::to_string_pretty(&val).unwrap_or(text)
                             } else {
@@ -141,7 +141,7 @@ impl App {
                         }
                         self.state.validate_body();
                         self.state.set_status("Pasted from clipboard");
-                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                         self.state.response_view.type_vim.save_undo();
                         self.state.response_view.type_vim.unnamed_register = Register { content: text.clone(), linewise: text.ends_with('\n') };
                         self.state.response_view.type_vim.paste_after();
@@ -157,7 +157,7 @@ impl App {
                     Panel::Request if self.state.request_edit.field_editing => {
                         let text = self.get_request_field_text();
                         self.state.yank_buffer = text.clone();
-                        let _ = crate::clipboard::copy_to_clipboard(&text);
+                        let _ = super::clipboard::copy_to_clipboard(&text);
                         self.state.set_status("Yanked field");
                     }
                     Panel::Body => {
@@ -168,7 +168,7 @@ impl App {
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
-                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let _ = super::clipboard::copy_to_clipboard(&yanked);
                             if count > 1 {
                                 self.state.set_status(format!("Yanked {} lines", end_row - row));
                             } else {
@@ -176,14 +176,14 @@ impl App {
                             }
                         }
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                         let row = self.state.response_view.type_vim.cursor_row;
                         let end_row = (row + count).min(lines.len());
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
-                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let _ = super::clipboard::copy_to_clipboard(&yanked);
                             self.state.set_status("Yanked line");
                         }
                     }
@@ -195,7 +195,7 @@ impl App {
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
-                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let _ = super::clipboard::copy_to_clipboard(&yanked);
                             self.state.set_status("Yanked line");
                         }
                     }
@@ -204,14 +204,14 @@ impl App {
             }
             Action::YankWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        let end_col = super::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.state.set_status("Yanked word");
                     }
                 } else if self.state.active_panel == Panel::Body {
@@ -231,7 +231,7 @@ impl App {
                             while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
                         }
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.state.set_status("Yanked word");
                     }
                 } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
@@ -248,7 +248,7 @@ impl App {
                         while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
                     }
                     self.state.yank_buffer = text[col..end_col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.state.set_status("Yanked word");
                 }
             }
@@ -264,7 +264,7 @@ impl App {
                             if col < line.len() {
                                 let yanked = &line[col..];
                                 self.state.yank_buffer = yanked.to_string();
-                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                                 self.state.set_status("Yanked to end of line");
                             }
                         }
@@ -274,7 +274,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col < text.len() {
                             self.state.yank_buffer = text[col..].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.state.set_status("Yanked to end");
                         }
                     }
@@ -293,7 +293,7 @@ impl App {
                             if col > 0 {
                                 let yanked = &line[..col];
                                 self.state.yank_buffer = yanked.to_string();
-                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                                 self.state.set_status("Yanked to start of line");
                             }
                         }
@@ -303,7 +303,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col > 0 {
                             self.state.yank_buffer = text[..col].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.state.set_status("Yanked to start");
                         }
                     }
@@ -320,7 +320,7 @@ impl App {
                         if row < lines.len() {
                             let yanked: String = lines[row..].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
-                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let _ = super::clipboard::copy_to_clipboard(&yanked);
                             self.state.set_status("Yanked to end of file");
                         }
                     }
@@ -330,7 +330,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col < text.len() {
                             self.state.yank_buffer = text[col..].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.state.set_status("Yanked to end");
                         }
                     }
@@ -347,7 +347,7 @@ impl App {
                     if row < lines.len() {
                         let yanked: String = lines[row..end_row].join("\n");
                         self.state.yank_buffer = format!("{}\n", yanked);
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.push_body_undo();
                         for _ in 0..(end_row - row) {
                             self.delete_body_line(self.state.body_vim.cursor_row);
@@ -358,13 +358,13 @@ impl App {
                             self.state.set_status("Line deleted");
                         }
                     }
-                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let yanked = self.state.response_view.type_vim.delete_line(row).unwrap_or_default();
                     self.sync_type_vim_text();
                     self.state.yank_buffer = format!("{}\n", yanked);
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.state.response_view.type_locked = true;
                     self.state.response_view.type_vim.ensure_cursor_visible();
                     self.state.set_status("Line deleted");
@@ -373,14 +373,14 @@ impl App {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     self.state.yank_buffer = text;
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.clear_request_field();
                     self.set_request_cursor(0);
                     self.state.set_status("Field cleared");
                 }
             }
             Action::DeleteCharUnderCursor => {
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     self.state.response_view.type_vim.delete_char_at_cursor();
                     self.sync_type_vim_text();
@@ -406,15 +406,15 @@ impl App {
             }
             Action::DeleteWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        let end_col = super::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
                         let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
                         self.state.response_view.type_text.drain(start..end);
@@ -438,7 +438,7 @@ impl App {
                             while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
                         }
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let body = self.state.current_request.get_body_mut(self.state.body_type);
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
@@ -463,7 +463,7 @@ impl App {
                         while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
                     }
                     self.state.yank_buffer = text[col..end_col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.drain_request_field(col, end_col);
                     let new_len = self.get_request_field_len();
                     self.set_request_cursor(col.min(new_len.saturating_sub(1).max(0)));
@@ -471,15 +471,15 @@ impl App {
             }
             Action::DeleteWordEnd => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        let end_col = super::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
                         let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
                         self.state.response_view.type_text.drain(start..end);
@@ -511,7 +511,7 @@ impl App {
                             }
                         }
                         self.state.yank_buffer = line[col..end_col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let body = self.state.current_request.get_body_mut(self.state.body_type);
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
@@ -541,7 +541,7 @@ impl App {
                         }
                     }
                     self.state.yank_buffer = text[col..end_col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.drain_request_field(col, end_col);
                     let new_len = self.get_request_field_len();
                     self.set_request_cursor(col.min(new_len.saturating_sub(1).max(0)));
@@ -549,15 +549,15 @@ impl App {
             }
             Action::DeleteWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
+                        let start_col = super::vim_buffer::word_start_backward(line.as_bytes(), col);
                         self.state.yank_buffer = line[start_col..col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, start_col);
                         let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
                         self.state.response_view.type_text.drain(start..end);
@@ -583,7 +583,7 @@ impl App {
                             }
                         }
                         self.state.yank_buffer = line[start_col..col].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let body = self.state.current_request.get_body_mut(self.state.body_type);
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
@@ -606,7 +606,7 @@ impl App {
                         }
                     }
                     self.state.yank_buffer = text[start_col..col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.drain_request_field(start_col, col);
                     self.set_request_cursor(start_col);
                 }
@@ -614,7 +614,7 @@ impl App {
             Action::DeleteToEnd => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.response_view.type_vim.save_undo();
                         let yanked = {
                         let row = self.state.response_view.type_vim.cursor_row;
@@ -625,7 +625,7 @@ impl App {
                         text
                     };
                         self.state.yank_buffer = yanked;
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.state.response_view.type_locked = true;
                     }
                     Panel::Body => {
@@ -638,7 +638,7 @@ impl App {
                             if col < line.len() {
                                 let deleted = &line[col..];
                                 self.state.yank_buffer = deleted.to_string();
-                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                                 let start = row_col_to_offset(body, row, col);
                                 let end = row_col_to_offset(body, row, line.len());
                                 body.drain(start..end);
@@ -655,7 +655,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col < text.len() {
                             self.state.yank_buffer = text[col..].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.drain_request_field(col, text.len());
                             let len = self.get_request_field_len();
                             if len > 0 {
@@ -681,7 +681,7 @@ impl App {
                             if let Some(line) = lines.get(row) {
                                 let deleted = &line[..col];
                                 self.state.yank_buffer = deleted.to_string();
-                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                                 let body = self.state.current_request.get_body_mut(self.state.body_type);
                                 let start = row_col_to_offset(body, row, 0);
                                 let end = row_col_to_offset(body, row, col);
@@ -696,7 +696,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col > 0 {
                             self.state.yank_buffer = text[..col].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.drain_request_field(0, col);
                             self.set_request_cursor(0);
                         }
@@ -715,7 +715,7 @@ impl App {
                         if row < lines.len() {
                             let yanked: String = lines[row..].join("\n");
                             self.state.yank_buffer = format!("{}\n", yanked);
-                            let _ = crate::clipboard::copy_to_clipboard(&yanked);
+                            let _ = super::clipboard::copy_to_clipboard(&yanked);
                             let body = self.state.current_request.get_body_mut(self.state.body_type);
                             // Delete from start of current row to end of body
                             let start = row_col_to_offset(body, row, 0);
@@ -737,7 +737,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col < text.len() {
                             self.state.yank_buffer = text[col..].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.drain_request_field(col, text.len());
                             let len = self.get_request_field_len();
                             if len > 0 {
@@ -752,7 +752,7 @@ impl App {
             }
             Action::ChangeLine => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let yanked = if row < self.state.response_view.type_vim.lines.len() {
@@ -763,7 +763,7 @@ impl App {
                     } else { String::new() };
                     self.sync_type_vim_text();
                     self.state.yank_buffer = yanked;
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
@@ -774,7 +774,7 @@ impl App {
                     if row < lines.len() {
                         let line_text = lines[row].to_string();
                         self.state.yank_buffer = line_text.clone();
-                        let _ = crate::clipboard::copy_to_clipboard(&line_text);
+                        let _ = super::clipboard::copy_to_clipboard(&line_text);
                         // Replace line content with empty
                         let offset = row_col_to_offset(body, row, 0);
                         let end = offset + lines[row].len();
@@ -786,7 +786,7 @@ impl App {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     self.state.yank_buffer = text.clone();
-                    let _ = crate::clipboard::copy_to_clipboard(&text);
+                    let _ = super::clipboard::copy_to_clipboard(&text);
                     self.clear_request_field();
                     self.set_request_cursor(0);
                     self.state.mode = InputMode::Insert;
@@ -794,16 +794,16 @@ impl App {
             }
             Action::ChangeWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
+                        let end_col = super::vim_buffer::word_end_forward(line.as_bytes(), col);
                         let deleted = &line[col..end_col];
                         self.state.yank_buffer = deleted.to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
                         let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
                         self.state.response_view.type_text.drain(start..end);
@@ -830,7 +830,7 @@ impl App {
                         }
                         let deleted = &line[col..end_col];
                         self.state.yank_buffer = deleted.to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let body = self.state.current_request.get_body_mut(self.state.body_type);
                         let start = row_col_to_offset(body, row, col);
                         let end = row_col_to_offset(body, row, end_col);
@@ -852,7 +852,7 @@ impl App {
                         while end_col < bytes.len() && bytes[end_col].is_ascii_whitespace() { end_col += 1; }
                     }
                     self.state.yank_buffer = text[col..end_col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.drain_request_field(col, end_col);
                     self.set_request_cursor(col);
                     self.state.mode = InputMode::Insert;
@@ -860,16 +860,16 @@ impl App {
             }
             Action::ChangeWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                     let row = self.state.response_view.type_vim.cursor_row;
                     let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
-                        let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
+                        let start_col = super::vim_buffer::word_start_backward(line.as_bytes(), col);
                         let deleted = &line[start_col..col];
                         self.state.yank_buffer = deleted.to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, start_col);
                         let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
                         self.state.response_view.type_text.drain(start..end);
@@ -897,7 +897,7 @@ impl App {
                         }
                         let deleted = &line[start_col..col];
                         self.state.yank_buffer = deleted.to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         let body = self.state.current_request.get_body_mut(self.state.body_type);
                         let start = row_col_to_offset(body, row, start_col);
                         let end = row_col_to_offset(body, row, col);
@@ -921,14 +921,14 @@ impl App {
                         }
                     }
                     self.state.yank_buffer = text[start_col..col].to_string();
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.drain_request_field(start_col, col);
                     self.set_request_cursor(start_col);
                     self.state.mode = InputMode::Insert;
                 }
             }
             Action::ChangeToEnd => {
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     let yanked = {
                         let row = self.state.response_view.type_vim.cursor_row;
@@ -939,7 +939,7 @@ impl App {
                         text
                     };
                     self.state.yank_buffer = yanked;
-                    let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                    let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                     self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
@@ -952,7 +952,7 @@ impl App {
                         if col < line.len() {
                             let deleted = &line[col..];
                             self.state.yank_buffer = deleted.to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             let start = row_col_to_offset(body, row, col);
                             let end = row_col_to_offset(body, row, line.len());
                             body.drain(start..end);
@@ -965,7 +965,7 @@ impl App {
                     let col = self.get_request_cursor();
                     if col < text.len() {
                         self.state.yank_buffer = text[col..].to_string();
-                        let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                        let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.drain_request_field(col, text.len());
                         self.set_request_cursor(col);
                     }
@@ -985,7 +985,7 @@ impl App {
                             if let Some(line) = lines.get(row) {
                                 let deleted = &line[..col];
                                 self.state.yank_buffer = deleted.to_string();
-                                let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                                let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                                 let body = self.state.current_request.get_body_mut(self.state.body_type);
                                 let start = row_col_to_offset(body, row, 0);
                                 let end = row_col_to_offset(body, row, col);
@@ -1001,7 +1001,7 @@ impl App {
                         let col = self.get_request_cursor();
                         if col > 0 {
                             self.state.yank_buffer = text[..col].to_string();
-                            let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
+                            let _ = super::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                             self.drain_request_field(0, col);
                         }
                         self.set_request_cursor(0);
@@ -1012,7 +1012,7 @@ impl App {
             }
             Action::ReplaceChar(c) => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     {
                         let row = self.state.response_view.type_vim.cursor_row;
@@ -1043,7 +1043,7 @@ impl App {
                 }
             }
             Action::Substitute => {
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.save_undo();
                     self.state.response_view.type_vim.delete_char_at_cursor();
                     self.sync_type_vim_text();
@@ -1072,7 +1072,7 @@ impl App {
             }
             Action::CopyResponseBody => {
                 if let Some(ref resp) = self.state.current_response {
-                    match crate::clipboard::copy_to_clipboard(&resp.formatted_body()) {
+                    match super::clipboard::copy_to_clipboard(&resp.formatted_body()) {
                         Ok(()) => self.state.set_status("Response body copied"),
                         Err(e) => self.state.set_status(e),
                     }
@@ -1081,7 +1081,7 @@ impl App {
             Action::CopyAsCurl => {
                 let resolved = self.resolve_env_vars(&self.state.current_request);
                 let curl = http_client::to_curl(&resolved);
-                match crate::clipboard::copy_to_clipboard(&curl) {
+                match super::clipboard::copy_to_clipboard(&curl) {
                     Ok(()) => self.state.set_status("Curl command copied"),
                     Err(e) => self.state.set_status(e),
                 }

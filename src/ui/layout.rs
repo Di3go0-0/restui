@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
-use crate::state::{AppState, Panel};
+use crate::core::state::{AppState, Panel};
 use crate::ui::{body, collections, command_palette, floating, help, request, response, statusbar};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
@@ -79,7 +79,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
     // Overlays render on top
     else if let Some(ref overlay) = state.overlay {
         match overlay {
-            crate::state::Overlay::Help => help::render(frame, state),
+            crate::core::state::Overlay::Help => help::render(frame, state),
             _ => floating::render(frame, state, overlay),
         }
     }
@@ -109,11 +109,11 @@ fn compute_cursor_screen_pos(state: &AppState, request_area: Rect, body_area: Re
         }
         Panel::Request => {
             let field_row = match state.request_edit.focus {
-                crate::state::RequestFocus::Url => 1, // URL row after method
-                crate::state::RequestFocus::Header(i) => 3 + i as u16, // tab bar + headers
-                crate::state::RequestFocus::Param(i) => 3 + i as u16,
-                crate::state::RequestFocus::Cookie(i) => 3 + i as u16,
-                crate::state::RequestFocus::PathParam(i) => 3 + i as u16,
+                crate::core::state::RequestFocus::Url => 1, // URL row after method
+                crate::core::state::RequestFocus::Header(i) => 3 + i as u16, // tab bar + headers
+                crate::core::state::RequestFocus::Param(i) => 3 + i as u16,
+                crate::core::state::RequestFocus::Cookie(i) => 3 + i as u16,
+                crate::core::state::RequestFocus::PathParam(i) => 3 + i as u16,
             };
             let cursor = state.request_edit.url_cursor as u16;
             let x = request_area.x + border + 10 + cursor; // label offset
@@ -151,8 +151,8 @@ fn render_chain_autocomplete(frame: &mut Frame, state: &AppState, area: Rect, cu
     frame.render_widget(Clear, popup_area);
 
     let title = match ac.kind {
-        crate::state::AutocompleteKind::Chain => " {{@chain  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
-        crate::state::AutocompleteKind::Env => " {{env  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
+        crate::core::state::AutocompleteKind::Chain => " {{@chain  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
+        crate::core::state::AutocompleteKind::Env => " {{env  Ctrl+n/p \u{2195}  Ctrl+y \u{2713} ",
     };
     let block = Block::default()
         .title(title)

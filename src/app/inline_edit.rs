@@ -1,4 +1,4 @@
-use crate::state::{InputMode, Panel, RequestFocus, ResponseTab};
+use crate::core::state::{InputMode, Panel, RequestFocus, ResponseTab};
 
 use super::App;
 
@@ -41,7 +41,7 @@ impl App {
                     // Update autocomplete if editing header name
                     if self.state.request_edit.header_edit_field == 0 {
                         if let Some(h) = self.state.current_request.headers.get(idx) {
-                            let ac = crate::state::Autocomplete::new(&h.name);
+                            let ac = crate::core::state::Autocomplete::new(&h.name);
                             self.state.autocomplete = if ac.is_empty() { None } else { Some(ac) };
                         }
                     } else {
@@ -73,7 +73,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_view.type_text;
                 let pos = row_col_to_offset(text, self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col);
                 text.insert(pos, c);
@@ -126,7 +126,7 @@ impl App {
                             if h.name.is_empty() {
                                 self.state.autocomplete = None;
                             } else {
-                                let ac = crate::state::Autocomplete::new(&h.name);
+                                let ac = crate::core::state::Autocomplete::new(&h.name);
                                 self.state.autocomplete = if ac.is_empty() { None } else { Some(ac) };
                             }
                         }
@@ -166,7 +166,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_view.type_text;
                 let pos = row_col_to_offset(text, self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col);
                 if pos > 0 {
@@ -226,7 +226,7 @@ impl App {
                     }
                 }
             },
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 let text = &mut self.state.response_view.type_text;
                 let pos = row_col_to_offset(text, self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col);
                 if pos < text.len() {
@@ -239,7 +239,7 @@ impl App {
     }
 
     pub(super) fn inline_newline(&mut self) {
-        if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+        if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
             let text = &mut self.state.response_view.type_text;
             let pos = row_col_to_offset(text, self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col);
 
@@ -302,7 +302,7 @@ impl App {
                 RequestFocus::Cookie(_) => { self.state.request_edit.cookie_edit_cursor = self.state.request_edit.cookie_edit_cursor.saturating_sub(1); }
                 RequestFocus::PathParam(_) => { self.state.request_edit.path_param_edit_cursor = self.state.request_edit.path_param_edit_cursor.saturating_sub(1); }
             },
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 if self.state.response_view.type_vim.cursor_col > 0 {
                     self.state.response_view.type_vim.cursor_col -= 1;
                 } else if self.state.mode == InputMode::Insert && self.state.response_view.type_vim.cursor_row > 0 {
@@ -321,7 +321,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response if self.state.response_view.tab != ResponseTab::Type || self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_view.tab != ResponseTab::Type || self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }
@@ -350,7 +350,7 @@ impl App {
                     self.set_request_cursor(cursor + 1);
                 }
             }
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                 let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                 let line_len = lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
                 let max = if is_insert { line_len } else { line_len.saturating_sub(1) };
@@ -375,7 +375,7 @@ impl App {
         // Sync horizontal scroll after cursor movement
         match self.state.active_panel {
             Panel::Body => { self.sync_body_hscroll(); }
-            Panel::Response if self.state.response_view.tab != ResponseTab::Type || self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
+            Panel::Response if self.state.response_view.tab != ResponseTab::Type || self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Preview => { self.sync_resp_hscroll(); }
             _ => {}
         }
     }
@@ -409,7 +409,7 @@ impl App {
     pub(super) fn inline_cursor_home(&mut self) {
         match self.state.active_panel {
             Panel::Body => { self.state.body_vim.cursor_col = 0; self.sync_body_hscroll(); },
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor && self.state.mode == InputMode::Insert => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor && self.state.mode == InputMode::Insert => {
                 self.state.response_view.type_vim.cursor_col = 0;
             },
             Panel::Response => { self.state.response_view.resp_vim.cursor_col = 0; self.sync_resp_hscroll(); },
@@ -434,7 +434,7 @@ impl App {
                 self.state.body_vim.cursor_col = if is_insert { line_len } else { line_len.saturating_sub(1) };
                 self.sync_body_hscroll();
             }
-            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor && is_insert => {
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor && is_insert => {
                 let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                 let line_len = lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
                 self.state.response_view.type_vim.cursor_col = line_len;

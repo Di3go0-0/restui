@@ -1,4 +1,4 @@
-use crate::state::Panel;
+use crate::core::state::Panel;
 
 use super::App;
 

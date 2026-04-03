@@ -1,20 +1,9 @@
-mod action;
 mod app;
-mod clipboard;
-mod command;
-mod config;
-mod event;
-mod highlight;
-mod http_client;
-mod keybinding_config;
+mod core;
 mod keybindings;
 mod model;
 mod parser;
-mod state;
-mod theme;
-mod tui;
 mod ui;
-mod vim_buffer;
 
 use anyhow::Result;
 use clap::Parser;
@@ -55,20 +44,20 @@ async fn main() -> Result<()> {
     // Panic hook: always restore terminal even on crash
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = tui::restore();
+        let _ = core::tui::restore();
         default_panic(info);
     }));
 
     let cli = Cli::parse();
 
     if cli.dump_keybindings {
-        print!("{}", keybinding_config::generate_default_toml());
+        print!("{}", keybindings::config::generate_default_toml());
         return Ok(());
     }
 
     // Set up file-based logging (only when --debug is passed)
     let _log_guard = if cli.debug {
-        let log_dir = config::data_dir();
+        let log_dir = core::config::data_dir();
         let _ = std::fs::create_dir_all(&log_dir);
         let file_appender = tracing_appender::rolling::never(&log_dir, "restui.log");
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -86,15 +75,15 @@ async fn main() -> Result<()> {
         None
     };
 
-    let config = config::AppConfig::load().unwrap_or_default();
-    let kb_toml = match keybinding_config::load_keybindings_toml() {
+    let config = core::config::AppConfig::load().unwrap_or_default();
+    let kb_toml = match keybindings::config::load_keybindings_toml() {
         Ok(toml) => toml,
         Err(e) => {
             eprintln!("{}", e);
             std::process::exit(1);
         }
     };
-    let keybindings = keybinding_config::build_config(kb_toml);
+    let keybindings = keybindings::config::build_config(kb_toml);
     let mut app = app::App::new(config.clone(), keybindings);
 
     let mut dirs = config.general.http_file_dirs.clone();
@@ -109,7 +98,7 @@ async fn main() -> Result<()> {
 
     // Apply nvim colorscheme if --colors was passed
     if let Some(ref colors) = cli.colors {
-        app.state.theme = theme::Theme::from_nvim_colors(colors);
+        app.state.theme = ui::theme::Theme::from_nvim_colors(colors);
     }
 
     app.load_collections(&dirs);
@@ -129,9 +118,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    let mut terminal = tui::init()?;
+    let mut terminal = core::tui::init()?;
     let result = app.run(&mut terminal).await;
-    tui::restore()?;
+    core::tui::restore()?;
 
     result
 }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use crate::action::Action;
-use crate::state::{InputMode, Panel, RequestFocus, ResponseTab};
+use crate::core::action::Action;
+use crate::core::state::{InputMode, Panel, RequestFocus, ResponseTab};
 use vimltui::{VimMode, VisualKind};
 
 use super::App;
@@ -25,7 +25,7 @@ impl App {
                         }
                         self.state.request_edit.field_editing = true;
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.response_view.type_vim.save_undo();
                         self.state.mode = InputMode::Insert;
                     }
@@ -45,7 +45,7 @@ impl App {
                         self.state.request_edit.field_editing = true;
                         self.set_request_cursor(0);
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.response_view.type_vim.save_undo();
                         self.state.response_view.type_vim.cursor_col = 0;
                         self.state.mode = InputMode::Insert;
@@ -71,7 +71,7 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor((cursor + 1).min(len));
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.response_view.type_vim.save_undo();
                         {
                             let line_len = self.state.response_view.type_vim.current_line_len();
@@ -102,7 +102,7 @@ impl App {
                         let len = self.get_request_field_len();
                         self.set_request_cursor(len);
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.response_view.type_vim.save_undo();
                         self.state.response_view.type_vim.cursor_col = self.state.response_view.type_vim.current_line_len();
                         self.state.mode = InputMode::Insert;
@@ -137,7 +137,7 @@ impl App {
                             self.set_request_cursor(cursor.min(len - 1));
                         }
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         // Clamp cursor for type editor
                         let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
                         let line_len = lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
@@ -169,7 +169,7 @@ impl App {
                         self.state.mode = InputMode::Visual;
                         self.state.body_vim.visual_anchor = Some((self.state.body_vim.cursor_row, self.state.body_vim.cursor_col));
                     }
-                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => {
                         self.state.mode = InputMode::Visual;
                         self.state.response_view.type_vim.visual_anchor = Some((self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col));
                         self.state.response_view.type_vim.mode = VimMode::Visual(VisualKind::Char);

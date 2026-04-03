@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::time::{Duration, Instant};
 
-use crate::config::GeneralConfig;
+use crate::core::config::GeneralConfig;
 use crate::model::request::{PathParam, Request};
 use crate::model::response::Response;
-use crate::state::MAX_REDIRECTS;
+use crate::core::state::MAX_REDIRECTS;
 
 pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Response> {
     let url_lower = request.url.to_lowercase();

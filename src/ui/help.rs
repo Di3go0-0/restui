@@ -4,7 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::state::AppState;
+use crate::core::state::AppState;
 
 pub fn render(frame: &mut Frame, state: &AppState) {
     let t = &state.theme;

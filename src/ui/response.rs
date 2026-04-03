@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::model::response::StatusCategory;
-use crate::state::{AppState, InputMode, Panel, ResponseTab};
+use crate::core::state::{AppState, InputMode, Panel, ResponseTab};
 use crate::ui::body::find_matching_bracket;
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
@@ -130,9 +130,9 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
     if state.response_view.tab == ResponseTab::Type {
         spans.push(Span::raw("  "));
         let langs = [
-            crate::state::TypeLang::Inferred,
-            crate::state::TypeLang::TypeScript,
-            crate::state::TypeLang::CSharp,
+            crate::core::state::TypeLang::Inferred,
+            crate::core::state::TypeLang::TypeScript,
+            crate::core::state::TypeLang::CSharp,
         ];
         for (i, lang) in langs.iter().enumerate() {
             let is_active_lang = *lang == state.response_view.type_lang;
@@ -157,7 +157,7 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
     Line::from(spans)
 }
 
-fn build_status_line(resp: &crate::model::response::Response, t: &crate::theme::Theme) -> Line<'static> {
+fn build_status_line(resp: &crate::model::response::Response, t: &crate::ui::theme::Theme) -> Line<'static> {
     let status_color = match resp.status_category() {
         StatusCategory::Success => Color::Green,
         StatusCategory::Redirect => Color::Cyan,
@@ -423,12 +423,12 @@ fn render_type_tab(
     frame.render_widget(Paragraph::new(sep1), chunks[2]);
 
     // Type editor area — cursor only when sub-focus is Editor
-    let editor_focused = is_focused && state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor;
+    let editor_focused = is_focused && state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor;
     render_type_editor(frame, state, chunks[3], editor_focused);
 
     // Sub-focus indicator
     if is_focused {
-        let indicator = if state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+        let indicator = if state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
             "▸ Type (Ctrl+J → preview)"
         } else {
             "  Type"
@@ -463,14 +463,14 @@ fn render_type_tab(
     frame.render_widget(Paragraph::new(sep2), chunks[5]);
 
     // Response body preview — cursor when sub-focus is Preview
-    let preview_focused = is_focused && state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview;
+    let preview_focused = is_focused && state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Preview;
     let preview_visual = preview_focused && state.mode == InputMode::Visual;
     let preview_visual_block = preview_focused && state.mode == InputMode::VisualBlock;
     let preview_area = chunks[6];
 
     // Sub-focus indicator for preview
     if is_focused {
-        let indicator = if state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview {
+        let indicator = if state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Preview {
             "▸ Response (Ctrl+K → type)"
         } else {
             "  Response"
@@ -547,8 +547,8 @@ fn render_type_editor(
 
         // Colorize the line based on language (with visual highlight if applicable)
         let colorize_fn = match state.response_view.type_lang {
-            crate::state::TypeLang::TypeScript => colorize_ts_line,
-            crate::state::TypeLang::CSharp => colorize_csharp_line,
+            crate::core::state::TypeLang::TypeScript => colorize_ts_line,
+            crate::core::state::TypeLang::CSharp => colorize_csharp_line,
             _ => colorize_type_line,
         };
         let colored_line = if is_type_visual {
@@ -595,7 +595,7 @@ fn render_type_editor(
     }
 }
 
-fn colorize_ts_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+fn colorize_ts_line(line: &str, t: &crate::ui::theme::Theme) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut current = line;
 
@@ -641,7 +641,7 @@ fn colorize_ts_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     Line::from(spans)
 }
 
-fn colorize_csharp_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+fn colorize_csharp_line(line: &str, t: &crate::ui::theme::Theme) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let current = line;
 
@@ -679,7 +679,7 @@ fn colorize_csharp_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     Line::from(spans)
 }
 
-fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+fn colorize_type_line(line: &str, t: &crate::ui::theme::Theme) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let trimmed = line.trim();
 
@@ -768,7 +768,7 @@ fn colorize_type_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
 }
 
-fn colorize_enum_spans(enum_text: &str, t: &crate::theme::Theme, spans: &mut Vec<Span<'static>>) {
+fn colorize_enum_spans(enum_text: &str, t: &crate::ui::theme::Theme, spans: &mut Vec<Span<'static>>) {
     let parts: Vec<&str> = enum_text.split('|').collect();
     for (i, part) in parts.iter().enumerate() {
         let trimmed_part = part.trim();
@@ -782,7 +782,7 @@ fn colorize_enum_spans(enum_text: &str, t: &crate::theme::Theme, spans: &mut Vec
     }
 }
 
-fn type_keyword_color(kw: &str, t: &crate::theme::Theme) -> Color {
+fn type_keyword_color(kw: &str, t: &crate::ui::theme::Theme) -> Color {
     let base = kw.trim_end_matches("[]");
     match base {
         "string" => t.json_string,
@@ -1033,7 +1033,7 @@ fn highlight_search_line(
     line_idx: usize,
     state: &AppState,
     query_lower: &str,
-    t: &crate::theme::Theme,
+    t: &crate::ui::theme::Theme,
     is_cursor_line: bool,
     hscroll: usize,
 ) -> Line<'static> {
@@ -1135,7 +1135,7 @@ fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
 }
 
 /// Render a response line with block cursor at cursor_col and highlighted background.
-fn render_resp_cursor_line(line: &str, cursor_col: usize, t: &crate::theme::Theme) -> Line<'static> {
+fn render_resp_cursor_line(line: &str, cursor_col: usize, t: &crate::ui::theme::Theme) -> Line<'static> {
     let line_style = Style::default().fg(t.text).bg(t.bg_highlight);
     let cursor_style = Style::default().fg(Color::Black).bg(t.text);
 
@@ -1233,7 +1233,7 @@ fn slice_colored_line(line: &Line<'static>, start: usize, end: usize) -> Line<'s
     }
 }
 
-fn colorize_response_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+fn colorize_response_line(line: &str, t: &crate::ui::theme::Theme) -> Line<'static> {
     let trimmed = line.trim();
 
     if trimmed.starts_with('"') && trimmed.contains(':') {
@@ -1296,7 +1296,7 @@ fn colorize_diff_line(line: &str) -> Line<'static> {
     }
 }
 
-fn value_style(val: &str, t: &crate::theme::Theme) -> Style {
+fn value_style(val: &str, t: &crate::ui::theme::Theme) -> Style {
     let trimmed = val.trim().trim_end_matches(',');
     if trimmed == "true" || trimmed == "false" {
         Style::default().fg(t.json_bool)

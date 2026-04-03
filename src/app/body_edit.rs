@@ -1,4 +1,4 @@
-use crate::state::UNDO_STACK_MAX;
+use crate::core::state::UNDO_STACK_MAX;
 
 use super::inline_edit::{is_word_char, is_punct_char, row_col_to_offset};
 use super::App;

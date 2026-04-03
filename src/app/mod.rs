@@ -1,7 +1,9 @@
 mod autocomplete;
 mod body_edit;
+pub(crate) mod clipboard;
 mod clipboard_ops;
 mod collections;
+pub(crate) mod vim_buffer;
 mod execute;
 mod inline_edit;
 mod mode;
@@ -16,14 +18,14 @@ use body_edit::{vim_editor_word_forward, vim_editor_word_backward, vim_editor_wo
 use anyhow::Result;
 use tokio::sync::mpsc;
 
-use crate::action::Action;
-use crate::config::AppConfig;
-use crate::event::{AppEvent, EventHandler};
+use crate::core::action::Action;
+use crate::core::config::AppConfig;
+use crate::core::event::{AppEvent, EventHandler};
 use crate::keybindings;
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
-use crate::tui::Tui;
+use crate::core::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
+use crate::core::tui::Tui;
 use crate::ui;
 use vimltui::{VimMode, VisualKind};
 use crossterm::cursor::SetCursorStyle;
@@ -35,7 +37,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: AppConfig, keybindings: crate::keybinding_config::KeybindingsConfig) -> Self {
+    pub fn new(config: AppConfig, keybindings: crate::keybindings::config::KeybindingsConfig) -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         Self {
             state: AppState::new(config, keybindings),
@@ -185,14 +187,14 @@ impl App {
                 self.state.pending_key = None;
                 self.state.request_edit.field_editing = false;
                 self.state.chain_autocomplete = None;
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Editor;
             }
             Action::FocusPanel(panel) => {
                 self.state.active_panel = panel;
                 self.state.mode = InputMode::Normal;
                 self.state.request_edit.field_editing = false;
                 self.state.chain_autocomplete = None;
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Editor;
             }
 
             // === Vim Mode Transitions ===
@@ -632,12 +634,12 @@ impl App {
             Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
             Action::InlineCursorRight => { for _ in 0..count { self.inline_cursor_right(); } }
             Action::InlineCursorUp => match self.state.active_panel {
-                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_up(),
+                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => self.type_cursor_up(),
                 Panel::Response => self.resp_cursor_up(),
                 _ => self.body_cursor_up(),
             },
             Action::InlineCursorDown => match self.state.active_panel {
-                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_down(),
+                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor => self.type_cursor_down(),
                 Panel::Response => self.resp_cursor_down(),
                 _ => self.body_cursor_down(),
             },
@@ -650,7 +652,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_forward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                         vim_editor_word_forward(&mut self.state.response_view.type_vim);
                         self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
@@ -668,7 +670,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_backward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                         vim_editor_word_backward(&mut self.state.response_view.type_vim);
                         self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
@@ -685,7 +687,7 @@ impl App {
                 for _ in 0..count {
                     if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_end();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                         vim_editor_word_end(&mut self.state.response_view.type_vim);
                         self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
@@ -701,7 +703,7 @@ impl App {
             Action::BodyLineHome => {
                 if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.set_request_cursor(0);
-                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     self.state.response_view.type_vim.cursor_col = 0;
                 } else if self.state.active_panel == Panel::Response {
                     self.state.response_view.resp_vim.cursor_col = 0;
@@ -724,7 +726,7 @@ impl App {
                 return self.handle_clipboard_ops(action, count);
             }
             Action::Undo => {
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     if !self.state.response_view.type_vim.undo_stack.is_empty() {
                         self.state.response_view.type_vim.undo();
                         self.sync_type_vim_text();
@@ -774,7 +776,7 @@ impl App {
                 }
             }
             Action::Redo => {
-                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::core::state::TypeSubFocus::Editor {
                     if !self.state.response_view.type_vim.redo_stack.is_empty() {
                         self.state.response_view.type_vim.redo();
                         self.sync_type_vim_text();
@@ -835,8 +837,8 @@ impl App {
 
             // === Theme ===
             Action::CycleTheme => {
-                let next = crate::theme::next_theme_name(&self.state.theme.name);
-                self.state.theme = crate::theme::load_theme(next);
+                let next = crate::ui::theme::next_theme_name(&self.state.theme.name);
+                self.state.theme = crate::ui::theme::load_theme(next);
                 self.state.set_status(format!("Theme: {}", self.state.theme.name));
             }
 
@@ -930,18 +932,18 @@ impl App {
             // === Response Tabs ===
             Action::ResponseNextTab => {
                 self.state.response_view.tab = self.state.response_view.tab.next();
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Editor;
             }
             Action::ResponsePrevTab => {
                 self.state.response_view.tab = self.state.response_view.tab.prev();
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Editor;
             }
             Action::TypeSubFocusDown => {
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Preview;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Preview;
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeSubFocusUp => {
-                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::core::state::TypeSubFocus::Editor;
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeLangNext => {
@@ -1013,7 +1015,7 @@ impl App {
                     if history.len() > 5 {
                         history.pop_back();
                     }
-                    self.state.response_histories.save(&crate::config::data_dir().join("response_history.json"));
+                    self.state.response_histories.save(&crate::core::config::data_dir().join("response_history.json"));
                 }
 
                 self.state.current_response = Some(*response);
@@ -1097,7 +1099,7 @@ impl App {
                     };
                     let limit = self.state.config.general.history_limit;
                     self.state.history.add(entry, limit);
-                    self.state.history.save(&crate::config::data_dir().join("history.json"));
+                    self.state.history.save(&crate::core::config::data_dir().join("history.json"));
                 }
 
                 self.state.set_status(format!("{} - {}", status, elapsed));
@@ -1177,7 +1179,7 @@ impl App {
             }
             // === Theme (direct set) ===
             Action::SetTheme(name) => {
-                self.state.theme = crate::theme::load_theme(&name);
+                self.state.theme = crate::ui::theme::load_theme(&name);
                 self.state.set_status(format!("Theme: {}", self.state.theme.name));
             }
 

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::action::Action;
+use crate::core::action::Action;
 use crate::model::collection::{Collection, FileFormat};
 use crate::model::request::{Header, Request};
-use crate::state::{InputMode, Overlay, RequestFocus};
+use crate::core::state::{InputMode, Overlay, RequestFocus};
 
 use super::App;
 
@@ -69,7 +69,7 @@ impl App {
                         *selected = (*selected + 1).min(max);
                     }
                     Some(Overlay::ThemeSelector { selected }) => {
-                        let max = crate::theme::THEME_NAMES.len().saturating_sub(1);
+                        let max = crate::ui::theme::THEME_NAMES.len().saturating_sub(1);
                         *selected = (*selected + 1).min(max);
                     }
                     Some(Overlay::History { selected }) => {
@@ -242,8 +242,8 @@ impl App {
                         }
                     }
                     Some(Overlay::ThemeSelector { selected }) => {
-                        if let Some(&name) = crate::theme::THEME_NAMES.get(selected) {
-                            self.state.theme = crate::theme::load_theme(name);
+                        if let Some(&name) = crate::ui::theme::THEME_NAMES.get(selected) {
+                            self.state.theme = crate::ui::theme::load_theme(name);
                             self.state.set_status(format!("Theme: {}", name));
                         }
                     }

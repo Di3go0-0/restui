@@ -2,7 +2,21 @@
 
 ## [0.3.5] - 2026-04-03
 
-(unreleased)
+### Changed
+- **Major refactoring of `app/mod.rs`** — split 4,967-line monolith into 13 focused modules
+  - `inline_edit.rs`: character-level editing, cursor movement
+  - `request_field.rs`: request field cursor/text manipulation
+  - `body_edit.rs`: body visual selection, word motions
+  - `vim_sync.rs`: vim mode sync, find-char, type validation
+  - `collections.rs`: collection CRUD, persistence
+  - `autocomplete.rs`: chain/env autocomplete
+  - `mode.rs`: vim mode transitions
+  - `clipboard_ops.rs`: yank/delete/change/paste operations
+  - `overlay.rs`: overlay open/close/navigate/confirm
+- **Decomposed `AppState`** — extracted 38 fields into 3 sub-structs:
+  - `RequestEditState`: request panel editing state
+  - `ResponseViewState`: response panel display state
+  - `CollectionsViewState`: collections panel state
 
 ## [0.3.4] - 2026-04-03
 

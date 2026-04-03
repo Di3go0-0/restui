@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use crate::state::{AppState, InputMode, Panel, RequestFocus, RequestTab};
+use crate::core::state::{AppState, InputMode, Panel, RequestFocus, RequestTab};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Request;
@@ -808,7 +808,7 @@ fn render_path_params_tab(
 
 fn render_autocomplete_popup(
     frame: &mut Frame,
-    ac: &crate::state::Autocomplete,
+    ac: &crate::core::state::Autocomplete,
     x: u16,
     y: u16,
     bounds: Rect,
@@ -886,7 +886,7 @@ fn field_hscroll(text: &str, cursor: usize, available_width: usize) -> (usize, S
 
 /// Build a display URL that includes enabled query params appended to base URL.
 /// When not in insert mode on the URL, this gives a preview of the final URL.
-fn colorize_url<'a>(url: &'a str, t: &crate::theme::Theme) -> Vec<Span<'a>> {
+fn colorize_url<'a>(url: &'a str, t: &crate::ui::theme::Theme) -> Vec<Span<'a>> {
     if let Some(q_pos) = url.find('?') {
         let base = &url[..q_pos];
         let query = &url[q_pos..];
@@ -958,7 +958,7 @@ fn build_field_spans<'a>(
     cursor_pos: usize,
     visual_range: Option<(usize, usize)>,
     base_style: Style,
-    t: &crate::theme::Theme,
+    t: &crate::ui::theme::Theme,
 ) -> Vec<Span<'a>> {
     if text.is_empty() {
         // Show block cursor on empty field

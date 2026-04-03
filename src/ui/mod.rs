@@ -7,3 +7,4 @@ pub mod layout;
 pub mod request;
 pub mod response;
 pub mod statusbar;
+pub mod theme;

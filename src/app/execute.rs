@@ -1,8 +1,8 @@
-use crate::action::Action;
-use crate::http_client;
+use crate::core::action::Action;
+use crate::core::http_client;
 use crate::model::request::{Header, Request};
 use crate::model::response::Response;
-use crate::state::RESPONSE_CACHE_MAX;
+use crate::core::state::RESPONSE_CACHE_MAX;
 
 use super::App;
 

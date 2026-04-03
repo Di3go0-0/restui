@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::parser;
-use crate::state::{Panel, RequestFocus};
+use crate::core::state::{Panel, RequestFocus};
 
 use super::App;
 
@@ -199,7 +199,7 @@ impl App {
             if let RequestFocus::Header(idx) = self.state.request_edit.focus {
                 if self.state.request_edit.header_edit_field == 0 {
                     if let Some(h) = self.state.current_request.headers.get(idx) {
-                        let ac = crate::state::Autocomplete::new(&h.name);
+                        let ac = crate::core::state::Autocomplete::new(&h.name);
                         self.state.autocomplete = if ac.is_empty() { None } else { Some(ac) };
                     }
                 }

@@ -1,4 +1,4 @@
-use crate::state::{RequestFocus, UNDO_STACK_MAX};
+use crate::core::state::{RequestFocus, UNDO_STACK_MAX};
 
 use super::inline_edit::is_word_char;
 use super::App;
@@ -361,7 +361,7 @@ impl App {
     pub(super) fn position_request_cursor_at_end(&mut self) {
         let len = self.get_request_field_len();
         // In normal mode, cursor sits on last char; in insert mode, after last char
-        let end = if self.state.mode == crate::state::InputMode::Insert { len } else { len.saturating_sub(1) };
+        let end = if self.state.mode == crate::core::state::InputMode::Insert { len } else { len.saturating_sub(1) };
         self.set_request_cursor(end);
     }
 

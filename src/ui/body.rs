@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::state::{AppState, BodyType, InputMode, Panel};
+use crate::core::state::{AppState, BodyType, InputMode, Panel};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Body;
@@ -359,7 +359,7 @@ fn highlight_visual_line(line: &str, row: usize, sr: usize, sc: usize, er: usize
 }
 
 /// Render a line with block cursor (inverted char) at cursor_col, with highlighted background.
-fn render_normal_cursor_line(line: &str, cursor_col: usize, t: &crate::theme::Theme) -> Line<'static> {
+fn render_normal_cursor_line(line: &str, cursor_col: usize, t: &crate::ui::theme::Theme) -> Line<'static> {
     let line_style = Style::default().fg(t.text).bg(t.bg_highlight);
     let cursor_style = Style::default().fg(Color::Black).bg(t.text); // inverted block cursor
 
@@ -392,7 +392,7 @@ fn render_normal_cursor_line(line: &str, cursor_col: usize, t: &crate::theme::Th
     ])
 }
 
-fn colorize_json_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
+fn colorize_json_line(line: &str, t: &crate::ui::theme::Theme) -> Line<'static> {
     let trimmed = line.trim();
 
     if trimmed.starts_with('"') && trimmed.contains(':') {
@@ -412,7 +412,7 @@ fn colorize_json_line(line: &str, t: &crate::theme::Theme) -> Line<'static> {
     Line::from(Span::styled(line.to_string(), Style::default().fg(t.text)))
 }
 
-fn style_for_value(val: &str, t: &crate::theme::Theme) -> Style {
+fn style_for_value(val: &str, t: &crate::ui::theme::Theme) -> Style {
     let trimmed = val.trim().trim_end_matches(',');
     if trimmed == "true" || trimmed == "false" {
         Style::default().fg(t.json_bool)
@@ -432,7 +432,7 @@ fn highlight_body_search_line(
     line_idx: usize,
     state: &AppState,
     query_lower: &str,
-    t: &crate::theme::Theme,
+    t: &crate::ui::theme::Theme,
     is_cursor_line: bool,
     hscroll: usize,
 ) -> Line<'static> {

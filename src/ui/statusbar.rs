@@ -3,7 +3,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use crate::state::{AppState, InputMode, Panel, STATUS_MESSAGE_TTL};
+use crate::core::state::{AppState, InputMode, Panel, STATUS_MESSAGE_TTL};
 
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let t = &state.theme;
