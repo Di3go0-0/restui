@@ -39,6 +39,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 
     // 2.5. Body panel: delegate to VimEditor for all vim operations
     if state.active_panel == Panel::Body {
+        // Vim command mode (:) or search input (/) → all keys to VimEditor
+        if state.body_vim.command_active || state.body_vim.search.active {
+            return Some(Action::BodyVimInput(key));
+        }
+
         // Visual mode → all to VimEditor
         if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
             return Some(Action::BodyVimInput(key));

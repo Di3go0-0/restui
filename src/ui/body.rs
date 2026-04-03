@@ -54,15 +54,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let outer_inner = body_chunks[1];
 
-    // Reserve space for search bar if needed
+    // Reserve space for search bar or vim command line
     let has_search_bar = (state.search.active && state.active_panel == Panel::Body)
         || (is_focused && !state.search.query.is_empty() && !state.search.matches.is_empty()
             && state.active_panel == Panel::Body);
-    let search_bar_height: u16 = if has_search_bar { 1 } else { 0 };
+    let has_vim_cmdline = is_focused
+        && (state.body_vim.command_active || !state.body_vim.command_line.is_empty());
+    let bottom_bar_height: u16 = if has_search_bar || has_vim_cmdline { 1 } else { 0 };
 
-    let inner = if search_bar_height > 0 && outer_inner.height > 2 {
+    let inner = if bottom_bar_height > 0 && outer_inner.height > 2 {
         Rect::new(outer_inner.x, outer_inner.y, outer_inner.width,
-                   outer_inner.height.saturating_sub(search_bar_height))
+                   outer_inner.height.saturating_sub(bottom_bar_height))
     } else {
         outer_inner
     };
@@ -270,6 +272,38 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             Span::styled(format!("  {}", match_info), Style::default().fg(t.text_dim)),
         ]);
         frame.render_widget(Paragraph::new(search_line), search_area);
+    }
+
+    // Vim command line (:command, search input, -- INSERT --, etc.)
+    if has_vim_cmdline && !has_search_bar && outer_inner.height > 2 {
+        let cmd_area = Rect::new(
+            outer_inner.x,
+            outer_inner.y + outer_inner.height.saturating_sub(1),
+            outer_inner.width,
+            1,
+        );
+        let cmd_text = &state.body_vim.command_line;
+        let cmd_style = if state.body_vim.command_active {
+            Style::default().fg(t.text)
+        } else {
+            Style::default().fg(t.accent)
+        };
+        let mut cmd_spans = vec![
+            Span::styled(cmd_text.clone(), cmd_style),
+        ];
+        if state.body_vim.command_active {
+            cmd_spans.push(Span::styled("█", Style::default().fg(t.accent)));
+        }
+        frame.render_widget(Paragraph::new(Line::from(cmd_spans)), cmd_area);
+
+        // Position cursor at end of command input
+        if state.body_vim.command_active {
+            let cx = cmd_area.x + cmd_text.len() as u16;
+            let cy = cmd_area.y;
+            if cx < cmd_area.right() {
+                frame.set_cursor_position(Position::new(cx, cy));
+            }
+        }
     }
 }
 
