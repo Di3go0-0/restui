@@ -165,8 +165,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
         // Prepare search info (restui search OR vim search pattern from :s preview)
         let vim_search = &state.body_vim.search.pattern;
+        // Smartcase: all-lowercase pattern → case-insensitive, any uppercase → sensitive
+        let vim_is_smartcase_lower = !vim_search.is_empty()
+            && !vim_search.chars().any(|c| c.is_uppercase());
         let search_query_lower = if !vim_search.is_empty() {
-            vim_search.to_lowercase()
+            if vim_is_smartcase_lower { vim_search.to_lowercase() } else { vim_search.clone() }
         } else {
             state.search.query.to_lowercase()
         };
@@ -507,7 +510,9 @@ fn highlight_body_search_line(
         return colorize_json_line(line, t);
     }
 
-    let line_lower = line.to_lowercase();
+    // Smartcase: if query has no uppercase, search case-insensitively
+    let case_insensitive = !query_lower.chars().any(|c| c.is_uppercase());
+    let haystack = if case_insensitive { line.to_lowercase() } else { line.to_string() };
     let query_len = query_lower.len();
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut pos = 0;
@@ -524,7 +529,7 @@ fn highlight_body_search_line(
     };
 
     while pos < line.len() {
-        if let Some(found) = line_lower[pos..].find(query_lower) {
+        if let Some(found) = haystack[pos..].find(&*query_lower) {
             let match_start = pos + found;
             let match_end = (match_start + query_len).min(line.len());
 

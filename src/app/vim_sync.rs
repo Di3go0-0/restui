@@ -43,7 +43,7 @@ impl App {
     pub(super) fn sync_mode_from_vim(&mut self) {
         self.state.mode = match &self.state.body_vim.mode {
             VimMode::Normal => InputMode::Normal,
-            VimMode::Insert => InputMode::Insert,
+            VimMode::Insert | VimMode::Replace => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
             VimMode::Visual(_) => InputMode::Visual,
         };
@@ -52,7 +52,7 @@ impl App {
     pub(super) fn sync_mode_from_vim_resp(&mut self) {
         self.state.mode = match &self.state.response_view.resp_vim.mode {
             VimMode::Normal => InputMode::Normal,
-            VimMode::Insert => InputMode::Insert,
+            VimMode::Insert | VimMode::Replace => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
             VimMode::Visual(_) => InputMode::Visual,
         };
@@ -61,7 +61,7 @@ impl App {
     pub(super) fn sync_mode_from_vim_type(&mut self) {
         self.state.mode = match &self.state.response_view.type_vim.mode {
             VimMode::Normal => InputMode::Normal,
-            VimMode::Insert => InputMode::Insert,
+            VimMode::Insert | VimMode::Replace => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
             VimMode::Visual(_) => InputMode::Visual,
         };
