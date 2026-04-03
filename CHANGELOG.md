@@ -17,6 +17,20 @@
   - `RequestEditState`: request panel editing state
   - `ResponseViewState`: response panel display state
   - `CollectionsViewState`: collections panel state
+- **Organized `src/` directory** — only `main.rs` at root, all modules in directories:
+  - `core/`: action, state, config, event, tui, command, http_client
+  - `keybindings/`: merged `keybindings.rs` + `keybinding_config.rs`
+  - `ui/theme.rs`: moved from root
+  - `app/clipboard.rs`, `app/vim_buffer.rs`: moved from root
+  - Deleted dead code `highlight.rs`
+
+### Added
+- `Shift+W`: toggle word wrap in response panels
+- `Shift+O`: export response in response panels
+
+### Fixed
+- `Ctrl+J/K` navigation between type editor and response preview in Type tab
+- `Ctrl+K` from type editor no longer escapes to Request panel
 
 ## [0.3.4] - 2026-04-03
 
