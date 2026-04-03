@@ -24,7 +24,7 @@ use crate::core::event::{AppEvent, EventHandler};
 use crate::keybindings;
 use crate::model::request::{Header, PathParam, QueryParam, Request};
 use crate::parser;
-use crate::core::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, COMMON_HEADERS, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
+use crate::core::state::{AppState, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, COMMON_HEADERS, WIDE_LAYOUT_THRESHOLD, STATUS_MESSAGE_TTL, PENDING_KEY_TIMEOUT, EVENT_TICK_RATE};
 use crate::core::tui::Tui;
 use crate::ui;
 use vimltui::{VimMode, VisualKind};
@@ -107,15 +107,31 @@ impl App {
                 ui::layout::render(frame, &self.state);
             })?;
 
-            // Set terminal cursor shape: Bar for insert, Block for normal/visual
-            crossterm::execute!(
-                std::io::stdout(),
-                if self.state.mode == InputMode::Insert {
-                    SetCursorStyle::SteadyBar
-                } else {
-                    SetCursorStyle::SteadyBlock
+            // Set terminal cursor shape based on vim cursor_shape() hint
+            let cursor_style = match self.state.active_panel {
+                Panel::Body => match self.state.body_vim.cursor_shape() {
+                    vimltui::CursorShape::Bar => SetCursorStyle::SteadyBar,
+                    vimltui::CursorShape::Underline => SetCursorStyle::SteadyUnderScore,
+                    vimltui::CursorShape::Block => SetCursorStyle::SteadyBlock,
+                },
+                Panel::Response if self.state.response_view.tab == ResponseTab::Type
+                    && self.state.response_view.type_sub_focus == TypeSubFocus::Editor =>
+                {
+                    match self.state.response_view.type_vim.cursor_shape() {
+                        vimltui::CursorShape::Bar => SetCursorStyle::SteadyBar,
+                        vimltui::CursorShape::Underline => SetCursorStyle::SteadyUnderScore,
+                        vimltui::CursorShape::Block => SetCursorStyle::SteadyBlock,
+                    }
                 }
-            )?;
+                _ => {
+                    if self.state.mode == InputMode::Insert {
+                        SetCursorStyle::SteadyBar
+                    } else {
+                        SetCursorStyle::SteadyBlock
+                    }
+                }
+            };
+            crossterm::execute!(std::io::stdout(), cursor_style)?;
 
             tokio::select! {
                 event = events.next() => {
