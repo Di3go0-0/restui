@@ -129,6 +129,11 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         }
     }
 
+    // Clear search highlights with Esc in normal mode
+    if key.code == KeyCode::Esc && !state.search.query.is_empty() && state.mode == InputMode::Normal {
+        return Some(Action::SearchCancel);
+    }
+
     // Cancel in-flight request with Esc
     if state.request_in_flight && key.code == KeyCode::Esc {
         return Some(Action::CancelRequest);
