@@ -200,6 +200,7 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
             Some(Action::NavigatePanel(Direction::Up))
         }
         "navigate_right" => Some(Action::NavigatePanel(Direction::Right)),
+        "open_command_palette" => Some(Action::OpenCommandPalette),
         _ => None,
     }
 }
@@ -409,8 +410,20 @@ fn map_panel_shortcuts(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) ->
         "focus_panel_2" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Request)),
         "focus_panel_3" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Body)),
         "focus_panel_4" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Response)),
-        "open_command_palette" => Some(Action::OpenCommandPalette),
-        "help" => Some(Action::OpenOverlay(Overlay::Help)),
+        // : and ? pass through to vim in Body/Response panels
+        "open_command_palette" if state.active_panel != Panel::Body && state.active_panel != Panel::Response => {
+            Some(Action::OpenCommandPalette)
+        }
+        "help" => {
+            // ? conflicts with vim backward search in Body/Response — only allow F1 there
+            let is_vim_panel = state.active_panel == Panel::Body || state.active_panel == Panel::Response;
+            let is_f1 = matches!(k.code, KeyCode::F(1));
+            if !is_vim_panel || is_f1 {
+                Some(Action::OpenOverlay(Overlay::Help))
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }

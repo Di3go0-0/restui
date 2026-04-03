@@ -246,7 +246,7 @@ pub fn default_bindings() -> KeybindingsToml {
     {
         let m = &mut t.global;
         bind(m, "quit", &["q"]);
-        bind(m, "help", &["?"]);
+        bind(m, "help", &["?", "F1"]);
         bind(m, "ctrl_r", &["Ctrl+r"]);  // context-dependent: redo in vim edit, execute request otherwise
         bind(m, "ctrl_v", &["Ctrl+v"]); // context-dependent: visual block in normal, paste in insert
         bind(m, "scroll_half_down", &["Ctrl+d"]);
@@ -260,7 +260,7 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "open_theme_selector", &["Shift+t"]);
         bind(m, "open_history", &["Shift+h"]);
         bind(m, "open_env_editor", &["Shift+e"]);
-        bind(m, "open_command_palette", &[":"]);
+        bind(m, "open_command_palette", &[":", "Ctrl+p"]);
         bind(m, "focus_panel_1", &["1"]);
         bind(m, "focus_panel_2", &["2"]);
         bind(m, "focus_panel_3", &["3"]);
@@ -347,44 +347,11 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "exit_field_edit", &["Esc"]);
     }
 
-    // ── Body (full vim editing) ──
+    // ── Body (app-level only; all vim keys handled by vimltui) ──
     {
         let m = &mut t.body;
         bind(m, "next_tab", &["}"]);
         bind(m, "prev_tab", &["{"]);
-        bind(m, "cursor_left", &["h", "Left"]);
-        bind(m, "cursor_right", &["l", "Right"]);
-        bind(m, "scroll_down", &["j", "Down"]);
-        bind(m, "scroll_up", &["k", "Up"]);
-        bind(m, "scroll_top", &["g"]);
-        bind(m, "scroll_bottom", &["Shift+g"]);
-        bind(m, "word_forward", &["w"]);
-        bind(m, "word_backward", &["b"]);
-        bind(m, "word_end", &["e"]);
-        bind(m, "line_home", &["0", "Home"]);
-        bind(m, "line_end", &["$", "End"]);
-        bind(m, "enter_insert", &["i"]);
-        bind(m, "enter_insert_start", &["Shift+i"]);
-        bind(m, "enter_append", &["a"]);
-        bind(m, "enter_append_end", &["Shift+a"]);
-        bind(m, "open_line_below", &["o"]);
-        bind(m, "open_line_above", &["Shift+o"]);
-        bind(m, "enter_visual", &["v"]);
-        bind(m, "delete_char", &["x"]);
-        bind(m, "substitute", &["s"]);
-        bind(m, "change_line", &["Shift+s"]);
-        bind(m, "change_to_end", &["Shift+c"]);
-        bind(m, "delete_to_end_line", &["Shift+d"]);
-        bind(m, "change_pending", &["c"]);
-        bind(m, "replace_pending", &["r"]);
-        bind(m, "undo", &["u"]);
-        bind(m, "paste", &["p", "Shift+p"]);
-        bind(m, "delete_pending", &["d"]);
-        bind(m, "yank_pending", &["y"]);
-        bind(m, "find_forward", &["f"]);
-        bind(m, "find_backward", &["Shift+f"]);
-        bind(m, "find_before", &["t"]);
-        bind(m, "find_after", &["Shift+t"]);
         bind(m, "start_search", &["/"]);
         bind(m, "search_next", &["n"]);
         bind(m, "search_prev", &["Shift+n"]);
@@ -411,7 +378,7 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "find_backward", &["Shift+f"]);
         bind(m, "find_before", &["t"]);
         bind(m, "find_after", &["Shift+t"]);
-        bind(m, "open_env_selector", &["p"]);
+        bind(m, "open_env_selector", &["Shift+p"]);
         bind(m, "toggle_headers", &["Shift+e"]);
         bind(m, "response_history", &["Shift+h"]);
         bind(m, "response_diff", &["Shift+d"]);
@@ -420,7 +387,7 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "search_prev", &["Shift+n"]);
         bind(m, "next_tab", &["}"]);
         bind(m, "prev_tab", &["{"]);
-        bind(m, "toggle_wrap", &["Shift+w"]);
+        bind(m, "toggle_wrap", &["F2"]);
         bind(m, "export_response", &["Shift+o"]);
     }
 
@@ -451,7 +418,7 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "prev_tab", &["{"]);
         bind(m, "type_lang_next", &["]"]);
         bind(m, "type_lang_prev", &["["]);
-        bind(m, "toggle_wrap", &["Shift+w"]);
+        bind(m, "toggle_wrap", &["F2"]);
         bind(m, "export_response", &["Shift+o"]);
     }
 
