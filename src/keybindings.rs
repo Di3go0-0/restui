@@ -60,9 +60,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
             return Some(Action::BodyVimInput(key));
         }
 
-        // Normal mode → check app keys, then VimEditor
-        // (skip pending key handling — VimEditor handles operator+motion internally)
+        // Normal mode → check app keys + global shortcuts, then VimEditor
         if let Some(action) = map_body_app_key(&k, kb) {
+            return Some(action);
+        }
+        if let Some(action) = map_panel_shortcuts(&k, state, kb) {
             return Some(action);
         }
         return Some(Action::BodyVimInput(key));
@@ -91,8 +93,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
                 }
                 return Some(Action::TypeVimInput(key));
             }
-            // Normal mode: check app keys first
+            // Normal mode: check app keys + global shortcuts first
             if let Some(action) = map_response_app_key(&k, state, kb) {
+                return Some(action);
+            }
+            if let Some(action) = map_panel_shortcuts(&k, state, kb) {
                 return Some(action);
             }
             return Some(Action::TypeVimInput(key));
@@ -102,8 +107,11 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
         if state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock {
             return Some(Action::RespVimInput(key));
         }
-        // Normal mode: check app keys first
+        // Normal mode: check app keys + global shortcuts first
         if let Some(action) = map_response_app_key(&k, state, kb) {
+            return Some(action);
+        }
+        if let Some(action) = map_panel_shortcuts(&k, state, kb) {
             return Some(action);
         }
         return Some(Action::RespVimInput(key));
@@ -161,6 +169,10 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
         "scroll_half_up" => Some(Action::ScrollHalfUp),
         "toggle_insecure" => Some(Action::ToggleInsecureMode),
         "save_request" => Some(Action::SaveRequest),
+        "navigate_left" => Some(Action::NavigatePanel(Direction::Left)),
+        "navigate_down" => Some(Action::NavigatePanel(Direction::Down)),
+        "navigate_up" => Some(Action::NavigatePanel(Direction::Up)),
+        "navigate_right" => Some(Action::NavigatePanel(Direction::Right)),
         _ => None,
     }
 }
@@ -359,6 +371,20 @@ fn map_request_field_edit_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Act
         "find_after" => Some(Action::PendingKey('T')),
         "tab" => Some(Action::InlineTab),
         "exit_field_edit" => Some(Action::ExitRequestFieldEdit),
+        _ => None,
+    }
+}
+
+// ── Panel shortcuts (focus 1-4, command palette, help) — checked before VimEditor ──
+
+fn map_panel_shortcuts(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
+    match lookup(&kb.global, k)? {
+        "focus_panel_1" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Collections)),
+        "focus_panel_2" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Request)),
+        "focus_panel_3" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Body)),
+        "focus_panel_4" if state.count_prefix.is_none() => Some(Action::FocusPanel(Panel::Response)),
+        "open_command_palette" => Some(Action::OpenCommandPalette),
+        "help" => Some(Action::OpenOverlay(Overlay::Help)),
         _ => None,
     }
 }
