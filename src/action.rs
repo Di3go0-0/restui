@@ -22,8 +22,6 @@ pub enum Action {
     ExitVisualMode,
 
     // New line (vim o/O)
-    OpenLineBelow,
-    OpenLineAbove,
 
     // Scrolling
     ScrollUp,

@@ -426,61 +426,6 @@ impl App {
                     _ => {}
                 }
             }
-            Action::OpenLineBelow => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    {
-                        let insert_at = self.state.type_vim.cursor_row + 1;
-                        self.state.type_vim.lines.insert(insert_at, String::new());
-                        self.state.type_vim.cursor_row = insert_at;
-                        self.state.type_vim.cursor_col = 0;
-                        self.state.type_vim.modified = true;
-                    }
-                    self.state.response_type_locked = true;
-                    self.state.mode = InputMode::Insert;
-                    self.state.type_vim.ensure_cursor_visible();
-                } else if self.state.active_panel == Panel::Body {
-                    self.push_body_undo();
-                    let body = self.state.current_request.get_body_mut(self.state.body_type);
-                    let lines: Vec<&str> = body.lines().collect();
-                    let line_end_offset = if self.state.body_vim.cursor_row < lines.len() {
-                        let mut off = 0;
-                        for (i, line) in lines.iter().enumerate() {
-                            off += line.len();
-                            if i == self.state.body_vim.cursor_row { break; }
-                            off += 1;
-                        }
-                        off
-                    } else {
-                        body.len()
-                    };
-                    body.insert(line_end_offset, '\n');
-                    self.state.body_vim.cursor_row += 1;
-                    self.state.body_vim.cursor_col = 0;
-                    self.state.mode = InputMode::Insert;
-                }
-            }
-            Action::OpenLineAbove => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    {
-                        let row = self.state.type_vim.cursor_row;
-                        self.state.type_vim.lines.insert(row, String::new());
-                        self.state.type_vim.cursor_col = 0;
-                        self.state.type_vim.modified = true;
-                    }
-                    self.state.response_type_locked = true;
-                    self.state.mode = InputMode::Insert;
-                    self.state.type_vim.ensure_cursor_visible();
-                } else if self.state.active_panel == Panel::Body {
-                    self.push_body_undo();
-                    let body = self.state.current_request.get_body_mut(self.state.body_type);
-                    let line_start = row_col_to_offset(body, self.state.body_vim.cursor_row, 0);
-                    body.insert(line_start, '\n');
-                    self.state.body_vim.cursor_col = 0;
-                    self.state.mode = InputMode::Insert;
-                }
-            }
             Action::ExitInsertMode => {
                 // Sync query params from URL when leaving insert on URL field
                 if self.state.active_panel == Panel::Request && self.state.request_focus == RequestFocus::Url {

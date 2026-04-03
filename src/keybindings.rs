@@ -263,12 +263,11 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         }
     }
 
-    // Panel-specific normal mode
+    // Panel-specific normal mode (Body/Response handled earlier via VimEditor delegation)
     match state.active_panel {
         Panel::Collections => map_collections_key(k, kb),
         Panel::Request => map_request_normal_key(k, state, kb),
-        Panel::Body => map_body_app_key(k, kb),
-        Panel::Response => map_response_key(k, state, kb),
+        _ => None,
     }
 }
 
@@ -423,74 +422,6 @@ fn map_response_app_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -
         "regenerate_type" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
         "export_response" => Some(Action::ExportResponse),
         "toggle_wrap" => Some(Action::ToggleWrap),
-        _ => None,
-    }
-}
-
-fn map_response_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
-    // Tab switching is shared across all response sub-tabs
-    // Check the specific sub-context map first for tab actions
-    let ctx = response_context(state, kb);
-
-    // Type language sub-tab switching (only in Type tab)
-    if state.response_tab == ResponseTab::Type {
-        if let Some(action) = lookup(ctx, k) {
-            match action {
-                "type_lang_next" => return Some(Action::TypeLangNext),
-                "type_lang_prev" => return Some(Action::TypeLangPrev),
-                _ => {}
-            }
-        }
-    }
-
-    match lookup(ctx, k)? {
-        "scroll_down" => Some(Action::ScrollDown),
-        "scroll_up" => Some(Action::ScrollUp),
-        "cursor_left" => Some(Action::InlineCursorLeft),
-        "cursor_right" => Some(Action::InlineCursorRight),
-        "scroll_top" => Some(Action::ScrollTop),
-        "scroll_bottom" => Some(Action::ScrollBottom),
-        "word_forward" => Some(Action::BodyWordForward),
-        "word_backward" => Some(Action::BodyWordBackward),
-        "word_end" => Some(Action::BodyWordEnd),
-        "line_home" => Some(Action::BodyLineHome),
-        "line_end" => Some(Action::BodyLineEnd),
-        "enter_visual" => Some(Action::EnterVisualMode),
-        "copy_response" => Some(Action::CopyResponseBody),
-        "copy_as_curl" => Some(Action::CopyAsCurl),
-        "find_forward" => Some(Action::PendingKey('f')),
-        "find_backward" => Some(Action::PendingKey('F')),
-        "find_before" => Some(Action::PendingKey('t')),
-        "find_after" => Some(Action::PendingKey('T')),
-        "start_search" => Some(Action::StartSearch),
-        "search_next" => Some(Action::SearchNext),
-        "search_prev" => Some(Action::SearchPrev),
-        "next_tab" => Some(Action::ResponseNextTab),
-        "prev_tab" => Some(Action::ResponsePrevTab),
-        // Response body specific
-        "open_env_selector" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
-        "toggle_headers" => Some(Action::ToggleResponseHeaders),
-        "response_history" => Some(Action::OpenOverlay(Overlay::ResponseHistory { selected: 0 })),
-        "response_diff" => Some(Action::OpenOverlay(Overlay::ResponseDiffSelect { selected: 0 })),
-        // Type editor specific (only works when in editor sub-focus)
-        "enter_insert" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertMode),
-        "enter_insert_start" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterInsertModeStart),
-        "enter_append" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterAppendMode),
-        "enter_append_end" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::EnterAppendModeEnd),
-        "open_line_below" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::OpenLineBelow),
-        "open_line_above" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::OpenLineAbove),
-        "delete_char" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteCharUnderCursor),
-        "substitute" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Substitute),
-        "change_line" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ChangeLine),
-        "change_to_end" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ChangeToEnd),
-        "delete_to_end_line" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteToEnd),
-        "change_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('c')),
-        "replace_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('r')),
-        "delete_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('d')),
-        "yank_pending" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::PendingKey('y')),
-        "undo" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Undo),
-        "paste" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::Paste),
-        "regenerate_type" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
         _ => None,
     }
 }
