@@ -352,6 +352,8 @@ pub fn default_bindings() -> KeybindingsToml {
         let m = &mut t.body;
         bind(m, "next_tab", &["}"]);
         bind(m, "prev_tab", &["{"]);
+        bind(m, "cursor_left", &["h", "Left"]);
+        bind(m, "cursor_right", &["l", "Right"]);
         bind(m, "scroll_down", &["j", "Down"]);
         bind(m, "scroll_up", &["k", "Up"]);
         bind(m, "scroll_top", &["g"]);

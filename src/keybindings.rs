@@ -290,6 +290,8 @@ fn map_body_normal_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
     match lookup(&kb.body, k)? {
         "next_tab" => Some(Action::BodyNextTab),
         "prev_tab" => Some(Action::BodyPrevTab),
+        "cursor_left" => Some(Action::InlineCursorLeft),
+        "cursor_right" => Some(Action::InlineCursorRight),
         "scroll_down" => Some(Action::ScrollDown),
         "scroll_up" => Some(Action::ScrollUp),
         "scroll_top" => Some(Action::ScrollTop),
