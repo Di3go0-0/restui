@@ -5,13 +5,39 @@
 ### Fixed
 - **Body editor: empty line input bug** — typing the first character on an empty line (especially the last line) caused the line number to disappear and blocked further input; root cause was `sync_body_to_vim()` overwriting the buffer before each keystroke using Rust's `.lines()` which strips trailing newlines
 - **Bracket highlight overlap** — `%` bracket matching now only highlights the matched bracket, not the one at cursor (which already has the block cursor), so both are visually distinguishable
+- **Keybinding SHIFT normalization** — `:`, `?`, and other shifted symbols now match correctly in the keybinding system (crossterm sends them with SHIFT modifier)
+- **Underline cursor for `r`/`R`** — body renderer now uses terminal cursor (not visual block) when `pending_replace` or Replace mode is active, so the underline cursor is visible
 
 ### Changed
-- **Upgraded vimltui to 0.1.1** — brings autoindent on Enter, yank highlight flash, D/C/Y/X/S/J shortcuts, `%` bracket matching, `;`/`,` repeat find, `*`/`#` word search, zz/zt/zb scroll, H/M/L screen jumps, Ctrl-f/Ctrl-b page scroll, Ctrl-w/Ctrl-u insert mode, visual `o`/`c`, text objects (aw/a"/a(/a{/a[), `:s`/`:%s` regex substitution, `:noh`, and correct `p`/`P` linewise paste
+- **Upgraded vimltui to 0.1.3** — brings all features from 0.1.1 through 0.1.3:
+  - Autoindent on Enter, correct `p`/`P` linewise paste
+  - D/C/Y/X/S/J shortcuts, `%` bracket matching, `;`/`,` repeat find
+  - `*`/`#` word search, zz/zt/zb scroll, H/M/L, Ctrl-f/Ctrl-b
+  - Ctrl-w/Ctrl-u in insert mode, visual `o`/`c`
+  - Text objects: `aw`/`a"`/`a(`/`a{`/`a[` and `i{`/`i[`/`i<`/`ib`/`iB`
+  - `:s`/`:%s` regex substitution with live preview + replacement highlighting
+  - Smartcase search (all-lowercase → insensitive, any uppercase → sensitive)
+  - Replace mode (`R`) with underline cursor, `r` with count (`5rx`)
+  - Visual mode case operations: `u` (lower), `U` (upper), `~` (toggle)
+  - `g~` + motion operator, `:noh` to clear highlights
+  - `CursorShape` API for terminal cursor style
+  - Yank highlight flash (150ms)
+- **`:` now goes to vim** in Body/Response panels for Ex commands (`:s`, `:w`, `:noh`, `:123`)
+- **`?` now goes to vim** in Body/Response panels for backward search
+- **Command palette** moved to `Ctrl+p` (works everywhere)
+- **Help** available via `F1` in Body/Response panels (where `?` is vim backward search)
+- **Response body keybinding changes:**
+  - Toggle wrap: `W` → `F2` (frees `W` for vim big-word motion)
+  - Environment selector: `p` → `P` (frees `p` for vim paste)
+- **Body keybindings cleaned up** — removed 30+ dead vim bindings now handled by vimltui
 
 ### Added
-- **Yank highlight** in body editor — 150ms flash on yanked text, using new `yank_highlight` theme color
+- **Vim command line** in body editor — shows `:` commands, `-- INSERT --`, `-- REPLACE --`, search input, pending operators at the bottom of the editor
+- **Live substitution preview** — `:s` match highlighting + replacement preview in body renderer
+- **Smartcase-aware search highlighting** — body renderer respects case sensitivity of the pattern
+- **Yank highlight** in body editor — 150ms flash on yanked text
 - **`yank_highlight` theme color** — `Color::Rgb(80, 80, 40)` default across all theme constructors
+- **Cursor shape support** — terminal cursor changes to Bar (insert), Underline (replace/r), Block (normal)
 
 ## [0.3.5] - 2026-04-03
 

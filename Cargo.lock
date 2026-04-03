@@ -2995,6 +2995,8 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vimltui"
 version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25cd91af97fc1aa1fd1ce28387d9fb2bd43ffc8f89d4fc235d65fa82abd3b667"
 dependencies = [
  "crossterm",
  "ratatui",
