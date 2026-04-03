@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.4] - 2026-04-03
+
+### Changed
+- **Vim editor powered by [vimltui](https://crates.io/crates/vimltui)** — replaced local vim module with reusable crate
+- Body, response, and type editor panels now delegate vim keys to `VimEditor.handle_key()`
+- Removed old `vim_instance.rs`, slimmed `vim_buffer.rs` to word/offset helpers
+
+### Added
+- `h`/`l` cursor movement in body panel
+- Panel navigation (`Ctrl+H/J/K/L`, `1-4`) works from all vim panels in normal mode
+- Escape clears search highlights in normal mode
+
+### Fixed
+- Diff view scroll now uses correct line count (`set_content` on enter/exit)
+
 ## [0.3.3] - 2026-04-02
 
 ### New Features

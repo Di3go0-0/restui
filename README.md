@@ -2,9 +2,11 @@
 
 A TUI HTTP client. Run HTTP requests from your terminal with vim keybindings.
 
+Vim editing powered by [vimltui](https://github.com/Di3go0-0/vimltui) ([crates.io](https://crates.io/crates/vimltui)).
+
 ## Features
 
-- Vim-like keybindings (normal, insert, visual modes)
+- Vim editing powered by [vimltui](https://crates.io/crates/vimltui) — full modal editing (Normal, Insert, Visual), operator+motion composition, f/F/t/T, dot repeat, search highlighting, registers
 - Collections from `.http` files
 - Request chaining with `{{@request_name.json.path}}` syntax
 - Environment variables support
