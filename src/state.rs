@@ -11,7 +11,8 @@ use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
 use crate::model::request::Request;
 use crate::model::response::Response;
-use crate::vim_instance::VimInstance;
+use crate::vim::buffer::VimEditor;
+use crate::vim::VimModeConfig;
 
 // ── Application-wide constants ──────────────────────────────────────────────
 pub const RESPONSE_CACHE_MAX: usize = 50;
@@ -87,6 +88,8 @@ pub enum InputMode {
     Visual,
     VisualBlock,
 }
+
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodyType {
@@ -444,13 +447,17 @@ pub struct AppState {
     pub request_field_editing: bool,   // true = vim normal mode inside a field
     pub request_visual_anchor: usize,  // visual selection anchor for request fields
 
-    // Body vim instance (all modes)
-    pub body_vim: VimInstance,
+    // Body vim editor (all modes)
+    pub body_vim: VimEditor,
+    pub body_hscroll: usize,
+    pub body_visible_width: usize,
 
-    // Response vim instance (read-only, no insert)
-    pub resp_vim: VimInstance,
+    // Response vim editor (read-only, no insert)
+    pub resp_vim: VimEditor,
+    pub resp_hscroll: usize,
+    pub resp_visible_width: usize,
 
-    // Pending key for dd
+    // Pending key for dd (only used in Collections/Request panels now)
     pub pending_key: Option<(char, Instant)>,
 
     // Inline autocomplete (for header names)
@@ -507,13 +514,13 @@ pub struct AppState {
     pub response_type_text: String,
     pub response_type_locked: bool,
     pub type_validation_errors: Vec<String>,
-    pub type_vim: VimInstance,
+    pub type_vim: VimEditor,
     pub type_sub_focus: TypeSubFocus,
     pub type_lang: TypeLang,
     pub type_ts_text: String,
     pub type_csharp_text: String,
-    pub type_ts_vim: VimInstance,
-    pub type_csharp_vim: VimInstance,
+    pub type_ts_vim: VimEditor,
+    pub type_csharp_vim: VimEditor,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -580,8 +587,12 @@ impl AppState {
             path_param_edit_field: 0,
             request_field_editing: false,
             request_visual_anchor: 0,
-            body_vim: VimInstance::new(),
-            resp_vim: VimInstance::read_only(),
+            body_vim: VimEditor::new("", VimModeConfig::default()),
+            body_hscroll: 0,
+            body_visible_width: 80,
+            resp_vim: VimEditor::new("", VimModeConfig::read_only()),
+            resp_hscroll: 0,
+            resp_visible_width: 80,
             pending_key: None,
             autocomplete: None,
             chain_autocomplete: None,
@@ -611,13 +622,13 @@ impl AppState {
             response_type_text: String::new(),
             response_type_locked: false,
             type_validation_errors: Vec::new(),
-            type_vim: VimInstance::new(),
+            type_vim: VimEditor::new("", VimModeConfig::default()),
             type_sub_focus: TypeSubFocus::default(),
             type_lang: TypeLang::default(),
             type_ts_text: String::new(),
             type_csharp_text: String::new(),
-            type_ts_vim: VimInstance::new(),
-            type_csharp_vim: VimInstance::new(),
+            type_ts_vim: VimEditor::new("", VimModeConfig::default()),
+            type_csharp_vim: VimEditor::new("", VimModeConfig::default()),
             matched_bracket: None,
             count_prefix: None,
             last_response_info: None,
@@ -641,9 +652,9 @@ impl AppState {
         self.body_validation_error = self.body_type.validate(body);
     }
 
-    /// Get the VimInstance for the active panel
+    /// Get the VimEditor for the active panel
     #[allow(dead_code)]
-    pub fn active_vim(&mut self) -> &mut VimInstance {
+    pub fn active_vim(&mut self) -> &mut VimEditor {
         match self.active_panel {
             Panel::Body => &mut self.body_vim,
             Panel::Response if self.response_tab == ResponseTab::Type => &mut self.type_vim,
@@ -652,16 +663,6 @@ impl AppState {
         }
     }
 
-    /// Validate if the new mode is allowed before changing
-    #[allow(dead_code)]
-    pub fn try_set_mode(&mut self, new_mode: InputMode) -> bool {
-        if self.active_vim().is_mode_allowed(new_mode) {
-            self.mode = new_mode;
-            true
-        } else {
-            false
-        }
-    }
 }
 
 pub const COMMON_HEADERS: &[(&str, &str)] = &[

@@ -61,7 +61,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         }
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .scroll(state.resp_vim.buffer.scroll);
+            .scroll((state.resp_vim.scroll_offset as u16, state.resp_hscroll as u16));
         frame.render_widget(paragraph, inner);
         return;
     }
@@ -493,7 +493,7 @@ fn render_type_editor(
     let is_type_visual = is_focused && (state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock);
     // response_type_text and type_buf always hold the active lang's data (swapped on lang change)
     let text = &state.response_type_text;
-    let buf = &state.type_vim.buffer;
+    let buf = &state.type_vim;
 
     if text.is_empty() && state.response_type.is_none() {
         let placeholder = Paragraph::new(Line::from(Span::styled(
@@ -515,7 +515,7 @@ fn render_type_editor(
     };
     let total_lines = text_lines.len();
     let visible_height = type_area.height as usize;
-    let scroll = (buf.scroll.0 as usize).min(total_lines.saturating_sub(visible_height));
+    let scroll = buf.scroll_offset.min(total_lines.saturating_sub(visible_height));
 
     let gutter_width: u16 = 4;
     let text_area_x = type_area.x + gutter_width;
@@ -552,7 +552,7 @@ fn render_type_editor(
             _ => colorize_type_line,
         };
         let colored_line = if is_type_visual {
-            let (ar, ac) = (buf.visual_anchor_row, buf.visual_anchor_col);
+            let (ar, ac) = buf.visual_anchor.unwrap_or((0, 0));
             let (cr, cc) = (buf.cursor_row, buf.cursor_col);
             let (sr, sc, er, ec) = if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) };
             if line_idx >= sr && line_idx <= er {
@@ -839,11 +839,11 @@ fn render_response_body(
     let text_area_x = body_area.x + gutter_width;
     let text_area_width = body_area.width.saturating_sub(gutter_width);
 
-    let scroll_y = state.resp_vim.buffer.scroll.0 as usize;
-    let hscroll = if state.wrap_enabled { 0 } else { state.resp_vim.buffer.scroll.1 as usize };
+    let scroll_y = state.resp_vim.scroll_offset;
+    let hscroll = if state.wrap_enabled { 0 } else { state.resp_hscroll };
     let visible_height = body_area.height as usize;
-    let cursor_row = state.resp_vim.buffer.cursor_row;
-    let cursor_col = state.resp_vim.buffer.cursor_col;
+    let cursor_row = state.resp_vim.cursor_row;
+    let cursor_col = state.resp_vim.cursor_col;
 
     // Visual range
     let (vsr, vsc, ver, vec_) = if is_visual {
@@ -866,7 +866,7 @@ fn render_response_body(
 
     // Compute bracket match for response panel
     let matched_bracket = if is_focused {
-        find_matching_bracket(&body_lines, state.resp_vim.buffer.cursor_row, state.resp_vim.buffer.cursor_col)
+        find_matching_bracket(&body_lines, state.resp_vim.cursor_row, state.resp_vim.cursor_col)
     } else {
         None
     };
@@ -978,7 +978,7 @@ fn render_response_body(
             // Bracket highlighting
             if is_focused {
                 let highlight_positions: [(usize, usize); 2] = [
-                    (state.resp_vim.buffer.cursor_row, state.resp_vim.buffer.cursor_col),
+                    (state.resp_vim.cursor_row, state.resp_vim.cursor_col),
                     matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
                 ];
                 for &(br, bc) in &highlight_positions {
@@ -1019,7 +1019,7 @@ fn render_response_body(
     } else if is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < body_area.height {
-            let cursor_x = text_area_x + state.resp_vim.buffer.cursor_col.saturating_sub(hscroll) as u16;
+            let cursor_x = text_area_x + state.resp_vim.cursor_col.saturating_sub(hscroll) as u16;
             let cursor_y = body_area.y + cursor_screen_row as u16;
             if cursor_x < inner.right() {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -1095,8 +1095,8 @@ fn highlight_search_line(
 }
 
 fn resp_visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = (state.resp_vim.buffer.visual_anchor_row, state.resp_vim.buffer.visual_anchor_col);
-    let (cr, cc) = (state.resp_vim.buffer.cursor_row, state.resp_vim.buffer.cursor_col);
+    let (ar, ac) = state.resp_vim.visual_anchor.unwrap_or((0, 0));
+    let (cr, cc) = (state.resp_vim.cursor_row, state.resp_vim.cursor_col);
     (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
 }
 
@@ -1125,8 +1125,8 @@ fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'sta
 }
 
 fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = (state.resp_vim.buffer.visual_anchor_row, state.resp_vim.buffer.visual_anchor_col);
-    let (cr, cc) = (state.resp_vim.buffer.cursor_row, state.resp_vim.buffer.cursor_col);
+    let (ar, ac) = state.resp_vim.visual_anchor.unwrap_or((0, 0));
+    let (cr, cc) = (state.resp_vim.cursor_row, state.resp_vim.cursor_col);
     if (ar, ac) <= (cr, cc) {
         (ar, ac, cr, cc)
     } else {
