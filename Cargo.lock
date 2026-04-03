@@ -2125,6 +2125,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "unicode-width",
+ "vimltui",
 ]
 
 [[package]]
@@ -3025,6 +3026,17 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vimltui"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8341dd6268a212788a21cc356eb82a6be40c53acdf68de7189f37a3e7c3fefef"
+dependencies = [
+ "crossterm 0.29.0",
+ "ratatui",
+ "unicode-width",
+]
 
 [[package]]
 name = "vtparse"

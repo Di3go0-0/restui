@@ -18,7 +18,7 @@ use crate::state::{AppState, ChainAutocomplete, InputMode, Overlay, Panel, Reque
 use crate::tui::Tui;
 use crate::ui;
 use crate::vim_buffer::row_col_to_offset as vim_row_col_to_offset;
-use crate::vim::{VimMode, VisualKind, Register};
+use vimltui::{VimMode, VisualKind, Register};
 use crossterm::cursor::SetCursorStyle;
 
 pub struct App {
@@ -1899,7 +1899,7 @@ impl App {
                     if let Some(snapshot) = self.state.body_vim.undo_stack.pop() {
                         let current_body = self.active_body().to_string();
                         let cur_lines: Vec<String> = if current_body.is_empty() { vec![String::new()] } else { current_body.lines().map(String::from).collect() };
-                        self.state.body_vim.redo_stack.push(crate::vim::Snapshot {
+                        self.state.body_vim.redo_stack.push(vimltui::Snapshot {
                             lines: cur_lines,
                             cursor_row: self.state.body_vim.cursor_row,
                             cursor_col: self.state.body_vim.cursor_col,
@@ -1949,7 +1949,7 @@ impl App {
                     if let Some(snapshot) = self.state.body_vim.redo_stack.pop() {
                         let current_body = self.active_body().to_string();
                         let cur_lines: Vec<String> = if current_body.is_empty() { vec![String::new()] } else { current_body.lines().map(String::from).collect() };
-                        self.state.body_vim.undo_stack.push(crate::vim::Snapshot {
+                        self.state.body_vim.undo_stack.push(vimltui::Snapshot {
                             lines: cur_lines,
                             cursor_row: self.state.body_vim.cursor_row,
                             cursor_col: self.state.body_vim.cursor_col,
@@ -3175,7 +3175,7 @@ impl App {
         } else {
             body.lines().map(String::from).collect()
         };
-        self.state.body_vim.undo_stack.push(crate::vim::Snapshot {
+        self.state.body_vim.undo_stack.push(vimltui::Snapshot {
             lines,
             cursor_row: self.state.body_vim.cursor_row,
             cursor_col: self.state.body_vim.cursor_col,
@@ -4826,7 +4826,7 @@ fn row_col_to_offset(text: &str, row: usize, col: usize) -> usize {
 }
 
 /// Word forward motion for VimEditor using its internal lines
-fn vim_editor_word_forward(editor: &mut crate::vim::buffer::VimEditor) {
+fn vim_editor_word_forward(editor: &mut vimltui::VimEditor) {
     if let Some(line) = editor.lines.get(editor.cursor_row) {
         let bytes = line.as_bytes();
         let mut col = editor.cursor_col;
@@ -4848,7 +4848,7 @@ fn vim_editor_word_forward(editor: &mut crate::vim::buffer::VimEditor) {
 }
 
 /// Word backward motion for VimEditor using its internal lines
-fn vim_editor_word_backward(editor: &mut crate::vim::buffer::VimEditor) {
+fn vim_editor_word_backward(editor: &mut vimltui::VimEditor) {
     if let Some(line) = editor.lines.get(editor.cursor_row) {
         let bytes = line.as_bytes();
         let mut col = editor.cursor_col;
@@ -4871,7 +4871,7 @@ fn vim_editor_word_backward(editor: &mut crate::vim::buffer::VimEditor) {
 }
 
 /// Word end motion for VimEditor using its internal lines
-fn vim_editor_word_end(editor: &mut crate::vim::buffer::VimEditor) {
+fn vim_editor_word_end(editor: &mut vimltui::VimEditor) {
     if let Some(line) = editor.lines.get(editor.cursor_row) {
         let bytes = line.as_bytes();
         let mut col = editor.cursor_col;

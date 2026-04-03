@@ -1,5 +1,5 @@
 use crate::state::{Panel, ResponseTab, TypeSubFocus};
-use crate::vim::SCROLLOFF;
+use vimltui::SCROLLOFF;
 
 use super::App;
 

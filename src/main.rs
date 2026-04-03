@@ -14,8 +14,6 @@ mod state;
 mod theme;
 mod tui;
 mod ui;
-#[allow(dead_code)]
-mod vim;
 mod vim_buffer;
 
 use anyhow::Result;

@@ -11,8 +11,8 @@ use crate::model::environment::EnvironmentStore;
 use crate::model::history::History;
 use crate::model::request::Request;
 use crate::model::response::Response;
-use crate::vim::buffer::VimEditor;
-use crate::vim::VimModeConfig;
+use vimltui::VimEditor;
+use vimltui::VimModeConfig;
 
 // ── Application-wide constants ──────────────────────────────────────────────
 pub const RESPONSE_CACHE_MAX: usize = 50;
