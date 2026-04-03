@@ -41,13 +41,13 @@ impl App {
         if let Some(&(row, col)) = self.state.search.matches.get(self.state.search.match_idx) {
             match self.state.active_panel {
                 Panel::Response => {
-                    self.state.resp_vim.cursor_row = row;
-                    self.state.resp_vim.cursor_col = col;
-                    let visible = self.state.resp_vim.visible_height;
-                    if row < self.state.resp_vim.scroll_offset {
-                        self.state.resp_vim.scroll_offset = row;
-                    } else if row >= self.state.resp_vim.scroll_offset + visible {
-                        self.state.resp_vim.scroll_offset = row.saturating_sub(visible / 2);
+                    self.state.response_view.resp_vim.cursor_row = row;
+                    self.state.response_view.resp_vim.cursor_col = col;
+                    let visible = self.state.response_view.resp_vim.visible_height;
+                    if row < self.state.response_view.resp_vim.scroll_offset {
+                        self.state.response_view.resp_vim.scroll_offset = row;
+                    } else if row >= self.state.response_view.resp_vim.scroll_offset + visible {
+                        self.state.response_view.resp_vim.scroll_offset = row.saturating_sub(visible / 2);
                     }
                 }
                 Panel::Body => {

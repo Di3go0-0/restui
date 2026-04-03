@@ -6,37 +6,37 @@ use super::App;
 impl App {
     /// Save current active type text/buf to the storage for the current lang.
     pub(super) fn swap_type_lang_out(&mut self) {
-        match self.state.type_lang {
+        match self.state.response_view.type_lang {
             crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
             crate::state::TypeLang::TypeScript => {
-                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_ts_text);
-                std::mem::swap(&mut self.state.type_vim, &mut self.state.type_ts_vim);
+                std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_ts_text);
+                std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_ts_vim);
             }
             crate::state::TypeLang::CSharp => {
-                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_csharp_text);
-                std::mem::swap(&mut self.state.type_vim, &mut self.state.type_csharp_vim);
+                std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_csharp_text);
+                std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_csharp_vim);
             }
         }
     }
 
     /// Load the type text/buf for the new lang into the active slots.
     pub(super) fn swap_type_lang_in(&mut self) {
-        match self.state.type_lang {
+        match self.state.response_view.type_lang {
             crate::state::TypeLang::Inferred => {} // response_type_text IS the active text
             crate::state::TypeLang::TypeScript => {
-                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_ts_text);
-                std::mem::swap(&mut self.state.type_vim, &mut self.state.type_ts_vim);
+                std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_ts_text);
+                std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_ts_vim);
             }
             crate::state::TypeLang::CSharp => {
-                std::mem::swap(&mut self.state.response_type_text, &mut self.state.type_csharp_text);
-                std::mem::swap(&mut self.state.type_vim, &mut self.state.type_csharp_vim);
+                std::mem::swap(&mut self.state.response_view.type_text, &mut self.state.response_view.type_csharp_text);
+                std::mem::swap(&mut self.state.response_view.type_vim, &mut self.state.response_view.type_csharp_vim);
             }
         }
     }
 
     /// Sync response_type_text from type_vim's internal lines.
     pub(super) fn sync_type_vim_text(&mut self) {
-        self.state.response_type_text = self.state.type_vim.content();
+        self.state.response_view.type_text = self.state.response_view.type_vim.content();
     }
 
     /// Sync app input mode from body_vim's mode.
@@ -50,7 +50,7 @@ impl App {
     }
 
     pub(super) fn sync_mode_from_vim_resp(&mut self) {
-        self.state.mode = match &self.state.resp_vim.mode {
+        self.state.mode = match &self.state.response_view.resp_vim.mode {
             VimMode::Normal => InputMode::Normal,
             VimMode::Insert => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
@@ -59,7 +59,7 @@ impl App {
     }
 
     pub(super) fn sync_mode_from_vim_type(&mut self) {
-        self.state.mode = match &self.state.type_vim.mode {
+        self.state.mode = match &self.state.response_view.type_vim.mode {
             VimMode::Normal => InputMode::Normal,
             VimMode::Insert => InputMode::Insert,
             VimMode::Visual(VisualKind::Block) => InputMode::VisualBlock,
@@ -68,7 +68,7 @@ impl App {
     }
 
     pub(super) fn validate_response_type(&mut self) {
-        self.state.type_validation_errors.clear();
+        self.state.response_view.type_validation_errors.clear();
 
         let resp = match &self.state.current_response {
             Some(r) => r,
@@ -78,22 +78,22 @@ impl App {
         let json_val = match serde_json::from_str::<serde_json::Value>(&resp.body) {
             Ok(v) => v,
             Err(_) => {
-                self.state.type_validation_errors.push("Response body is not valid JSON".to_string());
+                self.state.response_view.type_validation_errors.push("Response body is not valid JSON".to_string());
                 return;
             }
         };
 
-        let user_type = match crate::model::response_type::parse_type_text(&self.state.response_type_text) {
+        let user_type = match crate::model::response_type::parse_type_text(&self.state.response_view.type_text) {
             Ok(t) => t,
             Err(e) => {
-                self.state.type_validation_errors.push(format!("Type parse error: {}", e));
+                self.state.response_view.type_validation_errors.push(format!("Type parse error: {}", e));
                 return;
             }
         };
 
         let mismatches = user_type.validate(&json_val);
         for m in mismatches {
-            self.state.type_validation_errors.push(
+            self.state.response_view.type_validation_errors.push(
                 format!("{}: expected {}, got {}", m.path, m.expected, m.actual)
             );
         }
@@ -117,7 +117,7 @@ impl App {
                     }
                 }
             }
-            Panel::Request if self.state.request_field_editing => {
+            Panel::Request if self.state.request_edit.field_editing => {
                 let text = self.get_request_field_text();
                 let bytes = text.as_bytes();
                 let cursor = self.get_request_cursor();
@@ -129,18 +129,18 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                self.state.type_vim.find_char_forward(target, before);
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                self.state.response_view.type_vim.find_char_forward(target, before);
             }
             Panel::Response => {
                 let text = self.get_response_body_text();
                 let lines: Vec<&str> = text.lines().collect();
-                if let Some(line) = lines.get(self.state.resp_vim.cursor_row) {
+                if let Some(line) = lines.get(self.state.response_view.resp_vim.cursor_row) {
                     let bytes = line.as_bytes();
-                    let start = self.state.resp_vim.cursor_col + 1;
+                    let start = self.state.response_view.resp_vim.cursor_col + 1;
                     for i in start..bytes.len() {
                         if bytes[i] == target as u8 {
-                            self.state.resp_vim.cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
+                            self.state.response_view.resp_vim.cursor_col = if before { i.saturating_sub(1).max(start.saturating_sub(1)) } else { i };
                             break;
                         }
                     }
@@ -170,7 +170,7 @@ impl App {
                     }
                 }
             }
-            Panel::Request if self.state.request_field_editing => {
+            Panel::Request if self.state.request_edit.field_editing => {
                 let text = self.get_request_field_text();
                 let bytes = text.as_bytes();
                 let cursor = self.get_request_cursor();
@@ -183,19 +183,19 @@ impl App {
                     }
                 }
             }
-            Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                self.state.type_vim.find_char_backward(target, after);
+            Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                self.state.response_view.type_vim.find_char_backward(target, after);
             }
             Panel::Response => {
                 let text = self.get_response_body_text();
                 let lines: Vec<&str> = text.lines().collect();
-                if let Some(line) = lines.get(self.state.resp_vim.cursor_row) {
+                if let Some(line) = lines.get(self.state.response_view.resp_vim.cursor_row) {
                     let bytes = line.as_bytes();
-                    let col = self.state.resp_vim.cursor_col;
+                    let col = self.state.response_view.resp_vim.cursor_col;
                     if col > 0 {
                         for i in (0..col).rev() {
                             if bytes[i] == target as u8 {
-                                self.state.resp_vim.cursor_col = if after { (i + 1).min(col) } else { i };
+                                self.state.response_view.resp_vim.cursor_col = if after { (i + 1).min(col) } else { i };
                                 break;
                             }
                         }

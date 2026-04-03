@@ -404,6 +404,118 @@ pub enum RequestFocus {
     PathParam(usize),
 }
 
+pub struct RequestEditState {
+    pub tab: RequestTab,
+    pub focus: RequestFocus,
+    pub url_cursor: usize,
+    pub header_edit_cursor: usize,
+    pub header_edit_field: u8,
+    pub param_edit_cursor: usize,
+    pub param_edit_field: u8,
+    pub cookie_edit_cursor: usize,
+    pub cookie_edit_field: u8,
+    pub path_param_edit_cursor: usize,
+    pub path_param_edit_field: u8,
+    pub field_editing: bool,
+    pub visual_anchor: usize,
+    pub undo_stack: Vec<(RequestFocus, u8, String, usize)>,
+    pub redo_stack: Vec<(RequestFocus, u8, String, usize)>,
+}
+
+impl RequestEditState {
+    pub fn new() -> Self {
+        Self {
+            tab: RequestTab::Headers,
+            focus: RequestFocus::Url,
+            url_cursor: 0,
+            header_edit_cursor: 0,
+            header_edit_field: 0,
+            param_edit_cursor: 0,
+            param_edit_field: 0,
+            cookie_edit_cursor: 0,
+            cookie_edit_field: 0,
+            path_param_edit_cursor: 0,
+            path_param_edit_field: 0,
+            field_editing: false,
+            visual_anchor: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        }
+    }
+}
+
+pub struct ResponseViewState {
+    pub tab: ResponseTab,
+    pub response_type: Option<crate::model::response_type::JsonType>,
+    pub type_text: String,
+    pub type_locked: bool,
+    pub type_validation_errors: Vec<String>,
+    pub type_vim: VimEditor,
+    pub type_sub_focus: TypeSubFocus,
+    pub type_lang: TypeLang,
+    pub type_ts_text: String,
+    pub type_csharp_text: String,
+    pub type_ts_vim: VimEditor,
+    pub type_csharp_vim: VimEditor,
+    pub headers_expanded: bool,
+    pub headers_scroll: usize,
+    pub resp_vim: VimEditor,
+    pub resp_hscroll: usize,
+    pub resp_visible_width: usize,
+}
+
+impl ResponseViewState {
+    pub fn new() -> Self {
+        Self {
+            tab: ResponseTab::Body,
+            response_type: None,
+            type_text: String::new(),
+            type_locked: false,
+            type_validation_errors: Vec::new(),
+            type_vim: VimEditor::new("", VimModeConfig::default()),
+            type_sub_focus: TypeSubFocus::default(),
+            type_lang: TypeLang::default(),
+            type_ts_text: String::new(),
+            type_csharp_text: String::new(),
+            type_ts_vim: VimEditor::new("", VimModeConfig::default()),
+            type_csharp_vim: VimEditor::new("", VimModeConfig::default()),
+            headers_expanded: false,
+            headers_scroll: 0,
+            resp_vim: VimEditor::new("", VimModeConfig::read_only()),
+            resp_hscroll: 0,
+            resp_visible_width: 80,
+        }
+    }
+}
+
+pub struct CollectionsViewState {
+    pub active: usize,
+    pub list_state: ListState,
+    pub expanded: std::collections::HashSet<usize>,
+    pub items: Vec<String>,
+    pub filter: String,
+    pub filter_active: bool,
+}
+
+impl CollectionsViewState {
+    pub fn new() -> Self {
+        let mut list_state = ListState::default();
+        list_state.select(Some(0));
+        Self {
+            active: 0,
+            list_state,
+            expanded: {
+                let mut s = std::collections::HashSet::new();
+                s.insert(0);
+                s
+            },
+            items: Vec::new(),
+            filter: String::new(),
+            filter_active: false,
+        }
+    }
+}
+
 pub struct AppState {
     // Navigation
     pub active_panel: Panel,
@@ -416,7 +528,6 @@ pub struct AppState {
     // Data
     pub collections: Vec<Collection>,
     pub environments: EnvironmentStore,
-    pub active_collection: usize,
     pub history: History,
 
     // Current request
@@ -429,33 +540,15 @@ pub struct AppState {
     pub body_type: BodyType,
     pub body_validation_error: Option<String>,
 
-    // Panel state
-    pub collections_state: ListState,
-
-    // Request panel tabs & inline editing
-    pub request_tab: RequestTab,
-    pub request_focus: RequestFocus,
-    pub url_cursor: usize,
-    pub header_edit_cursor: usize,
-    pub header_edit_field: u8, // 0=name, 1=value
-    pub param_edit_cursor: usize,
-    pub param_edit_field: u8, // 0=key, 1=value
-    pub cookie_edit_cursor: usize,
-    pub cookie_edit_field: u8, // 0=name, 1=value
-    pub path_param_edit_cursor: usize,
-    pub path_param_edit_field: u8, // 0=key, 1=value
-    pub request_field_editing: bool,   // true = vim normal mode inside a field
-    pub request_visual_anchor: usize,  // visual selection anchor for request fields
+    // Sub-states
+    pub request_edit: RequestEditState,
+    pub response_view: ResponseViewState,
+    pub collections_view: CollectionsViewState,
 
     // Body vim editor (all modes)
     pub body_vim: VimEditor,
     pub body_hscroll: usize,
     pub body_visible_width: usize,
-
-    // Response vim editor (read-only, no insert)
-    pub resp_vim: VimEditor,
-    pub resp_hscroll: usize,
-    pub resp_visible_width: usize,
 
     // Pending key for dd (only used in Collections/Request panels now)
     pub pending_key: Option<(char, Instant)>,
@@ -470,16 +563,8 @@ pub struct AppState {
     pub yank_buffer: String,
     pub yanked_request: Option<Request>,
 
-    // Undo/Redo history for request field editing
-    // (focus, edit_field, field_text, cursor_pos)
-    pub request_undo_stack: Vec<(RequestFocus, u8, String, usize)>,
-    pub request_redo_stack: Vec<(RequestFocus, u8, String, usize)>,
-
     // Response cache for request chaining: key = "collection/request_name", value = (Response, cached_at)
     pub response_cache: HashMap<String, (Response, Instant)>,
-
-    // Collections expand/collapse
-    pub expanded_collections: std::collections::HashSet<usize>,
 
     // Command Palette
     pub command_palette: CommandPaletteState,
@@ -497,30 +582,8 @@ pub struct AppState {
     // Word wrap (global toggle)
     pub wrap_enabled: bool,
 
-    // Response headers inspector
-    pub response_headers_expanded: bool,
-    pub response_headers_scroll: usize,
-
     // Search
     pub search: SearchState,
-
-    // Collections filter
-    pub collections_filter: String,
-    pub collections_filter_active: bool,
-
-    // Response type inference
-    pub response_type: Option<crate::model::response_type::JsonType>,
-    pub response_tab: ResponseTab,
-    pub response_type_text: String,
-    pub response_type_locked: bool,
-    pub type_validation_errors: Vec<String>,
-    pub type_vim: VimEditor,
-    pub type_sub_focus: TypeSubFocus,
-    pub type_lang: TypeLang,
-    pub type_ts_text: String,
-    pub type_csharp_text: String,
-    pub type_ts_vim: VimEditor,
-    pub type_csharp_vim: VimEditor,
 
     // Bracket matching: (row, col) of the matching bracket, None if no match
     #[allow(dead_code)]
@@ -535,7 +598,6 @@ pub struct AppState {
     // Misc
     pub should_quit: bool,
     pub status_message: Option<(String, Instant)>,
-    pub collection_items: Vec<String>,
 
     // Response history per request (max 5 previous responses, persisted)
     pub response_histories: ResponseHistories,
@@ -553,9 +615,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: AppConfig, keybindings: KeybindingsConfig) -> Self {
-        let mut collections_state = ListState::default();
-        collections_state.select(Some(0));
-
         Self {
             active_panel: Panel::Collections,
             mode: InputMode::Normal,
@@ -563,7 +622,6 @@ impl AppState {
             last_middle_panel: Panel::Request,
             collections: Vec::new(),
             environments: EnvironmentStore::default(),
-            active_collection: 0,
             history: History::load(&crate::config::data_dir().join("history.json")),
             current_request: Request::default(),
             current_response: None,
@@ -573,68 +631,30 @@ impl AppState {
             request_abort_handle: None,
             body_type: BodyType::Json,
             body_validation_error: None,
-            collections_state,
-            request_tab: RequestTab::Headers,
-            request_focus: RequestFocus::Url,
-            url_cursor: 0,
-            header_edit_cursor: 0,
-            header_edit_field: 0,
-            param_edit_cursor: 0,
-            param_edit_field: 0,
-            cookie_edit_cursor: 0,
-            cookie_edit_field: 0,
-            path_param_edit_cursor: 0,
-            path_param_edit_field: 0,
-            request_field_editing: false,
-            request_visual_anchor: 0,
+            request_edit: RequestEditState::new(),
+            response_view: ResponseViewState::new(),
+            collections_view: CollectionsViewState::new(),
             body_vim: VimEditor::new("", VimModeConfig::default()),
             body_hscroll: 0,
             body_visible_width: 80,
-            resp_vim: VimEditor::new("", VimModeConfig::read_only()),
-            resp_hscroll: 0,
-            resp_visible_width: 80,
             pending_key: None,
             autocomplete: None,
             chain_autocomplete: None,
             yank_buffer: String::new(),
             yanked_request: None,
-            request_undo_stack: Vec::new(),
-            request_redo_stack: Vec::new(),
             response_cache: HashMap::new(),
-            expanded_collections: {
-                let mut s = std::collections::HashSet::new();
-                s.insert(0); // expand first collection by default
-                s
-            },
             command_palette: CommandPaletteState::default(),
             overlay: None,
             env_selector_state: ListState::default(),
             theme: crate::theme::Theme::default(),
             config,
             wrap_enabled: false,
-            response_headers_expanded: false,
-            response_headers_scroll: 0,
             search: SearchState::default(),
-            collections_filter: String::new(),
-            collections_filter_active: false,
-            response_type: None,
-            response_tab: ResponseTab::Body,
-            response_type_text: String::new(),
-            response_type_locked: false,
-            type_validation_errors: Vec::new(),
-            type_vim: VimEditor::new("", VimModeConfig::default()),
-            type_sub_focus: TypeSubFocus::default(),
-            type_lang: TypeLang::default(),
-            type_ts_text: String::new(),
-            type_csharp_text: String::new(),
-            type_ts_vim: VimEditor::new("", VimModeConfig::default()),
-            type_csharp_vim: VimEditor::new("", VimModeConfig::default()),
             matched_bracket: None,
             count_prefix: None,
             last_response_info: None,
             should_quit: false,
             status_message: None,
-            collection_items: Vec::new(),
             response_histories: ResponseHistories::load(&crate::config::data_dir().join("response_history.json")),
             viewing_history: None,
             viewing_diff: None,
@@ -657,8 +677,8 @@ impl AppState {
     pub fn active_vim(&mut self) -> &mut VimEditor {
         match self.active_panel {
             Panel::Body => &mut self.body_vim,
-            Panel::Response if self.response_tab == ResponseTab::Type => &mut self.type_vim,
-            Panel::Response => &mut self.resp_vim,
+            Panel::Response if self.response_view.tab == ResponseTab::Type => &mut self.response_view.type_vim,
+            Panel::Response => &mut self.response_view.resp_vim,
             _ => &mut self.body_vim, // fallback
         }
     }

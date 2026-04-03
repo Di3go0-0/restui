@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
         if let Some(file_stem) = file.file_stem().and_then(|s| s.to_str()) {
             for (i, collection) in app.state.collections.iter().enumerate() {
                 if collection.name == file_stem {
-                    app.state.collections_state.select(Some(i));
+                    app.state.collections_view.list_state.select(Some(i));
                     if let Some(req) = collection.requests.first() {
                         app.state.current_request = req.clone();
                     }

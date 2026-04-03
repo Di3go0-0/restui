@@ -10,7 +10,7 @@ use crate::state::{AppState, InputMode, Panel, RequestFocus, RequestTab};
 pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let is_focused = state.active_panel == Panel::Request;
     let is_insert = is_focused && state.mode == InputMode::Insert;
-    let is_field_edit = is_focused && state.request_field_editing;
+    let is_field_edit = is_focused && state.request_edit.field_editing;
     let is_editing = is_insert || (is_field_edit && state.mode == InputMode::Normal);
     let is_visual = is_field_edit && state.mode == InputMode::Visual;
     let t = &state.theme;
@@ -41,7 +41,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // === Method + URL line ===
     let req = &state.current_request;
     let method_color = t.method_color(req.method);
-    let is_url_focused = is_focused && state.request_focus == RequestFocus::Url;
+    let is_url_focused = is_focused && state.request_edit.focus == RequestFocus::Url;
     let url_prefix = if is_url_focused { "▸ " } else { "  " };
 
     let method_str = format!(" {} ", req.method);
@@ -58,7 +58,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // Horizontal scroll: derive scroll offset so cursor stays visible
     let url_area_width = (inner.width as usize).saturating_sub(prefix_display_width);
     let scroll = if is_url_editing && url_area_width > 0 {
-        let cursor = state.url_cursor;
+        let cursor = state.request_edit.url_cursor;
         if cursor < url_area_width {
             0
         } else {
@@ -88,9 +88,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // Build URL spans with block cursor / visual highlight
     let url_spans = if is_url_focused && (is_editing || is_visual) && !is_insert {
-        let cursor_in_visible = state.url_cursor.saturating_sub(scroll);
+        let cursor_in_visible = state.request_edit.url_cursor.saturating_sub(scroll);
         build_field_spans(&truncated_url, cursor_in_visible,
-            if is_visual { Some((state.request_visual_anchor.saturating_sub(scroll), cursor_in_visible)) } else { None },
+            if is_visual { Some((state.request_edit.visual_anchor.saturating_sub(scroll), cursor_in_visible)) } else { None },
             url_base_style, t)
     } else {
         colorize_url(&truncated_url, t)
@@ -117,8 +117,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     frame.render_widget(Paragraph::new(Line::from(method_spans)), chunks[0]);
 
     // Cursor when in insert mode (blinking line cursor)
-    if is_insert && state.request_focus == RequestFocus::Url {
-        let cursor_visual = state.url_cursor.saturating_sub(scroll);
+    if is_insert && state.request_edit.focus == RequestFocus::Url {
+        let cursor_visual = state.request_edit.url_cursor.saturating_sub(scroll);
         let cursor_x = inner.x + prefix_display_width as u16 + cursor_visual as u16;
         if cursor_x < area.right() {
             frame.set_cursor_position(Position::new(cursor_x, chunks[0].y));
@@ -138,7 +138,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // === Tab content ===
     let content_area = chunks[3];
-    match state.request_tab {
+    match state.request_edit.tab {
         RequestTab::Headers => render_headers_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
         RequestTab::Cookies => render_cookies_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
         RequestTab::Queries => render_queries_tab(frame, state, content_area, area, is_focused, is_insert, is_editing, is_visual),
@@ -156,7 +156,7 @@ fn render_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
             spans.push(Span::styled("  ", Style::default().fg(t.text_dim)));
         }
 
-        let is_active = state.request_tab == *tab;
+        let is_active = state.request_edit.tab == *tab;
         if is_active {
             spans.push(Span::styled(
                 format!("[{}]", tab.label()),
@@ -216,7 +216,7 @@ fn render_headers_tab(
             break;
         }
 
-        let is_header_focused = is_focused && state.request_focus == RequestFocus::Header(i);
+        let is_header_focused = is_focused && state.request_edit.focus == RequestFocus::Header(i);
         let prefix = if is_header_focused { "▸" } else { " " };
         let style = if header.enabled {
             Style::default().fg(t.text)
@@ -238,48 +238,48 @@ fn render_headers_tab(
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_header_focused && (is_editing || is_visual) {
-            let name_style = if state.header_edit_field == 0 {
+            let name_style = if state.request_edit.header_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style.add_modifier(Modifier::BOLD)
             };
-            let value_style = if state.header_edit_field == 1 {
+            let value_style = if state.request_edit.header_edit_field == 1 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style
             };
 
-            let active_style = if state.header_edit_field == 0 { name_style } else { value_style };
+            let active_style = if state.request_edit.header_edit_field == 0 { name_style } else { value_style };
 
             // Compute available width and hscroll for the active field
             let separator_width = 2usize; // ": "
             let name_display_width = UnicodeWidthStr::width(header.name.as_str());
-            let (name_field_scroll, visible_name) = if state.header_edit_field == 0 {
+            let (name_field_scroll, visible_name) = if state.request_edit.header_edit_field == 0 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
-                field_hscroll(&header.name, state.header_edit_cursor, avail)
+                field_hscroll(&header.name, state.request_edit.header_edit_cursor, avail)
             } else {
                 (0, header.name.clone())
             };
-            let (value_field_scroll, visible_value) = if state.header_edit_field == 1 {
+            let (value_field_scroll, visible_value) = if state.request_edit.header_edit_field == 1 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + name_display_width + separator_width);
-                field_hscroll(&header.value, state.header_edit_cursor, avail)
+                field_hscroll(&header.value, state.request_edit.header_edit_cursor, avail)
             } else {
                 (0, header.value.clone())
             };
 
-            let adj_cursor = state.header_edit_cursor.saturating_sub(
-                if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            let adj_cursor = state.request_edit.header_edit_cursor.saturating_sub(
+                if state.request_edit.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
             );
-            let adj_anchor = state.request_visual_anchor.saturating_sub(
-                if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            let adj_anchor = state.request_edit.visual_anchor.saturating_sub(
+                if state.request_edit.header_edit_field == 0 { name_field_scroll } else { value_field_scroll }
             );
 
             // Build spans — use block cursor / visual highlight for non-insert modes
-            let (name_spans, value_spans) = if !is_insert && state.header_edit_field == 0 {
+            let (name_spans, value_spans) = if !is_insert && state.request_edit.header_edit_field == 0 {
                 (build_field_spans(&visible_name, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t), vec![Span::styled(visible_value, value_style)])
-            } else if !is_insert && state.header_edit_field == 1 {
+            } else if !is_insert && state.request_edit.header_edit_field == 1 {
                 (vec![Span::styled(visible_name, name_style)],
                  build_field_spans(&visible_value, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
@@ -307,9 +307,9 @@ fn render_headers_tab(
 
             // Position cursor (only blinking line cursor in insert mode)
             if is_insert {
-                let field_scroll = if state.header_edit_field == 0 { name_field_scroll } else { value_field_scroll };
-                let cursor_visual = state.header_edit_cursor.saturating_sub(field_scroll);
-                let cursor_x = if state.header_edit_field == 0 {
+                let field_scroll = if state.request_edit.header_edit_field == 0 { name_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.request_edit.header_edit_cursor.saturating_sub(field_scroll);
+                let cursor_x = if state.request_edit.header_edit_field == 0 {
                     content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
                     content_area.x + prefix_width as u16 + name_display_width as u16 + 2 + cursor_visual as u16
@@ -320,7 +320,7 @@ fn render_headers_tab(
             }
 
             // Save anchor for autocomplete popup
-            if state.header_edit_field == 0 && state.autocomplete.is_some() {
+            if state.request_edit.header_edit_field == 0 && state.autocomplete.is_some() {
                 autocomplete_anchor = Some((content_area.x + prefix_width as u16, row_y + 1));
             }
         } else {
@@ -382,7 +382,7 @@ fn render_queries_tab(
             break;
         }
 
-        let is_param_focused = is_focused && state.request_focus == RequestFocus::Param(i);
+        let is_param_focused = is_focused && state.request_edit.focus == RequestFocus::Param(i);
         let prefix = if is_param_focused { "▸" } else { " " };
         let style = if param.enabled {
             Style::default().fg(t.text)
@@ -404,45 +404,45 @@ fn render_queries_tab(
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_param_focused && (is_editing || is_visual) {
-            let key_style = if state.param_edit_field == 0 {
+            let key_style = if state.request_edit.param_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style.add_modifier(Modifier::BOLD)
             };
-            let value_style = if state.param_edit_field == 1 {
+            let value_style = if state.request_edit.param_edit_field == 1 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style
             };
 
-            let active_style = if state.param_edit_field == 0 { key_style } else { value_style };
+            let active_style = if state.request_edit.param_edit_field == 0 { key_style } else { value_style };
             let separator_width = 3usize; // " = "
             let key_display_width = UnicodeWidthStr::width(param.key.as_str());
-            let (key_field_scroll, visible_key) = if state.param_edit_field == 0 {
+            let (key_field_scroll, visible_key) = if state.request_edit.param_edit_field == 0 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
-                field_hscroll(&param.key, state.param_edit_cursor, avail)
+                field_hscroll(&param.key, state.request_edit.param_edit_cursor, avail)
             } else {
                 (0, param.key.clone())
             };
-            let (value_field_scroll, visible_value) = if state.param_edit_field == 1 {
+            let (value_field_scroll, visible_value) = if state.request_edit.param_edit_field == 1 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + key_display_width + separator_width);
-                field_hscroll(&param.value, state.param_edit_cursor, avail)
+                field_hscroll(&param.value, state.request_edit.param_edit_cursor, avail)
             } else {
                 (0, param.value.clone())
             };
 
-            let adj_cursor = state.param_edit_cursor.saturating_sub(
-                if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            let adj_cursor = state.request_edit.param_edit_cursor.saturating_sub(
+                if state.request_edit.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
             );
-            let adj_anchor = state.request_visual_anchor.saturating_sub(
-                if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            let adj_anchor = state.request_edit.visual_anchor.saturating_sub(
+                if state.request_edit.param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
             );
 
-            let (key_spans, value_spans) = if !is_insert && state.param_edit_field == 0 {
+            let (key_spans, value_spans) = if !is_insert && state.request_edit.param_edit_field == 0 {
                 (build_field_spans(&visible_key, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t), vec![Span::styled(visible_value, value_style)])
-            } else if !is_insert && state.param_edit_field == 1 {
+            } else if !is_insert && state.request_edit.param_edit_field == 1 {
                 (vec![Span::styled(visible_key, key_style)],
                  build_field_spans(&visible_value, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
@@ -469,9 +469,9 @@ fn render_queries_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let field_scroll = if state.param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
-                let cursor_visual = state.param_edit_cursor.saturating_sub(field_scroll);
-                let cursor_x = if state.param_edit_field == 0 {
+                let field_scroll = if state.request_edit.param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.request_edit.param_edit_cursor.saturating_sub(field_scroll);
+                let cursor_x = if state.request_edit.param_edit_field == 0 {
                     content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
                     content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_visual as u16
@@ -534,7 +534,7 @@ fn render_cookies_tab(
             break;
         }
 
-        let is_cookie_focused = is_focused && state.request_focus == RequestFocus::Cookie(i);
+        let is_cookie_focused = is_focused && state.request_edit.focus == RequestFocus::Cookie(i);
         let prefix = if is_cookie_focused { "▸" } else { " " };
         let style = if cookie.enabled {
             Style::default().fg(t.text)
@@ -556,45 +556,45 @@ fn render_cookies_tab(
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_cookie_focused && (is_editing || is_visual) {
-            let name_style = if state.cookie_edit_field == 0 {
+            let name_style = if state.request_edit.cookie_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style.add_modifier(Modifier::BOLD)
             };
-            let value_style = if state.cookie_edit_field == 1 {
+            let value_style = if state.request_edit.cookie_edit_field == 1 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style
             };
 
-            let active_style = if state.cookie_edit_field == 0 { name_style } else { value_style };
+            let active_style = if state.request_edit.cookie_edit_field == 0 { name_style } else { value_style };
             let separator_width = 1usize; // "="
             let name_display_width = UnicodeWidthStr::width(cookie.name.as_str());
-            let (name_field_scroll, visible_name) = if state.cookie_edit_field == 0 {
+            let (name_field_scroll, visible_name) = if state.request_edit.cookie_edit_field == 0 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
-                field_hscroll(&cookie.name, state.cookie_edit_cursor, avail)
+                field_hscroll(&cookie.name, state.request_edit.cookie_edit_cursor, avail)
             } else {
                 (0, cookie.name.clone())
             };
-            let (value_field_scroll, visible_value) = if state.cookie_edit_field == 1 {
+            let (value_field_scroll, visible_value) = if state.request_edit.cookie_edit_field == 1 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + name_display_width + separator_width);
-                field_hscroll(&cookie.value, state.cookie_edit_cursor, avail)
+                field_hscroll(&cookie.value, state.request_edit.cookie_edit_cursor, avail)
             } else {
                 (0, cookie.value.clone())
             };
 
-            let adj_cursor = state.cookie_edit_cursor.saturating_sub(
-                if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            let adj_cursor = state.request_edit.cookie_edit_cursor.saturating_sub(
+                if state.request_edit.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
             );
-            let adj_anchor = state.request_visual_anchor.saturating_sub(
-                if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
+            let adj_anchor = state.request_edit.visual_anchor.saturating_sub(
+                if state.request_edit.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll }
             );
 
-            let (name_spans, value_spans) = if !is_insert && state.cookie_edit_field == 0 {
+            let (name_spans, value_spans) = if !is_insert && state.request_edit.cookie_edit_field == 0 {
                 (build_field_spans(&visible_name, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t), vec![Span::styled(visible_value, value_style)])
-            } else if !is_insert && state.cookie_edit_field == 1 {
+            } else if !is_insert && state.request_edit.cookie_edit_field == 1 {
                 (vec![Span::styled(visible_name, name_style)],
                  build_field_spans(&visible_value, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
@@ -621,9 +621,9 @@ fn render_cookies_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let field_scroll = if state.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll };
-                let cursor_visual = state.cookie_edit_cursor.saturating_sub(field_scroll);
-                let cursor_x = if state.cookie_edit_field == 0 {
+                let field_scroll = if state.request_edit.cookie_edit_field == 0 { name_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.request_edit.cookie_edit_cursor.saturating_sub(field_scroll);
+                let cursor_x = if state.request_edit.cookie_edit_field == 0 {
                     content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
                     content_area.x + prefix_width as u16 + name_display_width as u16 + 1 + cursor_visual as u16
@@ -687,7 +687,7 @@ fn render_path_params_tab(
             break;
         }
 
-        let is_param_focused = is_focused && state.request_focus == RequestFocus::PathParam(i);
+        let is_param_focused = is_focused && state.request_edit.focus == RequestFocus::PathParam(i);
         let prefix = if is_param_focused { "▸" } else { " " };
         let style = if param.enabled {
             Style::default().fg(t.text)
@@ -709,45 +709,45 @@ fn render_path_params_tab(
         let prefix_width = UnicodeWidthStr::width(prefix_span.as_str());
 
         if is_param_focused && (is_editing || is_visual) {
-            let key_style = if state.path_param_edit_field == 0 {
+            let key_style = if state.request_edit.path_param_edit_field == 0 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style.add_modifier(Modifier::BOLD)
             };
-            let value_style = if state.path_param_edit_field == 1 {
+            let value_style = if state.request_edit.path_param_edit_field == 1 {
                 Style::default().fg(t.accent).add_modifier(Modifier::UNDERLINED)
             } else {
                 style
             };
 
-            let active_style = if state.path_param_edit_field == 0 { key_style } else { value_style };
+            let active_style = if state.request_edit.path_param_edit_field == 0 { key_style } else { value_style };
             let separator_width = 3usize; // " = "
             let key_display_width = UnicodeWidthStr::width(param.key.as_str());
-            let (key_field_scroll, visible_key) = if state.path_param_edit_field == 0 {
+            let (key_field_scroll, visible_key) = if state.request_edit.path_param_edit_field == 0 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + separator_width + 1);
-                field_hscroll(&param.key, state.path_param_edit_cursor, avail)
+                field_hscroll(&param.key, state.request_edit.path_param_edit_cursor, avail)
             } else {
                 (0, param.key.clone())
             };
-            let (value_field_scroll, visible_value) = if state.path_param_edit_field == 1 {
+            let (value_field_scroll, visible_value) = if state.request_edit.path_param_edit_field == 1 {
                 let avail = (content_area.width as usize).saturating_sub(prefix_width + key_display_width + separator_width);
-                field_hscroll(&param.value, state.path_param_edit_cursor, avail)
+                field_hscroll(&param.value, state.request_edit.path_param_edit_cursor, avail)
             } else {
                 (0, param.value.clone())
             };
 
-            let adj_cursor = state.path_param_edit_cursor.saturating_sub(
-                if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            let adj_cursor = state.request_edit.path_param_edit_cursor.saturating_sub(
+                if state.request_edit.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
             );
-            let adj_anchor = state.request_visual_anchor.saturating_sub(
-                if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
+            let adj_anchor = state.request_edit.visual_anchor.saturating_sub(
+                if state.request_edit.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll }
             );
 
-            let (key_spans, value_spans) = if !is_insert && state.path_param_edit_field == 0 {
+            let (key_spans, value_spans) = if !is_insert && state.request_edit.path_param_edit_field == 0 {
                 (build_field_spans(&visible_key, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
                     active_style, t), vec![Span::styled(visible_value, value_style)])
-            } else if !is_insert && state.path_param_edit_field == 1 {
+            } else if !is_insert && state.request_edit.path_param_edit_field == 1 {
                 (vec![Span::styled(visible_key, key_style)],
                  build_field_spans(&visible_value, adj_cursor,
                     if is_visual { Some((adj_anchor, adj_cursor)) } else { None },
@@ -774,9 +774,9 @@ fn render_path_params_tab(
 
             // Position cursor (only in insert mode)
             if is_insert {
-                let field_scroll = if state.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
-                let cursor_visual = state.path_param_edit_cursor.saturating_sub(field_scroll);
-                let cursor_x = if state.path_param_edit_field == 0 {
+                let field_scroll = if state.request_edit.path_param_edit_field == 0 { key_field_scroll } else { value_field_scroll };
+                let cursor_visual = state.request_edit.path_param_edit_cursor.saturating_sub(field_scroll);
+                let cursor_x = if state.request_edit.path_param_edit_field == 0 {
                     content_area.x + prefix_width as u16 + cursor_visual as u16
                 } else {
                     content_area.x + prefix_width as u16 + key_display_width as u16 + 3 + cursor_visual as u16

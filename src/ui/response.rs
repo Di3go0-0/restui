@@ -61,7 +61,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         }
         let paragraph = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .scroll((state.resp_vim.scroll_offset as u16, state.resp_hscroll as u16));
+            .scroll((state.response_view.resp_vim.scroll_offset as u16, state.response_view.resp_hscroll as u16));
         frame.render_widget(paragraph, inner);
         return;
     }
@@ -84,7 +84,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
 
-    let current_tab = state.response_tab;
+    let current_tab = state.response_view.tab;
     if current_tab != ResponseTab::Type {
         render_body_tab(frame, state, resp, inner, is_focused, is_visual, is_visual_block);
     } else {
@@ -103,7 +103,7 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
             ResponseTab::Body => "Body",
             ResponseTab::Type => "Type",
         };
-        let is_active = *tab == state.response_tab;
+        let is_active = *tab == state.response_view.tab;
 
         if is_active {
             spans.push(Span::styled(
@@ -127,7 +127,7 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
     spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
 
     // Show type language sub-tabs when Type tab is active
-    if state.response_tab == ResponseTab::Type {
+    if state.response_view.tab == ResponseTab::Type {
         spans.push(Span::raw("  "));
         let langs = [
             crate::state::TypeLang::Inferred,
@@ -135,7 +135,7 @@ fn render_response_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> 
             crate::state::TypeLang::CSharp,
         ];
         for (i, lang) in langs.iter().enumerate() {
-            let is_active_lang = *lang == state.type_lang;
+            let is_active_lang = *lang == state.response_view.type_lang;
             if is_active_lang {
                 spans.push(Span::styled(
                     format!("[{}]", lang.label()),
@@ -286,7 +286,7 @@ fn render_body_tab(
     let request_info_lines = build_request_info(state);
 
     // Calculate headers area height
-    let headers_height: u16 = if state.response_headers_expanded {
+    let headers_height: u16 = if state.response_view.headers_expanded {
         let max_h = (inner.height.saturating_sub(5)) / 2;
         let total = resp.headers.len() + if request_info_lines.is_empty() { 0 } else { request_info_lines.len() + 1 }; // +1 for separator
         (total as u16).min(max_h).max(1)
@@ -314,8 +314,8 @@ fn render_body_tab(
     frame.render_widget(Paragraph::new(tab_bar), chunks[1]);
 
     // Headers area
-    if state.response_headers_expanded {
-        let header_scroll = state.response_headers_scroll;
+    if state.response_view.headers_expanded {
+        let header_scroll = state.response_view.headers_scroll;
         let visible = headers_height as usize;
         // Build combined lines: response headers + separator + request info
         let mut all_lines: Vec<Line<'static>> = Vec::new();
@@ -395,7 +395,7 @@ fn render_type_tab(
     let status_line = build_status_line(resp, &state.theme);
     let tab_bar = render_response_tab_bar(state, is_focused);
 
-    let errors = &state.type_validation_errors;
+    let errors = &state.response_view.type_validation_errors;
     let validation_height: u16 = if errors.is_empty() { 0 } else { (errors.len() as u16 + 1).min(5) };
 
     let chunks = Layout::default()
@@ -423,12 +423,12 @@ fn render_type_tab(
     frame.render_widget(Paragraph::new(sep1), chunks[2]);
 
     // Type editor area — cursor only when sub-focus is Editor
-    let editor_focused = is_focused && state.type_sub_focus == crate::state::TypeSubFocus::Editor;
+    let editor_focused = is_focused && state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor;
     render_type_editor(frame, state, chunks[3], editor_focused);
 
     // Sub-focus indicator
     if is_focused {
-        let indicator = if state.type_sub_focus == crate::state::TypeSubFocus::Editor {
+        let indicator = if state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
             "▸ Type (Ctrl+J → preview)"
         } else {
             "  Type"
@@ -463,14 +463,14 @@ fn render_type_tab(
     frame.render_widget(Paragraph::new(sep2), chunks[5]);
 
     // Response body preview — cursor when sub-focus is Preview
-    let preview_focused = is_focused && state.type_sub_focus == crate::state::TypeSubFocus::Preview;
+    let preview_focused = is_focused && state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview;
     let preview_visual = preview_focused && state.mode == InputMode::Visual;
     let preview_visual_block = preview_focused && state.mode == InputMode::VisualBlock;
     let preview_area = chunks[6];
 
     // Sub-focus indicator for preview
     if is_focused {
-        let indicator = if state.type_sub_focus == crate::state::TypeSubFocus::Preview {
+        let indicator = if state.response_view.type_sub_focus == crate::state::TypeSubFocus::Preview {
             "▸ Response (Ctrl+K → type)"
         } else {
             "  Response"
@@ -489,13 +489,13 @@ fn render_type_editor(
     is_focused: bool,
 ) {
     let t = &state.theme;
-    let is_insert = is_focused && state.mode == InputMode::Insert && state.response_tab == ResponseTab::Type;
+    let is_insert = is_focused && state.mode == InputMode::Insert && state.response_view.tab == ResponseTab::Type;
     let is_type_visual = is_focused && (state.mode == InputMode::Visual || state.mode == InputMode::VisualBlock);
     // response_type_text and type_buf always hold the active lang's data (swapped on lang change)
-    let text = &state.response_type_text;
-    let buf = &state.type_vim;
+    let text = &state.response_view.type_text;
+    let buf = &state.response_view.type_vim;
 
-    if text.is_empty() && state.response_type.is_none() {
+    if text.is_empty() && state.response_view.response_type.is_none() {
         let placeholder = Paragraph::new(Line::from(Span::styled(
             " (no type - execute a request to see the response type)".to_string(),
             Style::default().fg(Color::DarkGray),
@@ -521,7 +521,7 @@ fn render_type_editor(
     let text_area_x = type_area.x + gutter_width;
     let text_area_width = type_area.width.saturating_sub(gutter_width);
 
-    let locked_indicator = if state.response_type_locked { " [locked]" } else { "" };
+    let locked_indicator = if state.response_view.type_locked { " [locked]" } else { "" };
     let _ = locked_indicator; // used below in hint line if needed
 
     for vi in 0..visible_height {
@@ -546,7 +546,7 @@ fn render_type_editor(
         let line_area = Rect::new(text_area_x, y, text_area_width, 1);
 
         // Colorize the line based on language (with visual highlight if applicable)
-        let colorize_fn = match state.type_lang {
+        let colorize_fn = match state.response_view.type_lang {
             crate::state::TypeLang::TypeScript => colorize_ts_line,
             crate::state::TypeLang::CSharp => colorize_csharp_line,
             _ => colorize_type_line,
@@ -839,11 +839,11 @@ fn render_response_body(
     let text_area_x = body_area.x + gutter_width;
     let text_area_width = body_area.width.saturating_sub(gutter_width);
 
-    let scroll_y = state.resp_vim.scroll_offset;
-    let hscroll = if state.wrap_enabled { 0 } else { state.resp_hscroll };
+    let scroll_y = state.response_view.resp_vim.scroll_offset;
+    let hscroll = if state.wrap_enabled { 0 } else { state.response_view.resp_hscroll };
     let visible_height = body_area.height as usize;
-    let cursor_row = state.resp_vim.cursor_row;
-    let cursor_col = state.resp_vim.cursor_col;
+    let cursor_row = state.response_view.resp_vim.cursor_row;
+    let cursor_col = state.response_view.resp_vim.cursor_col;
 
     // Visual range
     let (vsr, vsc, ver, vec_) = if is_visual {
@@ -866,7 +866,7 @@ fn render_response_body(
 
     // Compute bracket match for response panel
     let matched_bracket = if is_focused {
-        find_matching_bracket(&body_lines, state.resp_vim.cursor_row, state.resp_vim.cursor_col)
+        find_matching_bracket(&body_lines, state.response_view.resp_vim.cursor_row, state.response_view.resp_vim.cursor_col)
     } else {
         None
     };
@@ -978,7 +978,7 @@ fn render_response_body(
             // Bracket highlighting
             if is_focused {
                 let highlight_positions: [(usize, usize); 2] = [
-                    (state.resp_vim.cursor_row, state.resp_vim.cursor_col),
+                    (state.response_view.resp_vim.cursor_row, state.response_view.resp_vim.cursor_col),
                     matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
                 ];
                 for &(br, bc) in &highlight_positions {
@@ -1019,7 +1019,7 @@ fn render_response_body(
     } else if is_visual || is_visual_block {
         let cursor_screen_row = cursor_row as i32 - scroll_y as i32;
         if cursor_screen_row >= 0 && (cursor_screen_row as u16) < body_area.height {
-            let cursor_x = text_area_x + state.resp_vim.cursor_col.saturating_sub(hscroll) as u16;
+            let cursor_x = text_area_x + state.response_view.resp_vim.cursor_col.saturating_sub(hscroll) as u16;
             let cursor_y = body_area.y + cursor_screen_row as u16;
             if cursor_x < inner.right() {
                 frame.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -1095,8 +1095,8 @@ fn highlight_search_line(
 }
 
 fn resp_visual_block_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = state.resp_vim.visual_anchor.unwrap_or((0, 0));
-    let (cr, cc) = (state.resp_vim.cursor_row, state.resp_vim.cursor_col);
+    let (ar, ac) = state.response_view.resp_vim.visual_anchor.unwrap_or((0, 0));
+    let (cr, cc) = (state.response_view.resp_vim.cursor_row, state.response_view.resp_vim.cursor_col);
     (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc))
 }
 
@@ -1125,8 +1125,8 @@ fn highlight_block_line(line: &str, min_col: usize, max_col: usize) -> Line<'sta
 }
 
 fn resp_visual_range(state: &AppState) -> (usize, usize, usize, usize) {
-    let (ar, ac) = state.resp_vim.visual_anchor.unwrap_or((0, 0));
-    let (cr, cc) = (state.resp_vim.cursor_row, state.resp_vim.cursor_col);
+    let (ar, ac) = state.response_view.resp_vim.visual_anchor.unwrap_or((0, 0));
+    let (cr, cc) = (state.response_view.resp_vim.cursor_row, state.response_view.resp_vim.cursor_col);
     if (ar, ac) <= (cr, cc) {
         (ar, ac, cr, cc)
     } else {

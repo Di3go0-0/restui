@@ -20,11 +20,11 @@ impl App {
     }
 
     pub(super) fn rebuild_collection_items(&mut self) {
-        let filter = self.state.collections_filter.to_lowercase();
+        let filter = self.state.collections_view.filter.to_lowercase();
         let has_filter = !filter.is_empty();
         let mut items = Vec::new();
         for (ci, collection) in self.state.collections.iter().enumerate() {
-            let expanded = self.state.expanded_collections.contains(&ci);
+            let expanded = self.state.collections_view.expanded.contains(&ci);
 
             if has_filter {
                 let matching: Vec<usize> = collection.requests.iter().enumerate()
@@ -38,7 +38,7 @@ impl App {
                     continue;
                 }
                 let arrow = if expanded { "▼" } else { "▶" };
-                let marker = if ci == self.state.active_collection { "●" } else { "○" };
+                let marker = if ci == self.state.collections_view.active { "●" } else { "○" };
                 items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
                 if expanded {
                     let last_match = *matching.last().unwrap();
@@ -50,7 +50,7 @@ impl App {
                 }
             } else {
                 let arrow = if expanded { "▼" } else { "▶" };
-                let marker = if ci == self.state.active_collection { "●" } else { "○" };
+                let marker = if ci == self.state.collections_view.active { "●" } else { "○" };
                 items.push(format!("{} {} {}", arrow, marker, collection.display_name()));
                 if expanded {
                     let last_idx = collection.requests.len().saturating_sub(1);
@@ -61,13 +61,13 @@ impl App {
                 }
             }
         }
-        self.state.collection_items = items;
+        self.state.collections_view.items = items;
     }
 
     /// Maps a flat list index to (collection_index, Option<request_index>).
     /// Returns None if out of bounds.
     pub(super) fn flat_idx_to_coll_req(&self, flat_idx: usize) -> Option<(usize, Option<usize>)> {
-        let filter = self.state.collections_filter.to_lowercase();
+        let filter = self.state.collections_view.filter.to_lowercase();
         let has_filter = !filter.is_empty();
         let mut idx = 0;
         for (ci, collection) in self.state.collections.iter().enumerate() {
@@ -84,7 +84,7 @@ impl App {
                 return Some((ci, None)); // collection header
             }
             idx += 1;
-            if self.state.expanded_collections.contains(&ci) {
+            if self.state.collections_view.expanded.contains(&ci) {
                 for ri in 0..collection.requests.len() {
                     if has_filter {
                         let req = &collection.requests[ri];
@@ -110,7 +110,7 @@ impl App {
                 self.state.current_request = req.clone();
                 self.state.current_response = None;
                 self.state.last_error = None;
-                self.state.active_collection = ci;
+                self.state.collections_view.active = ci;
                 let body = self.state.current_request.get_body(self.state.body_type).to_string();
                 self.state.body_vim.set_content(&body);
             }
@@ -118,7 +118,7 @@ impl App {
     }
 
     pub(super) fn save_current_request_over_selected(&mut self) {
-        if let Some(flat_idx) = self.state.collections_state.selected() {
+        if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
             if let Some((ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
                 if let Some(coll) = self.state.collections.get_mut(ci) {
                     if let Some(req) = coll.requests.get_mut(ri) {
@@ -132,14 +132,14 @@ impl App {
     }
 
     pub(super) fn save_current_request_as_new(&mut self) {
-        let ci = self.state.active_collection;
+        let ci = self.state.collections_view.active;
         if let Some(coll) = self.state.collections.get_mut(ci) {
             let mut new_req = self.state.current_request.clone();
             let base = new_req.name.clone().unwrap_or_else(|| "New Request".to_string());
             new_req.name = Some(format!("{} (copy)", base));
             coll.requests.push(new_req);
             self.persist_collection(ci);
-            self.state.expanded_collections.insert(ci);
+            self.state.collections_view.expanded.insert(ci);
             self.rebuild_collection_items();
             self.state.set_status("Request saved as new".to_string());
         }
@@ -179,10 +179,10 @@ impl App {
     }
 
     pub(super) fn switch_active_collection(&mut self) {
-        self.state.expanded_collections.insert(self.state.active_collection);
+        self.state.collections_view.expanded.insert(self.state.collections_view.active);
         self.rebuild_collection_items();
-        self.state.collections_state.select(Some(0));
-        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
+        self.state.collections_view.list_state.select(Some(0));
+        if let Some(coll) = self.state.collections.get(self.state.collections_view.active) {
             if let Some(req) = coll.requests.first() {
                 self.state.current_request = req.clone();
                 self.state.current_response = None;
@@ -196,8 +196,8 @@ impl App {
 
     pub(super) fn try_open_autocomplete(&mut self) {
         if self.state.active_panel == Panel::Request {
-            if let RequestFocus::Header(idx) = self.state.request_focus {
-                if self.state.header_edit_field == 0 {
+            if let RequestFocus::Header(idx) = self.state.request_edit.focus {
+                if self.state.request_edit.header_edit_field == 0 {
                     if let Some(h) = self.state.current_request.headers.get(idx) {
                         let ac = crate::state::Autocomplete::new(&h.name);
                         self.state.autocomplete = if ac.is_empty() { None } else { Some(ac) };

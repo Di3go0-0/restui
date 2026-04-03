@@ -20,13 +20,13 @@ impl App {
                         self.push_request_undo();
                         self.state.mode = InputMode::Insert;
                         // If already in field-edit mode, keep cursor position; otherwise go to end
-                        if !self.state.request_field_editing {
+                        if !self.state.request_edit.field_editing {
                             self.position_request_cursor_at_end();
                         }
-                        self.state.request_field_editing = true;
+                        self.state.request_edit.field_editing = true;
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        self.state.type_vim.save_undo();
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        self.state.response_view.type_vim.save_undo();
                         self.state.mode = InputMode::Insert;
                     }
                     _ => {}
@@ -42,12 +42,12 @@ impl App {
                     Panel::Request => {
                         self.push_request_undo();
                         self.state.mode = InputMode::Insert;
-                        self.state.request_field_editing = true;
+                        self.state.request_edit.field_editing = true;
                         self.set_request_cursor(0);
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        self.state.type_vim.save_undo();
-                        self.state.type_vim.cursor_col = 0;
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        self.state.response_view.type_vim.save_undo();
+                        self.state.response_view.type_vim.cursor_col = 0;
                         self.state.mode = InputMode::Insert;
                     }
                     _ => {}
@@ -66,18 +66,18 @@ impl App {
                     Panel::Request => {
                         self.push_request_undo();
                         self.state.mode = InputMode::Insert;
-                        self.state.request_field_editing = true;
+                        self.state.request_edit.field_editing = true;
                         let cursor = self.get_request_cursor();
                         let len = self.get_request_field_len();
                         self.set_request_cursor((cursor + 1).min(len));
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        self.state.type_vim.save_undo();
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        self.state.response_view.type_vim.save_undo();
                         {
-                            let line_len = self.state.type_vim.current_line_len();
+                            let line_len = self.state.response_view.type_vim.current_line_len();
                             let max = line_len.saturating_sub(1);
-                            if self.state.type_vim.cursor_col < max {
-                                self.state.type_vim.cursor_col += 1;
+                            if self.state.response_view.type_vim.cursor_col < max {
+                                self.state.response_view.type_vim.cursor_col += 1;
                             }
                         }
                         self.state.mode = InputMode::Insert;
@@ -98,13 +98,13 @@ impl App {
                     Panel::Request => {
                         self.push_request_undo();
                         self.state.mode = InputMode::Insert;
-                        self.state.request_field_editing = true;
+                        self.state.request_edit.field_editing = true;
                         let len = self.get_request_field_len();
                         self.set_request_cursor(len);
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        self.state.type_vim.save_undo();
-                        self.state.type_vim.cursor_col = self.state.type_vim.current_line_len();
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        self.state.response_view.type_vim.save_undo();
+                        self.state.response_view.type_vim.cursor_col = self.state.response_view.type_vim.current_line_len();
                         self.state.mode = InputMode::Insert;
                     }
                     _ => {}
@@ -112,7 +112,7 @@ impl App {
             }
             Action::ExitInsertMode => {
                 // Sync query params from URL when leaving insert on URL field
-                if self.state.active_panel == Panel::Request && self.state.request_focus == RequestFocus::Url {
+                if self.state.active_panel == Panel::Request && self.state.request_edit.focus == RequestFocus::Url {
                     self.sync_params_from_url();
                 }
                 self.state.mode = InputMode::Normal;
@@ -130,19 +130,19 @@ impl App {
                         }
                     }
                     Panel::Request => {
-                        self.state.request_field_editing = true;
+                        self.state.request_edit.field_editing = true;
                         let len = self.get_request_field_len();
                         if len > 0 {
                             let cursor = self.get_request_cursor();
                             self.set_request_cursor(cursor.min(len - 1));
                         }
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         // Clamp cursor for type editor
-                        let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                        let line_len = lines.get(self.state.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
+                        let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                        let line_len = lines.get(self.state.response_view.type_vim.cursor_row).map(|l| l.len()).unwrap_or(0);
                         if line_len > 0 {
-                            self.state.type_vim.cursor_col = self.state.type_vim.cursor_col.min(line_len - 1);
+                            self.state.response_view.type_vim.cursor_col = self.state.response_view.type_vim.cursor_col.min(line_len - 1);
                         }
                         // Validate after editing
                         self.validate_response_type();
@@ -152,14 +152,14 @@ impl App {
             }
             Action::EnterRequestFieldEdit => {
                 if self.state.active_panel == Panel::Request {
-                    self.state.request_field_editing = true;
+                    self.state.request_edit.field_editing = true;
                     self.position_request_cursor_at_end();
                 }
             }
             Action::ExitRequestFieldEdit => {
-                self.state.request_field_editing = false;
+                self.state.request_edit.field_editing = false;
                 // Sync query params from URL when leaving field edit
-                if self.state.active_panel == Panel::Request && self.state.request_focus == RequestFocus::Url {
+                if self.state.active_panel == Panel::Request && self.state.request_edit.focus == RequestFocus::Url {
                     self.sync_params_from_url();
                 }
             }
@@ -169,18 +169,18 @@ impl App {
                         self.state.mode = InputMode::Visual;
                         self.state.body_vim.visual_anchor = Some((self.state.body_vim.cursor_row, self.state.body_vim.cursor_col));
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
                         self.state.mode = InputMode::Visual;
-                        self.state.type_vim.visual_anchor = Some((self.state.type_vim.cursor_row, self.state.type_vim.cursor_col));
-                        self.state.type_vim.mode = VimMode::Visual(VisualKind::Char);
+                        self.state.response_view.type_vim.visual_anchor = Some((self.state.response_view.type_vim.cursor_row, self.state.response_view.type_vim.cursor_col));
+                        self.state.response_view.type_vim.mode = VimMode::Visual(VisualKind::Char);
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::Visual;
-                        self.state.resp_vim.visual_anchor = Some((self.state.resp_vim.cursor_row, self.state.resp_vim.cursor_col));
+                        self.state.response_view.resp_vim.visual_anchor = Some((self.state.response_view.resp_vim.cursor_row, self.state.response_view.resp_vim.cursor_col));
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         self.state.mode = InputMode::Visual;
-                        self.state.request_visual_anchor = self.get_request_cursor();
+                        self.state.request_edit.visual_anchor = self.get_request_cursor();
                     }
                     _ => {}
                 }
@@ -193,7 +193,7 @@ impl App {
                     }
                     Panel::Response => {
                         self.state.mode = InputMode::VisualBlock;
-                        self.state.resp_vim.visual_anchor = Some((self.state.resp_vim.cursor_row, self.state.resp_vim.cursor_col));
+                        self.state.response_view.resp_vim.visual_anchor = Some((self.state.response_view.resp_vim.cursor_row, self.state.response_view.resp_vim.cursor_col));
                     }
                     _ => {}
                 }
@@ -202,7 +202,7 @@ impl App {
                 self.state.mode = InputMode::Normal;
                 // Stay in field-edit mode when exiting visual in Request panel
                 if self.state.active_panel == Panel::Request {
-                    self.state.request_field_editing = true;
+                    self.state.request_edit.field_editing = true;
                 }
             }
             _ => {}

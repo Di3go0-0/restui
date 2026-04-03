@@ -17,12 +17,12 @@ impl App {
                 let text = match self.state.active_panel {
                     Panel::Body if is_block => Some(self.get_block_selection()),
                     Panel::Body => Some(self.get_visual_selection()),
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        Some(self.state.type_vim.selected_text().unwrap_or_default())
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        Some(self.state.response_view.type_vim.selected_text().unwrap_or_default())
                     }
                     Panel::Response if is_block => Some(self.get_response_block_selection()),
                     Panel::Response => Some(self.get_response_visual_selection()),
-                    Panel::Request if self.state.request_field_editing => Some(self.get_request_visual_selection()),
+                    Panel::Request if self.state.request_edit.field_editing => Some(self.get_request_visual_selection()),
                     _ => None,
                 };
                 if let Some(text) = text {
@@ -48,16 +48,16 @@ impl App {
                         }
                         self.state.mode = InputMode::Normal;
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        let text = self.state.type_vim.selected_text().unwrap_or_default();
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        let text = self.state.response_view.type_vim.selected_text().unwrap_or_default();
                         self.state.yank_buffer = text;
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        self.state.type_vim.visual_delete();
+                        self.state.response_view.type_vim.visual_delete();
                         self.sync_type_vim_text();
-                        self.state.response_type_locked = true;
+                        self.state.response_view.type_locked = true;
                         self.state.mode = InputMode::Normal;
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         self.push_request_undo();
                         let text = self.get_request_visual_selection();
                         self.state.yank_buffer = text;
@@ -84,15 +84,15 @@ impl App {
                             self.state.mode = InputMode::Normal;
                             self.paste_text_at_cursor(&paste);
                         }
-                        Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                            self.state.type_vim.visual_delete();
-                            self.state.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
-                            self.state.type_vim.paste_after();
+                        Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                            self.state.response_view.type_vim.visual_delete();
+                            self.state.response_view.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
+                            self.state.response_view.type_vim.paste_after();
                             self.sync_type_vim_text();
-                            self.state.response_type_locked = true;
+                            self.state.response_view.type_locked = true;
                             self.state.mode = InputMode::Normal;
                         }
-                        Panel::Request if self.state.request_field_editing => {
+                        Panel::Request if self.state.request_edit.field_editing => {
                             self.push_request_undo();
                             self.delete_request_visual_selection();
                             self.paste_request_text(&paste);
@@ -104,16 +104,16 @@ impl App {
             }
             Action::Paste => {
                 let paste = crate::clipboard::read_clipboard().unwrap_or_else(|_| self.state.yank_buffer.clone());
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    self.state.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
-                    self.state.type_vim.paste_after();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    self.state.response_view.type_vim.unnamed_register = Register { content: paste.clone(), linewise: paste.ends_with('\n') };
+                    self.state.response_view.type_vim.paste_after();
                     self.sync_type_vim_text();
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     self.paste_text_at_cursor(&paste);
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     self.paste_request_text(&paste);
                 }
@@ -141,12 +141,12 @@ impl App {
                         }
                         self.state.validate_body();
                         self.state.set_status("Pasted from clipboard");
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                        self.state.type_vim.save_undo();
-                        self.state.type_vim.unnamed_register = Register { content: text.clone(), linewise: text.ends_with('\n') };
-                        self.state.type_vim.paste_after();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                        self.state.response_view.type_vim.save_undo();
+                        self.state.response_view.type_vim.unnamed_register = Register { content: text.clone(), linewise: text.ends_with('\n') };
+                        self.state.response_view.type_vim.paste_after();
                         self.sync_type_vim_text();
-                        self.state.response_type_locked = true;
+                        self.state.response_view.type_locked = true;
                         self.state.set_status("Pasted from clipboard");
                     }
                 }
@@ -154,7 +154,7 @@ impl App {
             Action::YankLine => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         let text = self.get_request_field_text();
                         self.state.yank_buffer = text.clone();
                         let _ = crate::clipboard::copy_to_clipboard(&text);
@@ -176,9 +176,9 @@ impl App {
                             }
                         }
                     }
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                        let row = self.state.type_vim.cursor_row;
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                        let row = self.state.response_view.type_vim.cursor_row;
                         let end_row = (row + count).min(lines.len());
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
@@ -190,7 +190,7 @@ impl App {
                     Panel::Response => {
                         let text = self.get_response_body_text();
                         let lines: Vec<&str> = text.lines().collect();
-                        let row = self.state.resp_vim.cursor_row;
+                        let row = self.state.response_view.resp_vim.cursor_row;
                         let end_row = (row + count).min(lines.len());
                         if row < lines.len() {
                             let yanked: String = lines[row..end_row].join("\n");
@@ -204,10 +204,10 @@ impl App {
             }
             Action::YankWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
@@ -234,7 +234,7 @@ impl App {
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
                         self.state.set_status("Yanked word");
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
                     let col = self.get_request_cursor();
@@ -269,7 +269,7 @@ impl App {
                             }
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
                         if col < text.len() {
@@ -298,7 +298,7 @@ impl App {
                             }
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
                         if col > 0 {
@@ -324,7 +324,7 @@ impl App {
                             self.state.set_status("Yanked to end of file");
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         // Single-line field: same as yank to end
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
@@ -358,17 +358,17 @@ impl App {
                             self.state.set_status("Line deleted");
                         }
                     }
-                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let row = self.state.type_vim.cursor_row;
-                    let yanked = self.state.type_vim.delete_line(row).unwrap_or_default();
+                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let yanked = self.state.response_view.type_vim.delete_line(row).unwrap_or_default();
                     self.sync_type_vim_text();
                     self.state.yank_buffer = format!("{}\n", yanked);
                     let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                    self.state.response_type_locked = true;
-                    self.state.type_vim.ensure_cursor_visible();
+                    self.state.response_view.type_locked = true;
+                    self.state.response_view.type_vim.ensure_cursor_visible();
                     self.state.set_status("Line deleted");
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     // dd in request field edit: clear the field
                     self.push_request_undo();
                     let text = self.get_request_field_text();
@@ -380,11 +380,11 @@ impl App {
                 }
             }
             Action::DeleteCharUnderCursor => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    self.state.type_vim.delete_char_at_cursor();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    self.state.response_view.type_vim.delete_char_at_cursor();
                     self.sync_type_vim_text();
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body = self.state.current_request.get_body_mut(self.state.body_type);
@@ -399,27 +399,27 @@ impl App {
                             self.state.body_vim.cursor_col = self.state.body_vim.cursor_col.min(line_len.saturating_sub(1).max(0));
                         }
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     self.delete_request_char_under_cursor();
                 }
             }
             Action::DeleteWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
-                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
-                        self.state.response_type_text.drain(start..end);
+                        let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
+                        self.state.response_view.type_text.drain(start..end);
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
@@ -448,7 +448,7 @@ impl App {
                         let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_vim.cursor_col = col.min(line_len.saturating_sub(1).max(0));
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
@@ -471,20 +471,20 @@ impl App {
             }
             Action::DeleteWordEnd => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
                         self.state.yank_buffer = line[col..end_col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
-                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
-                        self.state.response_type_text.drain(start..end);
+                        let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
+                        self.state.response_view.type_text.drain(start..end);
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
@@ -520,7 +520,7 @@ impl App {
                         let line_len = lines2.get(row).map(|l| l.len()).unwrap_or(0);
                         self.state.body_vim.cursor_col = col.min(line_len.saturating_sub(1).max(0));
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
@@ -549,21 +549,21 @@ impl App {
             }
             Action::DeleteWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
                         self.state.yank_buffer = line[start_col..col].to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, start_col);
-                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, col);
-                        self.state.response_type_text.drain(start..end);
-                        self.state.type_vim.cursor_col = start_col;
+                        let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, start_col);
+                        let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
+                        self.state.response_view.type_text.drain(start..end);
+                        self.state.response_view.type_vim.cursor_col = start_col;
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body_text = self.active_body().to_string();
@@ -590,7 +590,7 @@ impl App {
                         body.drain(start..end);
                         self.state.body_vim.cursor_col = start_col;
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
@@ -614,19 +614,19 @@ impl App {
             Action::DeleteToEnd => {
                 self.state.pending_key = None;
                 match self.state.active_panel {
-                    Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => {
-                        self.state.type_vim.save_undo();
+                    Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => {
+                        self.state.response_view.type_vim.save_undo();
                         let yanked = {
-                        let row = self.state.type_vim.cursor_row;
-                        let col = self.state.type_vim.cursor_col;
-                        let line_len = self.state.type_vim.current_line_len();
-                        let text = self.state.type_vim.delete_range(col, line_len, row);
+                        let row = self.state.response_view.type_vim.cursor_row;
+                        let col = self.state.response_view.type_vim.cursor_col;
+                        let line_len = self.state.response_view.type_vim.current_line_len();
+                        let text = self.state.response_view.type_vim.delete_range(col, line_len, row);
                         self.sync_type_vim_text();
                         text
                     };
                         self.state.yank_buffer = yanked;
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        self.state.response_type_locked = true;
+                        self.state.response_view.type_locked = true;
                     }
                     Panel::Body => {
                         self.push_body_undo();
@@ -649,7 +649,7 @@ impl App {
                             }
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         self.push_request_undo();
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
@@ -690,7 +690,7 @@ impl App {
                             }
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         self.push_request_undo();
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
@@ -730,7 +730,7 @@ impl App {
                             self.state.set_status("Deleted to end of file");
                         }
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         // Single-line: same as delete to end
                         self.push_request_undo();
                         let text = self.get_request_field_text();
@@ -752,19 +752,19 @@ impl App {
             }
             Action::ChangeLine => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let row = self.state.type_vim.cursor_row;
-                    let yanked = if row < self.state.type_vim.lines.len() {
-                        let line = std::mem::take(&mut self.state.type_vim.lines[row]);
-                        self.state.type_vim.cursor_col = 0;
-                        self.state.type_vim.modified = true;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let yanked = if row < self.state.response_view.type_vim.lines.len() {
+                        let line = std::mem::take(&mut self.state.response_view.type_vim.lines[row]);
+                        self.state.response_view.type_vim.cursor_col = 0;
+                        self.state.response_view.type_vim.modified = true;
                         line
                     } else { String::new() };
                     self.sync_type_vim_text();
                     self.state.yank_buffer = yanked;
                     let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
@@ -782,7 +782,7 @@ impl App {
                     }
                     self.state.body_vim.cursor_col = 0;
                     self.state.mode = InputMode::Insert;
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     self.state.yank_buffer = text.clone();
@@ -794,21 +794,21 @@ impl App {
             }
             Action::ChangeWord => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let end_col = crate::vim_buffer::word_end_forward(line.as_bytes(), col);
                         let deleted = &line[col..end_col];
                         self.state.yank_buffer = deleted.to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, col);
-                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, end_col);
-                        self.state.response_type_text.drain(start..end);
+                        let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
+                        let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, end_col);
+                        self.state.response_view.type_text.drain(start..end);
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
@@ -837,7 +837,7 @@ impl App {
                         body.drain(start..end);
                     }
                     self.state.mode = InputMode::Insert;
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
@@ -860,22 +860,22 @@ impl App {
             }
             Action::ChangeWordBack => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    let lines: Vec<&str> = self.state.response_type_text.lines().collect();
-                    let row = self.state.type_vim.cursor_row;
-                    let col = self.state.type_vim.cursor_col;
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    let lines: Vec<&str> = self.state.response_view.type_text.lines().collect();
+                    let row = self.state.response_view.type_vim.cursor_row;
+                    let col = self.state.response_view.type_vim.cursor_col;
                     if let Some(line) = lines.get(row) {
                         let start_col = crate::vim_buffer::word_start_backward(line.as_bytes(), col);
                         let deleted = &line[start_col..col];
                         self.state.yank_buffer = deleted.to_string();
                         let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                        let start = vim_row_col_to_offset(&self.state.response_type_text, row, start_col);
-                        let end = vim_row_col_to_offset(&self.state.response_type_text, row, col);
-                        self.state.response_type_text.drain(start..end);
-                        self.state.type_vim.cursor_col = start_col;
+                        let start = vim_row_col_to_offset(&self.state.response_view.type_text, row, start_col);
+                        let end = vim_row_col_to_offset(&self.state.response_view.type_text, row, col);
+                        self.state.response_view.type_text.drain(start..end);
+                        self.state.response_view.type_vim.cursor_col = start_col;
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
@@ -905,7 +905,7 @@ impl App {
                         self.state.body_vim.cursor_col = start_col;
                     }
                     self.state.mode = InputMode::Insert;
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let bytes = text.as_bytes();
@@ -928,19 +928,19 @@ impl App {
                 }
             }
             Action::ChangeToEnd => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
                     let yanked = {
-                        let row = self.state.type_vim.cursor_row;
-                        let col = self.state.type_vim.cursor_col;
-                        let line_len = self.state.type_vim.current_line_len();
-                        let text = self.state.type_vim.delete_range(col, line_len, row);
+                        let row = self.state.response_view.type_vim.cursor_row;
+                        let col = self.state.response_view.type_vim.cursor_col;
+                        let line_len = self.state.response_view.type_vim.current_line_len();
+                        let text = self.state.response_view.type_vim.delete_range(col, line_len, row);
                         self.sync_type_vim_text();
                         text
                     };
                     self.state.yank_buffer = yanked;
                     let _ = crate::clipboard::copy_to_clipboard(&self.state.yank_buffer);
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
@@ -959,7 +959,7 @@ impl App {
                         }
                     }
                     self.state.mode = InputMode::Insert;
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let text = self.get_request_field_text();
                     let col = self.get_request_cursor();
@@ -995,7 +995,7 @@ impl App {
                         }
                         self.state.mode = InputMode::Insert;
                     }
-                    Panel::Request if self.state.request_field_editing => {
+                    Panel::Request if self.state.request_edit.field_editing => {
                         self.push_request_undo();
                         let text = self.get_request_field_text();
                         let col = self.get_request_cursor();
@@ -1012,19 +1012,19 @@ impl App {
             }
             Action::ReplaceChar(c) => {
                 self.state.pending_key = None;
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
                     {
-                        let row = self.state.type_vim.cursor_row;
-                        let col = self.state.type_vim.cursor_col;
-                        if row < self.state.type_vim.lines.len() && col < self.state.type_vim.lines[row].len() {
-                            self.state.type_vim.lines[row].remove(col);
-                            self.state.type_vim.lines[row].insert(col, c);
-                            self.state.type_vim.modified = true;
+                        let row = self.state.response_view.type_vim.cursor_row;
+                        let col = self.state.response_view.type_vim.cursor_col;
+                        if row < self.state.response_view.type_vim.lines.len() && col < self.state.response_view.type_vim.lines[row].len() {
+                            self.state.response_view.type_vim.lines[row].remove(col);
+                            self.state.response_view.type_vim.lines[row].insert(col, c);
+                            self.state.response_view.type_vim.modified = true;
                             self.sync_type_vim_text();
                         }
                     }
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
                     let body = self.state.current_request.get_body_mut(self.state.body_type);
@@ -1033,7 +1033,7 @@ impl App {
                         body.remove(pos);
                         body.insert(pos, c);
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let cursor = self.get_request_cursor();
                     let len = self.get_request_field_len();
@@ -1043,11 +1043,11 @@ impl App {
                 }
             }
             Action::Substitute => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.save_undo();
-                    self.state.type_vim.delete_char_at_cursor();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.save_undo();
+                    self.state.response_view.type_vim.delete_char_at_cursor();
                     self.sync_type_vim_text();
-                    self.state.response_type_locked = true;
+                    self.state.response_view.type_locked = true;
                     self.state.mode = InputMode::Insert;
                 } else if self.state.active_panel == Panel::Body {
                     self.push_body_undo();
@@ -1058,7 +1058,7 @@ impl App {
                         self.state.yank_buffer = ch.to_string();
                     }
                     self.state.mode = InputMode::Insert;
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.push_request_undo();
                     let cursor = self.get_request_cursor();
                     let len = self.get_request_field_len();

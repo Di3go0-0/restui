@@ -231,8 +231,8 @@ impl App {
     pub(super) fn get_response_block_selection(&self) -> String {
         let body = self.get_response_body_text();
         let lines: Vec<&str> = body.lines().collect();
-        let (ar, ac) = self.state.resp_vim.visual_anchor.unwrap_or((0, 0));
-        let (cr, cc) = (self.state.resp_vim.cursor_row, self.state.resp_vim.cursor_col);
+        let (ar, ac) = self.state.response_view.resp_vim.visual_anchor.unwrap_or((0, 0));
+        let (cr, cc) = (self.state.response_view.resp_vim.cursor_row, self.state.response_view.resp_vim.cursor_col);
         let (min_row, min_col, max_row, max_col) = (ar.min(cr), ac.min(cc), ar.max(cr), ac.max(cc));
         let mut result = Vec::new();
         for row in min_row..=max_row {
@@ -254,8 +254,8 @@ impl App {
     }
 
     pub(super) fn resp_visual_range(&self) -> (usize, usize, usize, usize) {
-        let (ar, ac) = self.state.resp_vim.visual_anchor.unwrap_or((0, 0));
-        let (cr, cc) = (self.state.resp_vim.cursor_row, self.state.resp_vim.cursor_col);
+        let (ar, ac) = self.state.response_view.resp_vim.visual_anchor.unwrap_or((0, 0));
+        let (cr, cc) = (self.state.response_view.resp_vim.cursor_row, self.state.response_view.resp_vim.cursor_col);
         if (ar, ac) <= (cr, cc) { (ar, ac, cr, cc) } else { (cr, cc, ar, ac) }
     }
 

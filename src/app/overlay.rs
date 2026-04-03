@@ -78,7 +78,7 @@ impl App {
                     }
                     Some(Overlay::ResponseHistory { selected }) => {
                         let key = self.state.current_request.name.as_ref().map(|name| {
-                            let coll = self.state.collections.get(self.state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+                            let coll = self.state.collections.get(self.state.collections_view.active).map(|c| c.name.as_str()).unwrap_or("_");
                             format!("{}/{}", coll, name)
                         });
                         let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
@@ -86,7 +86,7 @@ impl App {
                     }
                     Some(Overlay::ResponseDiffSelect { selected }) => {
                         let key = self.state.current_request.name.as_ref().map(|name| {
-                            let coll = self.state.collections.get(self.state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+                            let coll = self.state.collections.get(self.state.collections_view.active).map(|c| c.name.as_str()).unwrap_or("_");
                             format!("{}/{}", coll, name)
                         });
                         let max = key.and_then(|k| self.state.response_histories.data.get(&k).map(|h| h.len())).unwrap_or(0usize).saturating_sub(1);
@@ -118,9 +118,9 @@ impl App {
                         if let Some((name, value)) = suggestions.get(selected) {
                             self.state.current_request.headers.push(Header { name: name.clone(), value: value.clone(), enabled: true });
                             let idx = self.state.current_request.headers.len() - 1;
-                            self.state.request_focus = RequestFocus::Header(idx);
-                            self.state.header_edit_field = 1;
-                            self.state.header_edit_cursor = value.len();
+                            self.state.request_edit.focus = RequestFocus::Header(idx);
+                            self.state.request_edit.header_edit_field = 1;
+                            self.state.request_edit.header_edit_cursor = value.len();
                             self.state.mode = InputMode::Insert;
                         }
                     }
@@ -135,7 +135,7 @@ impl App {
                             let _ = std::fs::write(&path, &content);
                             if let Ok(requests) = crate::parser::http::parse(&content) {
                                 self.state.collections.push(Collection { name: name.trim().to_string(), path, requests, format: FileFormat::Http });
-                                self.state.active_collection = self.state.collections.len() - 1;
+                                self.state.collections_view.active = self.state.collections.len() - 1;
                                 self.rebuild_collection_items();
                                 self.state.set_status(format!("Created: .http/{}", filename));
                             }
@@ -143,7 +143,7 @@ impl App {
                     }
                     Some(Overlay::RenameRequest { name }) => {
                         if !name.trim().is_empty() {
-                            if let Some(flat_idx) = self.state.collections_state.selected() {
+                            if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                                 match self.flat_idx_to_coll_req(flat_idx) {
                                     Some((ci, None)) => {
                                         // Rename collection file
@@ -176,21 +176,21 @@ impl App {
                         }
                     }
                     Some(Overlay::ConfirmDelete { .. }) => {
-                        if let Some(flat_idx) = self.state.collections_state.selected() {
+                        if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                             match self.flat_idx_to_coll_req(flat_idx) {
                                 Some((ci, None)) => {
                                     // Delete entire collection
                                     if let Some(coll) = self.state.collections.get(ci) {
                                         let _ = std::fs::remove_file(&coll.path);
                                         let coll_name = coll.name.clone();
-                                        self.state.expanded_collections.remove(&ci);
+                                        self.state.collections_view.expanded.remove(&ci);
                                         self.state.collections.remove(ci);
-                                        if self.state.active_collection >= self.state.collections.len() && self.state.active_collection > 0 {
-                                            self.state.active_collection -= 1;
+                                        if self.state.collections_view.active >= self.state.collections.len() && self.state.collections_view.active > 0 {
+                                            self.state.collections_view.active -= 1;
                                         }
                                         self.rebuild_collection_items();
-                                        self.state.collections_state.select(Some(0));
-                                        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
+                                        self.state.collections_view.list_state.select(Some(0));
+                                        if let Some(coll) = self.state.collections.get(self.state.collections_view.active) {
                                             if let Some(req) = coll.requests.first() {
                                                 self.state.current_request = req.clone();
                                             }
@@ -210,8 +210,8 @@ impl App {
                                             coll.requests.remove(ri);
                                             self.persist_collection(ci);
                                             self.rebuild_collection_items();
-                                            let max = self.state.collection_items.len().saturating_sub(1);
-                                            self.state.collections_state.select(Some(flat_idx.min(max)));
+                                            let max = self.state.collections_view.items.len().saturating_sub(1);
+                                            self.state.collections_view.list_state.select(Some(flat_idx.min(max)));
                                             self.state.set_status(format!("Deleted '{}'", req_name));
                                         }
                                     }
@@ -221,7 +221,7 @@ impl App {
                         }
                     }
                     Some(Overlay::MoveRequest { selected: target_coll }) => {
-                        if let Some(flat_idx) = self.state.collections_state.selected() {
+                        if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                             if let Some((src_ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
                                 if target_coll != src_ci {
                                     if let Some(req) = self.state.collections.get(src_ci).and_then(|c| c.requests.get(ri)).cloned() {
@@ -231,7 +231,7 @@ impl App {
                                         let target_name = self.state.collections.get(target_coll).map(|c| c.name.clone()).unwrap_or_default();
                                         self.state.collections.get_mut(target_coll).unwrap().requests.push(req);
                                         self.persist_collection(target_coll);
-                                        self.state.expanded_collections.insert(target_coll);
+                                        self.state.collections_view.expanded.insert(target_coll);
                                         self.rebuild_collection_items();
                                         self.state.set_status(format!("Moved '{}' → '{}'", req_name, target_name));
                                     }
@@ -323,7 +323,7 @@ impl App {
                         if let Some(ref current) = self.state.current_response {
                             if let Some(ref name) = self.state.current_request.name {
                                 let collection_name = self.state.collections
-                                    .get(self.state.active_collection)
+                                    .get(self.state.collections_view.active)
                                     .map(|c| c.name.as_str())
                                     .unwrap_or("_");
                                 let key = format!("{}/{}", collection_name, name);
@@ -344,9 +344,9 @@ impl App {
                                             diff_text.push('\n');
                                         }
                                         let ts = entry.timestamp.format("%H:%M:%S").to_string();
-                                        self.state.resp_vim.set_content(&diff_text);
+                                        self.state.response_view.resp_vim.set_content(&diff_text);
                                         self.state.viewing_diff = Some((diff_text, ts));
-                                        self.state.resp_hscroll = 0;
+                                        self.state.response_view.resp_hscroll = 0;
                                     }
                                 }
                             }
@@ -356,22 +356,22 @@ impl App {
                         // Load selected historical response
                         if let Some(ref name) = self.state.current_request.name {
                             let collection_name = self.state.collections
-                                .get(self.state.active_collection)
+                                .get(self.state.collections_view.active)
                                 .map(|c| c.name.as_str())
                                 .unwrap_or("_");
                             let key = format!("{}/{}", collection_name, name);
                             if let Some(history) = self.state.response_histories.data.get(&key) {
                                 if let Some(entry) = history.get(selected) {
                                     self.state.current_response = Some(entry.response.clone());
-                                    self.state.resp_vim.scroll_offset = 0; self.state.resp_hscroll = 0;
+                                    self.state.response_view.resp_vim.scroll_offset = 0; self.state.response_view.resp_hscroll = 0;
                                     // Re-infer type
                                     if let Some(ref resp) = self.state.current_response {
                                         if resp.body_bytes.is_some() {
-                                            self.state.response_type = Some(crate::model::response_type::JsonType::Buffer);
+                                            self.state.response_view.response_type = Some(crate::model::response_type::JsonType::Buffer);
                                         } else if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
-                                            self.state.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                                            self.state.response_view.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
                                         } else {
-                                            self.state.response_type = None;
+                                            self.state.response_view.response_type = None;
                                         }
                                     }
                                     let total = history.len();

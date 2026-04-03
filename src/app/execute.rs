@@ -47,7 +47,7 @@ impl App {
         let mut resolving_stack = Vec::new();
         if let Some(ref name) = self.state.current_request.name {
             let coll_name = self.state.collections
-                .get(self.state.active_collection)
+                .get(self.state.collections_view.active)
                 .map(|c| c.name.clone())
                 .unwrap_or_default();
             resolving_stack.push(format!("{}/{}", coll_name, name));
@@ -291,16 +291,16 @@ impl App {
             return None;
         }
 
-        if let Some(coll) = self.state.collections.get(self.state.active_collection) {
+        if let Some(coll) = self.state.collections.get(self.state.collections_view.active) {
             for req in &coll.requests {
                 if req.name.as_deref() == Some(name) {
-                    return Some((self.state.active_collection, req));
+                    return Some((self.state.collections_view.active, req));
                 }
             }
         }
 
         for (ci, coll) in self.state.collections.iter().enumerate() {
-            if ci == self.state.active_collection {
+            if ci == self.state.collections_view.active {
                 continue;
             }
             for req in &coll.requests {

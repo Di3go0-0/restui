@@ -71,19 +71,19 @@ impl App {
                     // Wide: center is 50% of right, body is 60% of center
                     let center_h = main_h;
                     self.state.body_vim.visible_height = (center_h as u32 * 60 / 100) as usize;
-                    self.state.resp_vim.visible_height = main_h as usize;
+                    self.state.response_view.resp_vim.visible_height = main_h as usize;
                 } else {
                     // Narrow: body 35%, response 40%
                     self.state.body_vim.visible_height = (main_h as u32 * 35 / 100) as usize;
-                    self.state.resp_vim.visible_height = (main_h as u32 * 40 / 100) as usize;
+                    self.state.response_view.resp_vim.visible_height = (main_h as u32 * 40 / 100) as usize;
                 }
                 // Account for borders + tab bar + internal chrome
                 self.state.body_vim.visible_height = self.state.body_vim.visible_height.saturating_sub(4);
                 // Account for borders + status line + tab bar + separator
-                self.state.resp_vim.visible_height = self.state.resp_vim.visible_height.saturating_sub(6);
+                self.state.response_view.resp_vim.visible_height = self.state.response_view.resp_vim.visible_height.saturating_sub(6);
                 // When Type tab is open, response preview only gets ~half minus separators
-                if self.state.response_tab == ResponseTab::Type {
-                    self.state.resp_vim.visible_height = (self.state.resp_vim.visible_height / 2).saturating_sub(1);
+                if self.state.response_view.tab == ResponseTab::Type {
+                    self.state.response_view.resp_vim.visible_height = (self.state.response_view.resp_vim.visible_height / 2).saturating_sub(1);
                 }
 
                 // Calculate visible widths for horizontal scroll-follow
@@ -91,14 +91,14 @@ impl App {
                 if right_width > WIDE_LAYOUT_THRESHOLD {
                     // Wide: center panel is ~40% of right
                     self.state.body_visible_width = (right_width as u32 * 40 / 100) as usize;
-                    self.state.resp_visible_width = (right_width as u32 * 50 / 100) as usize;
+                    self.state.response_view.resp_visible_width = (right_width as u32 * 50 / 100) as usize;
                 } else {
                     // Narrow: body/response take full right width
                     self.state.body_visible_width = right_width as usize;
-                    self.state.resp_visible_width = right_width as usize;
+                    self.state.response_view.resp_visible_width = right_width as usize;
                 }
                 self.state.body_visible_width = self.state.body_visible_width.saturating_sub(6); // gutter(4) + borders(2)
-                self.state.resp_visible_width = self.state.resp_visible_width.saturating_sub(6);
+                self.state.response_view.resp_visible_width = self.state.response_view.resp_visible_width.saturating_sub(6);
             }
 
             terminal.draw(|frame| {
@@ -183,16 +183,16 @@ impl App {
                 self.state.active_panel = target;
                 self.state.mode = InputMode::Normal;
                 self.state.pending_key = None;
-                self.state.request_field_editing = false;
+                self.state.request_edit.field_editing = false;
                 self.state.chain_autocomplete = None;
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
             Action::FocusPanel(panel) => {
                 self.state.active_panel = panel;
                 self.state.mode = InputMode::Normal;
-                self.state.request_field_editing = false;
+                self.state.request_edit.field_editing = false;
                 self.state.chain_autocomplete = None;
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
 
             // === Vim Mode Transitions ===
@@ -236,13 +236,13 @@ impl App {
                 } else if let Some(ac) = self.state.autocomplete.take() {
                     if let Some((name, value)) = ac.accept() {
                         if self.state.active_panel == Panel::Request {
-                            if let RequestFocus::Header(idx) = self.state.request_focus {
+                            if let RequestFocus::Header(idx) = self.state.request_edit.focus {
                                 if let Some(h) = self.state.current_request.headers.get_mut(idx) {
                                     h.name = name.to_string();
                                     h.value = value.to_string();
                                     // Jump to value field
-                                    self.state.header_edit_field = 1;
-                                    self.state.header_edit_cursor = value.len();
+                                    self.state.request_edit.header_edit_field = 1;
+                                    self.state.request_edit.header_edit_cursor = value.len();
                                 }
                             }
                         }
@@ -265,43 +265,43 @@ impl App {
 
             // === Request Panel Focus ===
             Action::RequestFocusDown => {
-                match self.state.request_tab {
+                match self.state.request_edit.tab {
                     RequestTab::Headers => {
                         let hc = self.state.current_request.headers.len();
-                        self.state.request_focus = match self.state.request_focus {
+                        self.state.request_edit.focus = match self.state.request_edit.focus {
                             RequestFocus::Url => if hc > 0 { RequestFocus::Header(0) } else { RequestFocus::Url },
                             RequestFocus::Header(i) => if i + 1 < hc { RequestFocus::Header(i + 1) } else { RequestFocus::Header(i) },
-                            _ => self.state.request_focus,
+                            _ => self.state.request_edit.focus,
                         };
                     }
                     RequestTab::Queries => {
                         let pc = self.state.current_request.query_params.len();
-                        self.state.request_focus = match self.state.request_focus {
+                        self.state.request_edit.focus = match self.state.request_edit.focus {
                             RequestFocus::Url => if pc > 0 { RequestFocus::Param(0) } else { RequestFocus::Url },
                             RequestFocus::Param(i) => if i + 1 < pc { RequestFocus::Param(i + 1) } else { RequestFocus::Param(i) },
-                            _ => self.state.request_focus,
+                            _ => self.state.request_edit.focus,
                         };
                     }
                     RequestTab::Cookies => {
                         let cc = self.state.current_request.cookies.len();
-                        self.state.request_focus = match self.state.request_focus {
+                        self.state.request_edit.focus = match self.state.request_edit.focus {
                             RequestFocus::Url => if cc > 0 { RequestFocus::Cookie(0) } else { RequestFocus::Url },
                             RequestFocus::Cookie(i) => if i + 1 < cc { RequestFocus::Cookie(i + 1) } else { RequestFocus::Cookie(i) },
-                            _ => self.state.request_focus,
+                            _ => self.state.request_edit.focus,
                         };
                     }
                     RequestTab::Params => {
                         let pc = self.state.current_request.path_params.len();
-                        self.state.request_focus = match self.state.request_focus {
+                        self.state.request_edit.focus = match self.state.request_edit.focus {
                             RequestFocus::Url => if pc > 0 { RequestFocus::PathParam(0) } else { RequestFocus::Url },
                             RequestFocus::PathParam(i) => if i + 1 < pc { RequestFocus::PathParam(i + 1) } else { RequestFocus::PathParam(i) },
-                            _ => self.state.request_focus,
+                            _ => self.state.request_edit.focus,
                         };
                     }
                 }
             }
             Action::RequestFocusUp => {
-                self.state.request_focus = match self.state.request_focus {
+                self.state.request_edit.focus = match self.state.request_edit.focus {
                     RequestFocus::Url => RequestFocus::Url,
                     RequestFocus::Header(0) => RequestFocus::Url,
                     RequestFocus::Header(i) => RequestFocus::Header(i - 1),
@@ -314,15 +314,15 @@ impl App {
                 };
             }
             Action::RequestNextTab => {
-                self.state.request_tab = self.state.request_tab.next();
-                self.state.request_focus = RequestFocus::Url;
+                self.state.request_edit.tab = self.state.request_edit.tab.next();
+                self.state.request_edit.focus = RequestFocus::Url;
             }
             Action::RequestPrevTab => {
-                self.state.request_tab = self.state.request_tab.prev();
-                self.state.request_focus = RequestFocus::Url;
+                self.state.request_edit.tab = self.state.request_edit.tab.prev();
+                self.state.request_edit.focus = RequestFocus::Url;
             }
             Action::ToggleItemEnabled => {
-                match self.state.request_focus {
+                match self.state.request_edit.focus {
                     RequestFocus::Header(idx) => {
                         if let Some(h) = self.state.current_request.headers.get_mut(idx) {
                             h.enabled = !h.enabled;
@@ -349,25 +349,25 @@ impl App {
             Action::AddHeader => {
                 self.state.current_request.headers.push(Header { name: String::new(), value: String::new(), enabled: true });
                 let idx = self.state.current_request.headers.len() - 1;
-                self.state.request_focus = RequestFocus::Header(idx);
-                self.state.header_edit_field = 0;
-                self.state.header_edit_cursor = 0;
+                self.state.request_edit.focus = RequestFocus::Header(idx);
+                self.state.request_edit.header_edit_field = 0;
+                self.state.request_edit.header_edit_cursor = 0;
                 self.state.mode = InputMode::Insert;
             }
             Action::AddParam => {
                 self.state.current_request.query_params.push(QueryParam { key: String::new(), value: String::new(), enabled: true });
                 let idx = self.state.current_request.query_params.len() - 1;
-                self.state.request_focus = RequestFocus::Param(idx);
-                self.state.param_edit_field = 0;
-                self.state.param_edit_cursor = 0;
+                self.state.request_edit.focus = RequestFocus::Param(idx);
+                self.state.request_edit.param_edit_field = 0;
+                self.state.request_edit.param_edit_cursor = 0;
                 self.state.mode = InputMode::Insert;
             }
             Action::DeleteHeader => {
                 self.state.pending_key = None;
-                if let RequestFocus::Header(idx) = self.state.request_focus {
+                if let RequestFocus::Header(idx) = self.state.request_edit.focus {
                     if idx < self.state.current_request.headers.len() {
                         self.state.current_request.headers.remove(idx);
-                        self.state.request_focus = if self.state.current_request.headers.is_empty() {
+                        self.state.request_edit.focus = if self.state.current_request.headers.is_empty() {
                             RequestFocus::Url
                         } else {
                             RequestFocus::Header(idx.min(self.state.current_request.headers.len() - 1))
@@ -378,10 +378,10 @@ impl App {
             }
             Action::DeleteParam => {
                 self.state.pending_key = None;
-                if let RequestFocus::Param(idx) = self.state.request_focus {
+                if let RequestFocus::Param(idx) = self.state.request_edit.focus {
                     if idx < self.state.current_request.query_params.len() {
                         self.state.current_request.query_params.remove(idx);
-                        self.state.request_focus = if self.state.current_request.query_params.is_empty() {
+                        self.state.request_edit.focus = if self.state.current_request.query_params.is_empty() {
                             RequestFocus::Url
                         } else {
                             RequestFocus::Param(idx.min(self.state.current_request.query_params.len() - 1))
@@ -393,17 +393,17 @@ impl App {
             Action::AddCookie => {
                 self.state.current_request.cookies.push(crate::model::request::Cookie { name: String::new(), value: String::new(), enabled: true });
                 let idx = self.state.current_request.cookies.len() - 1;
-                self.state.request_focus = RequestFocus::Cookie(idx);
-                self.state.cookie_edit_field = 0;
-                self.state.cookie_edit_cursor = 0;
+                self.state.request_edit.focus = RequestFocus::Cookie(idx);
+                self.state.request_edit.cookie_edit_field = 0;
+                self.state.request_edit.cookie_edit_cursor = 0;
                 self.state.mode = InputMode::Insert;
             }
             Action::DeleteCookie => {
                 self.state.pending_key = None;
-                if let RequestFocus::Cookie(idx) = self.state.request_focus {
+                if let RequestFocus::Cookie(idx) = self.state.request_edit.focus {
                     if idx < self.state.current_request.cookies.len() {
                         self.state.current_request.cookies.remove(idx);
-                        self.state.request_focus = if self.state.current_request.cookies.is_empty() {
+                        self.state.request_edit.focus = if self.state.current_request.cookies.is_empty() {
                             RequestFocus::Url
                         } else {
                             RequestFocus::Cookie(idx.min(self.state.current_request.cookies.len() - 1))
@@ -415,17 +415,17 @@ impl App {
             Action::AddPathParam => {
                 self.state.current_request.path_params.push(PathParam { key: String::new(), value: String::new(), enabled: true });
                 let idx = self.state.current_request.path_params.len() - 1;
-                self.state.request_focus = RequestFocus::PathParam(idx);
-                self.state.path_param_edit_field = 0;
-                self.state.path_param_edit_cursor = 0;
+                self.state.request_edit.focus = RequestFocus::PathParam(idx);
+                self.state.request_edit.path_param_edit_field = 0;
+                self.state.request_edit.path_param_edit_cursor = 0;
                 self.state.mode = InputMode::Insert;
             }
             Action::DeletePathParam => {
                 self.state.pending_key = None;
-                if let RequestFocus::PathParam(idx) = self.state.request_focus {
+                if let RequestFocus::PathParam(idx) = self.state.request_edit.focus {
                     if idx < self.state.current_request.path_params.len() {
                         self.state.current_request.path_params.remove(idx);
-                        self.state.request_focus = if self.state.current_request.path_params.is_empty() {
+                        self.state.request_edit.focus = if self.state.current_request.path_params.is_empty() {
                             RequestFocus::Url
                         } else {
                             RequestFocus::PathParam(idx.min(self.state.current_request.path_params.len() - 1))
@@ -441,10 +441,10 @@ impl App {
 
             // === Collections ===
             Action::SelectRequest => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     self.select_request_by_flat_index(flat_idx);
                     self.state.active_panel = Panel::Request;
-                    self.state.request_focus = RequestFocus::Url;
+                    self.state.request_edit.focus = RequestFocus::Url;
                 }
             }
             Action::CreateCollection => {
@@ -452,13 +452,13 @@ impl App {
             }
             Action::NextCollection => {
                 if !self.state.collections.is_empty() {
-                    self.state.active_collection = (self.state.active_collection + 1) % self.state.collections.len();
+                    self.state.collections_view.active = (self.state.collections_view.active + 1) % self.state.collections.len();
                     self.switch_active_collection();
                 }
             }
             Action::PrevCollection => {
                 if !self.state.collections.is_empty() {
-                    self.state.active_collection = if self.state.active_collection == 0 { self.state.collections.len() - 1 } else { self.state.active_collection - 1 };
+                    self.state.collections_view.active = if self.state.collections_view.active == 0 { self.state.collections.len() - 1 } else { self.state.collections_view.active - 1 };
                     self.switch_active_collection();
                 }
             }
@@ -471,7 +471,7 @@ impl App {
                 self.save_current_request_as_new();
             }
             Action::RenameRequest => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     let current_name = match self.flat_idx_to_coll_req(flat_idx) {
                         Some((ci, None)) => self.state.collections.get(ci).map(|c| c.name.clone()).unwrap_or_default(),
                         Some((ci, Some(ri))) => self.state.collections.get(ci)
@@ -484,7 +484,7 @@ impl App {
                 }
             }
             Action::DeleteSelected => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     let msg = match self.flat_idx_to_coll_req(flat_idx) {
                         Some((ci, None)) => {
                             let name = self.state.collections.get(ci).map(|c| c.name.clone()).unwrap_or_default();
@@ -502,7 +502,7 @@ impl App {
                 }
             }
             Action::MoveRequest => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     if let Some((_, Some(_))) = self.flat_idx_to_coll_req(flat_idx) {
                         if self.state.collections.len() > 1 {
                             self.state.overlay = Some(Overlay::MoveRequest { selected: 0 });
@@ -517,12 +517,12 @@ impl App {
                 self.state.current_response = None;
                 self.state.last_error = None;
                 self.state.body_vim.set_content("");
-                self.state.request_focus = RequestFocus::Url;
+                self.state.request_edit.focus = RequestFocus::Url;
                 self.state.set_status("New empty request");
             }
             Action::AddRequestToCollection => {
                 // Determine which collection is selected
-                let ci = if let Some(flat_idx) = self.state.collections_state.selected() {
+                let ci = if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     match self.flat_idx_to_coll_req(flat_idx) {
                         Some((ci, _)) => Some(ci),
                         None => None,
@@ -550,17 +550,17 @@ impl App {
                     // Add to collection and persist
                     self.state.collections[ci].requests.push(new_req.clone());
                     self.persist_collection(ci);
-                    self.state.active_collection = ci;
+                    self.state.collections_view.active = ci;
 
                     // Load into editor
                     self.state.current_request = new_req;
                     self.state.current_response = None;
                     self.state.last_error = None;
                     self.state.body_vim.set_content("");
-                    self.state.request_focus = RequestFocus::Url;
+                    self.state.request_edit.focus = RequestFocus::Url;
 
                     // Expand and select the new request
-                    self.state.expanded_collections.insert(ci);
+                    self.state.collections_view.expanded.insert(ci);
                     self.rebuild_collection_items();
 
                     let coll_name = self.state.collections[ci].name.clone();
@@ -570,12 +570,12 @@ impl App {
                 }
             }
             Action::ToggleCollapse => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     if let Some((ci, None)) = self.flat_idx_to_coll_req(flat_idx) {
-                        if self.state.expanded_collections.contains(&ci) {
-                            self.state.expanded_collections.remove(&ci);
+                        if self.state.collections_view.expanded.contains(&ci) {
+                            self.state.collections_view.expanded.remove(&ci);
                         } else {
-                            self.state.expanded_collections.insert(ci);
+                            self.state.collections_view.expanded.insert(ci);
                         }
                         self.rebuild_collection_items();
                     }
@@ -583,7 +583,7 @@ impl App {
             }
             Action::YankRequest => {
                 self.state.pending_key = None;
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     if let Some((ci, Some(ri))) = self.flat_idx_to_coll_req(flat_idx) {
                         if let Some(req) = self.state.collections.get(ci).and_then(|c| c.requests.get(ri)) {
                             self.state.yanked_request = Some(req.clone());
@@ -597,10 +597,10 @@ impl App {
             Action::PasteRequest => {
                 if let Some(req) = self.state.yanked_request.clone() {
                     // Paste into the collection where cursor is
-                    if let Some(flat_idx) = self.state.collections_state.selected() {
+                    if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                         let target_ci = self.flat_idx_to_coll_req(flat_idx)
                             .map(|(ci, _)| ci)
-                            .unwrap_or(self.state.active_collection);
+                            .unwrap_or(self.state.collections_view.active);
                         if let Some(coll) = self.state.collections.get_mut(target_ci) {
                             let mut new_req = req;
                             let name = new_req.name.as_deref().unwrap_or("Untitled");
@@ -608,7 +608,7 @@ impl App {
                             coll.requests.push(new_req);
                             self.persist_collection(target_ci);
                             // Expand target if collapsed
-                            self.state.expanded_collections.insert(target_ci);
+                            self.state.collections_view.expanded.insert(target_ci);
                             self.rebuild_collection_items();
                             self.state.set_status("Request pasted");
                         }
@@ -632,12 +632,12 @@ impl App {
             Action::InlineCursorLeft => { for _ in 0..count { self.inline_cursor_left(); } }
             Action::InlineCursorRight => { for _ in 0..count { self.inline_cursor_right(); } }
             Action::InlineCursorUp => match self.state.active_panel {
-                Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_up(),
+                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_up(),
                 Panel::Response => self.resp_cursor_up(),
                 _ => self.body_cursor_up(),
             },
             Action::InlineCursorDown => match self.state.active_panel {
-                Panel::Response if self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_down(),
+                Panel::Response if self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor => self.type_cursor_down(),
                 Panel::Response => self.resp_cursor_down(),
                 _ => self.body_cursor_down(),
             },
@@ -648,11 +648,11 @@ impl App {
             // === Body/Request/Type Vim Motions ===
             Action::BodyWordForward => {
                 for _ in 0..count {
-                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_forward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                        vim_editor_word_forward(&mut self.state.type_vim);
-                        self.state.type_vim.ensure_cursor_visible();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                        vim_editor_word_forward(&mut self.state.response_view.type_vim);
+                        self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
                         self.body_word_forward();
                     }
@@ -666,11 +666,11 @@ impl App {
             }
             Action::BodyWordBackward => {
                 for _ in 0..count {
-                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_backward();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                        vim_editor_word_backward(&mut self.state.type_vim);
-                        self.state.type_vim.ensure_cursor_visible();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                        vim_editor_word_backward(&mut self.state.response_view.type_vim);
+                        self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
                         self.body_word_backward();
                     }
@@ -683,11 +683,11 @@ impl App {
             }
             Action::BodyWordEnd => {
                 for _ in 0..count {
-                    if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                    if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                         self.request_word_end();
-                    } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                        vim_editor_word_end(&mut self.state.type_vim);
-                        self.state.type_vim.ensure_cursor_visible();
+                    } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                        vim_editor_word_end(&mut self.state.response_view.type_vim);
+                        self.state.response_view.type_vim.ensure_cursor_visible();
                     } else {
                         self.body_word_end();
                     }
@@ -699,12 +699,12 @@ impl App {
                 }
             }
             Action::BodyLineHome => {
-                if self.state.active_panel == Panel::Request && self.state.request_field_editing {
+                if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
                     self.set_request_cursor(0);
-                } else if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    self.state.type_vim.cursor_col = 0;
+                } else if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    self.state.response_view.type_vim.cursor_col = 0;
                 } else if self.state.active_panel == Panel::Response {
-                    self.state.resp_vim.cursor_col = 0;
+                    self.state.response_view.resp_vim.cursor_col = 0;
                     self.sync_resp_hscroll();
                 } else {
                     self.state.body_vim.cursor_col = 0;
@@ -724,11 +724,11 @@ impl App {
                 return self.handle_clipboard_ops(action, count);
             }
             Action::Undo => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    if !self.state.type_vim.undo_stack.is_empty() {
-                        self.state.type_vim.undo();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    if !self.state.response_view.type_vim.undo_stack.is_empty() {
+                        self.state.response_view.type_vim.undo();
                         self.sync_type_vim_text();
-                        self.state.response_type_locked = true;
+                        self.state.response_view.type_locked = true;
                         self.state.set_status("Undo");
                     } else {
                         self.state.set_status("Already at oldest change");
@@ -750,22 +750,22 @@ impl App {
                     } else {
                         self.state.set_status("Already at oldest change");
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
-                    if let Some((focus, edit_field, text, cursor)) = self.state.request_undo_stack.pop() {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
+                    if let Some((focus, edit_field, text, cursor)) = self.state.request_edit.undo_stack.pop() {
                         // Push current state to redo
                         let cur_text = self.get_request_field_text();
                         let cur_cursor = self.get_request_cursor();
-                        let cur_focus = self.state.request_focus;
+                        let cur_focus = self.state.request_edit.focus;
                         let cur_ef = match cur_focus {
-                            RequestFocus::Header(_) => self.state.header_edit_field,
-                            RequestFocus::Param(_) => self.state.param_edit_field,
-                            RequestFocus::Cookie(_) => self.state.cookie_edit_field,
-                            RequestFocus::PathParam(_) => self.state.path_param_edit_field,
+                            RequestFocus::Header(_) => self.state.request_edit.header_edit_field,
+                            RequestFocus::Param(_) => self.state.request_edit.param_edit_field,
+                            RequestFocus::Cookie(_) => self.state.request_edit.cookie_edit_field,
+                            RequestFocus::PathParam(_) => self.state.request_edit.path_param_edit_field,
                             RequestFocus::Url => 0,
                         };
-                        self.state.request_redo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
+                        self.state.request_edit.redo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
                         self.set_request_field_text(focus, edit_field, text);
-                        self.state.request_focus = focus;
+                        self.state.request_edit.focus = focus;
                         self.set_request_cursor(cursor);
                         self.state.set_status("Undo");
                     } else {
@@ -774,11 +774,11 @@ impl App {
                 }
             }
             Action::Redo => {
-                if self.state.active_panel == Panel::Response && self.state.response_tab == ResponseTab::Type && self.state.type_sub_focus == crate::state::TypeSubFocus::Editor {
-                    if !self.state.type_vim.redo_stack.is_empty() {
-                        self.state.type_vim.redo();
+                if self.state.active_panel == Panel::Response && self.state.response_view.tab == ResponseTab::Type && self.state.response_view.type_sub_focus == crate::state::TypeSubFocus::Editor {
+                    if !self.state.response_view.type_vim.redo_stack.is_empty() {
+                        self.state.response_view.type_vim.redo();
                         self.sync_type_vim_text();
-                        self.state.response_type_locked = true;
+                        self.state.response_view.type_locked = true;
                         self.state.set_status("Redo");
                     } else {
                         self.state.set_status("Already at newest change");
@@ -800,21 +800,21 @@ impl App {
                     } else {
                         self.state.set_status("Already at newest change");
                     }
-                } else if self.state.active_panel == Panel::Request && self.state.request_field_editing {
-                    if let Some((focus, edit_field, text, cursor)) = self.state.request_redo_stack.pop() {
+                } else if self.state.active_panel == Panel::Request && self.state.request_edit.field_editing {
+                    if let Some((focus, edit_field, text, cursor)) = self.state.request_edit.redo_stack.pop() {
                         let cur_text = self.get_request_field_text();
                         let cur_cursor = self.get_request_cursor();
-                        let cur_focus = self.state.request_focus;
+                        let cur_focus = self.state.request_edit.focus;
                         let cur_ef = match cur_focus {
-                            RequestFocus::Header(_) => self.state.header_edit_field,
-                            RequestFocus::Param(_) => self.state.param_edit_field,
-                            RequestFocus::Cookie(_) => self.state.cookie_edit_field,
-                            RequestFocus::PathParam(_) => self.state.path_param_edit_field,
+                            RequestFocus::Header(_) => self.state.request_edit.header_edit_field,
+                            RequestFocus::Param(_) => self.state.request_edit.param_edit_field,
+                            RequestFocus::Cookie(_) => self.state.request_edit.cookie_edit_field,
+                            RequestFocus::PathParam(_) => self.state.request_edit.path_param_edit_field,
                             RequestFocus::Url => 0,
                         };
-                        self.state.request_undo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
+                        self.state.request_edit.undo_stack.push((cur_focus, cur_ef, cur_text, cur_cursor));
                         self.set_request_field_text(focus, edit_field, text);
-                        self.state.request_focus = focus;
+                        self.state.request_edit.focus = focus;
                         self.set_request_cursor(cursor);
                         self.state.set_status("Redo");
                     } else {
@@ -888,18 +888,18 @@ impl App {
                 if self.state.active_panel == Panel::Response {
                     // Sync response body into resp_vim
                     let resp_text = self.get_response_body_text();
-                    self.state.resp_vim.lines = if resp_text.is_empty() {
+                    self.state.response_view.resp_vim.lines = if resp_text.is_empty() {
                         vec![String::new()]
                     } else {
                         resp_text.lines().map(String::from).collect()
                     };
-                    self.state.resp_vim.mode = match self.state.mode {
+                    self.state.response_view.resp_vim.mode = match self.state.mode {
                         InputMode::Normal => VimMode::Normal,
                         InputMode::Insert => VimMode::Insert,
                         InputMode::Visual => VimMode::Visual(VisualKind::Char),
                         InputMode::VisualBlock => VimMode::Visual(VisualKind::Block),
                     };
-                    let _action = self.state.resp_vim.handle_key(key);
+                    let _action = self.state.response_view.resp_vim.handle_key(key);
                     // Read-only: no text sync back
                     self.sync_mode_from_vim_resp();
                 }
@@ -908,73 +908,73 @@ impl App {
             Action::TypeVimInput(key) => {
                 if self.state.active_panel == Panel::Response {
                     // Sync type text into type_vim
-                    let type_text = self.state.response_type_text.clone();
-                    self.state.type_vim.lines = if type_text.is_empty() {
+                    let type_text = self.state.response_view.type_text.clone();
+                    self.state.response_view.type_vim.lines = if type_text.is_empty() {
                         vec![String::new()]
                     } else {
                         type_text.lines().map(String::from).collect()
                     };
-                    self.state.type_vim.mode = match self.state.mode {
+                    self.state.response_view.type_vim.mode = match self.state.mode {
                         InputMode::Normal => VimMode::Normal,
                         InputMode::Insert => VimMode::Insert,
                         InputMode::Visual => VimMode::Visual(VisualKind::Char),
                         InputMode::VisualBlock => VimMode::Visual(VisualKind::Block),
                     };
-                    let _action = self.state.type_vim.handle_key(key);
+                    let _action = self.state.response_view.type_vim.handle_key(key);
                     // Sync text back
-                    self.state.response_type_text = self.state.type_vim.content();
+                    self.state.response_view.type_text = self.state.response_view.type_vim.content();
                     self.sync_mode_from_vim_type();
                 }
             }
 
             // === Response Tabs ===
             Action::ResponseNextTab => {
-                self.state.response_tab = self.state.response_tab.next();
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.tab = self.state.response_view.tab.next();
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
             Action::ResponsePrevTab => {
-                self.state.response_tab = self.state.response_tab.prev();
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.tab = self.state.response_view.tab.prev();
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
             }
             Action::TypeSubFocusDown => {
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Preview;
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Preview;
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeSubFocusUp => {
-                self.state.type_sub_focus = crate::state::TypeSubFocus::Editor;
+                self.state.response_view.type_sub_focus = crate::state::TypeSubFocus::Editor;
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeLangNext => {
                 self.swap_type_lang_out();
-                self.state.type_lang = self.state.type_lang.next();
+                self.state.response_view.type_lang = self.state.response_view.type_lang.next();
                 self.swap_type_lang_in();
                 self.state.mode = InputMode::Normal;
             }
             Action::TypeLangPrev => {
                 self.swap_type_lang_out();
-                self.state.type_lang = self.state.type_lang.prev();
+                self.state.response_view.type_lang = self.state.response_view.type_lang.prev();
                 self.swap_type_lang_in();
                 self.state.mode = InputMode::Normal;
             }
             Action::RegenerateType => {
-                self.state.response_type_locked = false;
+                self.state.response_view.type_locked = false;
                 if let Some(ref resp) = self.state.current_response {
                     if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
                         let rt = crate::model::response_type::JsonType::infer(&json_val);
-                        self.state.response_type_text = rt.to_display_lines(0).join("\n");
+                        self.state.response_view.type_text = rt.to_display_lines(0).join("\n");
                         let type_name = self.state.current_request.name.as_deref()
                             .map(|n| { let mut c = n.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().to_string() + c.as_str() } })
                             .unwrap_or_else(|| "ResponseType".to_string());
-                        self.state.type_ts_text = rt.to_typescript(&type_name);
-                        self.state.type_csharp_text = rt.to_csharp(&type_name);
-                        self.state.response_type = Some(rt);
+                        self.state.response_view.type_ts_text = rt.to_typescript(&type_name);
+                        self.state.response_view.type_csharp_text = rt.to_csharp(&type_name);
+                        self.state.response_view.response_type = Some(rt);
                     }
                 }
-                self.state.type_validation_errors.clear();
-                self.state.type_vim.cursor_row = 0;
-                self.state.type_vim.cursor_col = 0;
-                self.state.type_ts_vim.set_content("");
-                self.state.type_csharp_vim.set_content("");
+                self.state.response_view.type_validation_errors.clear();
+                self.state.response_view.type_vim.cursor_row = 0;
+                self.state.response_view.type_vim.cursor_col = 0;
+                self.state.response_view.type_ts_vim.set_content("");
+                self.state.response_view.type_csharp_vim.set_content("");
                 self.state.set_status("Type regenerated from response");
             }
 
@@ -997,7 +997,7 @@ impl App {
                 // Cache response for request chaining
                 if let Some(ref name) = self.state.current_request.name {
                     let collection_name = self.state.collections
-                        .get(self.state.active_collection)
+                        .get(self.state.collections_view.active)
                         .map(|c| c.name.as_str())
                         .unwrap_or("_");
                     let key = format!("{}/{}", collection_name, name);
@@ -1018,24 +1018,24 @@ impl App {
 
                 self.state.current_response = Some(*response);
                 self.state.viewing_history = None;
-                self.state.resp_vim.scroll_offset = 0; self.state.resp_hscroll = 0;
+                self.state.response_view.resp_vim.scroll_offset = 0; self.state.response_view.resp_hscroll = 0;
 
                 // Infer type from response
                 if let Some(ref resp) = self.state.current_response {
                     if resp.body_bytes.is_some() {
                         // Binary response — type is Buffer
-                        self.state.response_type = Some(crate::model::response_type::JsonType::Buffer);
+                        self.state.response_view.response_type = Some(crate::model::response_type::JsonType::Buffer);
                     } else if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
-                        self.state.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                        self.state.response_view.response_type = Some(crate::model::response_type::JsonType::infer(&json_val));
                     } else {
-                        self.state.response_type = None;
+                        self.state.response_view.response_type = None;
                     }
                 }
-                self.state.type_vim.scroll_offset = 0;
+                self.state.response_view.type_vim.scroll_offset = 0;
 
                 // Auto-generate type text (unless user has locked it)
-                if !self.state.response_type_locked {
-                    if let Some(ref rt) = self.state.response_type {
+                if !self.state.response_view.type_locked {
+                    if let Some(ref rt) = self.state.response_view.response_type {
                         let type_name = self.state.current_request.name.as_deref()
                             .map(|n| { let mut c = n.chars(); match c.next() { None => String::new(), Some(f) => f.to_uppercase().to_string() + c.as_str() } })
                             .unwrap_or_else(|| "ResponseType".to_string());
@@ -1044,8 +1044,8 @@ impl App {
                             let ct = self.state.current_response.as_ref()
                                 .and_then(|r| r.content_type.as_deref())
                                 .unwrap_or("application/octet-stream");
-                            self.state.response_type_text = format!("Buffer ({})", ct);
-                            self.state.type_ts_text = format!(
+                            self.state.response_view.type_text = format!("Buffer ({})", ct);
+                            self.state.response_view.type_ts_text = format!(
                                 "// Content-Type: {ct}\n\
                                  // Returns binary data as a Buffer\n\
                                  type {type_name} = Buffer | ArrayBuffer\n\
@@ -1053,7 +1053,7 @@ impl App {
                                  // Usage:\n\
                                  // const res = await fetch(url)\n\
                                  // const buffer = await res.arrayBuffer()");
-                            self.state.type_csharp_text = format!(
+                            self.state.response_view.type_csharp_text = format!(
                                 "// Content-Type: {ct}\n\
                                  // Returns binary data as a byte array\n\
                                  \n\
@@ -1064,18 +1064,18 @@ impl App {
                                  // Stream {name} = await response.Content.ReadAsStreamAsync();",
                                 name = type_name.to_lowercase());
                         } else {
-                            self.state.response_type_text = rt.to_display_lines(0).join("\n");
-                            self.state.type_ts_text = rt.to_typescript(&type_name);
-                            self.state.type_csharp_text = rt.to_csharp(&type_name);
+                            self.state.response_view.type_text = rt.to_display_lines(0).join("\n");
+                            self.state.response_view.type_ts_text = rt.to_typescript(&type_name);
+                            self.state.response_view.type_csharp_text = rt.to_csharp(&type_name);
                         }
                     } else {
-                        self.state.response_type_text.clear();
-                        self.state.type_ts_text.clear();
-                        self.state.type_csharp_text.clear();
+                        self.state.response_view.type_text.clear();
+                        self.state.response_view.type_ts_text.clear();
+                        self.state.response_view.type_csharp_text.clear();
                     }
-                    self.state.type_validation_errors.clear();
-                    self.state.type_ts_vim.set_content("");
-                    self.state.type_csharp_vim.set_content("");
+                    self.state.response_view.type_validation_errors.clear();
+                    self.state.response_view.type_ts_vim.set_content("");
+                    self.state.response_view.type_csharp_vim.set_content("");
                 } else {
                     self.validate_response_type();
                 }
@@ -1134,11 +1134,11 @@ impl App {
                 self.state.viewing_diff = None;
                 // Restore resp_vim lines from the current response body
                 if let Some(ref resp) = self.state.current_response {
-                    self.state.resp_vim.set_content(&resp.formatted_body());
+                    self.state.response_view.resp_vim.set_content(&resp.formatted_body());
                 } else {
-                    self.state.resp_vim.set_content("");
+                    self.state.response_view.resp_vim.set_content("");
                 }
-                self.state.resp_hscroll = 0;
+                self.state.response_view.resp_hscroll = 0;
             }
             Action::ExportResponse => {
                 if let Some(ref resp) = self.state.current_response {
@@ -1225,8 +1225,8 @@ impl App {
 
             // === Response Headers Inspector ===
             Action::ToggleResponseHeaders => {
-                self.state.response_headers_expanded = !self.state.response_headers_expanded;
-                self.state.response_headers_scroll = 0;
+                self.state.response_view.headers_expanded = !self.state.response_view.headers_expanded;
+                self.state.response_view.headers_scroll = 0;
             }
 
             // === Search ===
@@ -1272,56 +1272,56 @@ impl App {
 
             // === Fold actions ===
             Action::ExpandCollection => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     if let Some((ci, _)) = self.flat_idx_to_coll_req(flat_idx) {
-                        self.state.expanded_collections.insert(ci);
+                        self.state.collections_view.expanded.insert(ci);
                         self.rebuild_collection_items();
                     }
                 }
             }
             Action::CollapseCollection => {
-                if let Some(flat_idx) = self.state.collections_state.selected() {
+                if let Some(flat_idx) = self.state.collections_view.list_state.selected() {
                     if let Some((ci, _)) = self.flat_idx_to_coll_req(flat_idx) {
-                        self.state.expanded_collections.remove(&ci);
+                        self.state.collections_view.expanded.remove(&ci);
                         self.rebuild_collection_items();
                     }
                 }
             }
             Action::CollapseAll => {
-                self.state.expanded_collections.clear();
+                self.state.collections_view.expanded.clear();
                 self.rebuild_collection_items();
-                self.state.collections_state.select(Some(0));
+                self.state.collections_view.list_state.select(Some(0));
             }
             Action::ExpandAll => {
                 for ci in 0..self.state.collections.len() {
-                    self.state.expanded_collections.insert(ci);
+                    self.state.collections_view.expanded.insert(ci);
                 }
                 self.rebuild_collection_items();
             }
 
             // === Collections filter ===
             Action::StartCollectionsFilter => {
-                self.state.collections_filter_active = true;
-                self.state.collections_filter.clear();
+                self.state.collections_view.filter_active = true;
+                self.state.collections_view.filter.clear();
             }
             Action::CollectionsFilterInput(c) => {
-                self.state.collections_filter.push(c);
+                self.state.collections_view.filter.push(c);
                 self.rebuild_collection_items();
-                self.state.collections_state.select(Some(0));
+                self.state.collections_view.list_state.select(Some(0));
             }
             Action::CollectionsFilterBackspace => {
-                self.state.collections_filter.pop();
+                self.state.collections_view.filter.pop();
                 self.rebuild_collection_items();
-                self.state.collections_state.select(Some(0));
+                self.state.collections_view.list_state.select(Some(0));
             }
             Action::CollectionsFilterConfirm => {
-                self.state.collections_filter_active = false;
+                self.state.collections_view.filter_active = false;
             }
             Action::CollectionsFilterCancel => {
-                self.state.collections_filter_active = false;
-                self.state.collections_filter.clear();
+                self.state.collections_view.filter_active = false;
+                self.state.collections_view.filter.clear();
                 self.rebuild_collection_items();
-                self.state.collections_state.select(Some(0));
+                self.state.collections_view.list_state.select(Some(0));
             }
 
             // === Count prefix ===

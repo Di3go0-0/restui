@@ -19,7 +19,7 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     }
 
     // 0.6. Collections filter mode consumes input when active
-    if state.collections_filter_active {
+    if state.collections_view.filter_active {
         return map_collections_filter_key(&k, key, kb);
     }
 
@@ -72,8 +72,8 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
 
     // 2.6. Response panel: delegate to VimEditor
     if state.active_panel == Panel::Response {
-        let is_type_editor = state.response_tab == ResponseTab::Type
-            && state.type_sub_focus == TypeSubFocus::Editor;
+        let is_type_editor = state.response_view.tab == ResponseTab::Type
+            && state.response_view.type_sub_focus == TypeSubFocus::Editor;
 
         if is_type_editor {
             // Type editor: full vim editing via VimEditor
@@ -152,8 +152,8 @@ fn map_global_ctrl(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Opt
             // Ctrl+R: Redo when in any vim editing context, execute request otherwise
             let in_vim_edit = match state.active_panel {
                 Panel::Body => state.mode == InputMode::Normal,
-                Panel::Request => state.request_field_editing,
-                Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => state.mode == InputMode::Normal,
+                Panel::Request => state.request_edit.field_editing,
+                Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => state.mode == InputMode::Normal,
                 _ => false,
             };
             if in_vim_edit { Some(Action::Redo) } else { Some(Action::ExecuteRequest) }
@@ -183,15 +183,15 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
     // Ctrl+J/K: sub-focus navigation within Type tab (before panel navigation)
     if key.modifiers.contains(KeyModifiers::CONTROL)
         && state.active_panel == Panel::Response
-        && state.response_tab == ResponseTab::Type
+        && state.response_view.tab == ResponseTab::Type
     {
         if let KeyCode::Char('j') = key.code {
-            if state.type_sub_focus == TypeSubFocus::Editor {
+            if state.response_view.type_sub_focus == TypeSubFocus::Editor {
                 return Some(Action::TypeSubFocusDown);
             }
         }
         if let KeyCode::Char('k') = key.code {
-            if state.type_sub_focus == TypeSubFocus::Preview {
+            if state.response_view.type_sub_focus == TypeSubFocus::Preview {
                 return Some(Action::TypeSubFocusUp);
             }
         }
@@ -230,10 +230,10 @@ fn map_normal_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         match action {
             "quit" => return Some(Action::Quit),
             "help" => return Some(Action::OpenOverlay(Overlay::Help)),
-            "open_theme_selector" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+            "open_theme_selector" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_edit.field_editing) => {
                 return Some(Action::OpenOverlay(Overlay::ThemeSelector { selected: 0 }));
             }
-            "open_history" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_field_editing) => {
+            "open_history" if state.active_panel == Panel::Collections || (state.active_panel == Panel::Request && !state.request_edit.field_editing) => {
                 return Some(Action::OpenOverlay(Overlay::History { selected: 0 }));
             }
             "open_env_editor" => return Some(Action::OpenOverlay(Overlay::EnvironmentEditor {
@@ -303,7 +303,7 @@ fn map_collections_key(k: &KeyBind, kb: &KeybindingsConfig) -> Option<Action> {
 // ── Request (panel navigation) ─────────────────────────────────────────────
 
 fn map_request_normal_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -> Option<Action> {
-    if state.request_field_editing {
+    if state.request_edit.field_editing {
         return map_request_field_edit_key(k, kb);
     }
 
@@ -316,7 +316,7 @@ fn map_request_normal_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig)
         "prev_tab" => Some(Action::RequestPrevTab),
         "toggle_enabled" => Some(Action::ToggleItemEnabled),
         "enter_field_edit" => Some(Action::EnterRequestFieldEdit),
-        "add_item" => match state.request_tab {
+        "add_item" => match state.request_edit.tab {
             RequestTab::Headers => Some(Action::AddHeader),
             RequestTab::Queries => Some(Action::AddParam),
             RequestTab::Cookies => Some(Action::AddCookie),
@@ -324,7 +324,7 @@ fn map_request_normal_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig)
         },
         "show_autocomplete" => Some(Action::ShowHeaderAutocomplete),
         "delete_pending" => Some(Action::PendingKey('d')),
-        "delete_item" => match state.request_focus {
+        "delete_item" => match state.request_edit.focus {
             RequestFocus::Header(_) => Some(Action::DeleteHeader),
             RequestFocus::Param(_) => Some(Action::DeleteParam),
             RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
@@ -417,9 +417,9 @@ fn map_response_app_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -
         "toggle_headers" => Some(Action::ToggleResponseHeaders),
         "response_history" => Some(Action::OpenOverlay(Overlay::ResponseHistory { selected: 0 })),
         "response_diff" => Some(Action::OpenOverlay(Overlay::ResponseDiffSelect { selected: 0 })),
-        "type_lang_next" if state.response_tab == ResponseTab::Type => Some(Action::TypeLangNext),
-        "type_lang_prev" if state.response_tab == ResponseTab::Type => Some(Action::TypeLangPrev),
-        "regenerate_type" if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
+        "type_lang_next" if state.response_view.tab == ResponseTab::Type => Some(Action::TypeLangNext),
+        "type_lang_prev" if state.response_view.tab == ResponseTab::Type => Some(Action::TypeLangPrev),
+        "regenerate_type" if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::RegenerateType),
         "export_response" => Some(Action::ExportResponse),
         "toggle_wrap" => Some(Action::ToggleWrap),
         _ => None,
@@ -427,8 +427,8 @@ fn map_response_app_key(k: &KeyBind, state: &AppState, kb: &KeybindingsConfig) -
 }
 
 fn response_context<'a>(state: &AppState, kb: &'a KeybindingsConfig) -> &'a std::collections::HashMap<KeyBind, String> {
-    if state.response_tab == ResponseTab::Type {
-        if state.type_sub_focus == TypeSubFocus::Editor {
+    if state.response_view.tab == ResponseTab::Type {
+        if state.response_view.type_sub_focus == TypeSubFocus::Editor {
             &kb.response_type_editor
         } else {
             &kb.response_type_preview
@@ -495,23 +495,23 @@ fn map_insert_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
         KeyCode::Left => Some(Action::InlineCursorLeft),
         KeyCode::Right => Some(Action::InlineCursorRight),
         KeyCode::Up => match state.active_panel {
-            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorUp),
+            Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorUp),
             _ => None,
         },
         KeyCode::Down => match state.active_panel {
-            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorDown),
+            Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineCursorDown),
             _ => None,
         },
         KeyCode::Home => Some(Action::InlineCursorHome),
         KeyCode::End => Some(Action::InlineCursorEnd),
         KeyCode::Tab => Some(Action::InlineTab),
         KeyCode::Enter => match state.active_panel {
-            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineNewline),
-            Panel::Request => match state.request_focus {
-                RequestFocus::Header(_) if state.header_edit_field == 0 => Some(Action::InlineTab),
-                RequestFocus::Param(_) if state.param_edit_field == 0 => Some(Action::InlineTab),
-                RequestFocus::Cookie(_) if state.cookie_edit_field == 0 => Some(Action::InlineTab),
-                RequestFocus::PathParam(_) if state.path_param_edit_field == 0 => Some(Action::InlineTab),
+            Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::InlineNewline),
+            Panel::Request => match state.request_edit.focus {
+                RequestFocus::Header(_) if state.request_edit.header_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::Param(_) if state.request_edit.param_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::Cookie(_) if state.request_edit.cookie_edit_field == 0 => Some(Action::InlineTab),
+                RequestFocus::PathParam(_) if state.request_edit.path_param_edit_field == 0 => Some(Action::InlineTab),
                 _ => Some(Action::ExitInsertMode),
             },
             _ => Some(Action::ExitInsertMode),
@@ -528,8 +528,8 @@ fn map_insert_mode_key(k: &KeyBind, key: KeyEvent, state: &AppState, kb: &Keybin
 fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Action> {
     match (pending, key.code) {
         ('d', KeyCode::Char('d')) => match state.active_panel {
-            Panel::Request if state.request_field_editing => Some(Action::DeleteLine),
-            Panel::Request => match state.request_focus {
+            Panel::Request if state.request_edit.field_editing => Some(Action::DeleteLine),
+            Panel::Request => match state.request_edit.focus {
                 RequestFocus::Header(_) => Some(Action::DeleteHeader),
                 RequestFocus::Param(_) => Some(Action::DeleteParam),
                 RequestFocus::Cookie(_) => Some(Action::DeleteCookie),
@@ -537,7 +537,7 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
                 _ => None,
             },
             Panel::Body => Some(Action::DeleteLine),
-            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteLine),
+            Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::DeleteLine),
             Panel::Collections => Some(Action::DeleteSelected),
             _ => None,
         },
@@ -562,8 +562,8 @@ fn map_pending_key(pending: char, key: KeyEvent, state: &AppState) -> Option<Act
         ('y', KeyCode::Char('G')) => Some(Action::YankToBottom),
         ('r', KeyCode::Char(c)) => match state.active_panel {
             Panel::Body => Some(Action::ReplaceChar(c)),
-            Panel::Request if state.request_field_editing => Some(Action::ReplaceChar(c)),
-            Panel::Response if state.response_tab == ResponseTab::Type && state.type_sub_focus == TypeSubFocus::Editor => Some(Action::ReplaceChar(c)),
+            Panel::Request if state.request_edit.field_editing => Some(Action::ReplaceChar(c)),
+            Panel::Response if state.response_view.tab == ResponseTab::Type && state.response_view.type_sub_focus == TypeSubFocus::Editor => Some(Action::ReplaceChar(c)),
             _ => None,
         },
         // z-fold keys (collections panel)

@@ -131,7 +131,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     };
     if show_cursor_pos {
         let (row, col) = match state.active_panel {
-            Panel::Response => (state.resp_vim.cursor_row, state.resp_vim.cursor_col),
+            Panel::Response => (state.response_view.resp_vim.cursor_row, state.response_view.resp_vim.cursor_col),
             _ => (state.body_vim.cursor_row, state.body_vim.cursor_col),
         };
         spans.push(Span::styled(

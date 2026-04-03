@@ -12,16 +12,16 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     let border_color = if is_focused { t.border_focused } else { t.border_unfocused };
 
     let coll_count = state.collections.len();
-    let has_filter = !state.collections_filter.is_empty() && !state.collections_filter_active;
+    let has_filter = !state.collections_view.filter.is_empty() && !state.collections_view.filter_active;
     let title = if has_filter {
         format!(
             " [1] Collections (filter: \"{}\") ",
-            state.collections_filter
+            state.collections_view.filter
         )
     } else if coll_count > 0 {
         format!(
             " [1] Collections ({}/{}) ",
-            state.active_collection + 1,
+            state.collections_view.active + 1,
             coll_count
         )
     } else {
@@ -54,9 +54,9 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         return;
     }
 
-    // Build items from collection_items (already computed by app)
+    // Build items from collections_view.items (already computed by app)
     let items: Vec<ListItem> = state
-        .collection_items
+        .collections_view.items
         .iter()
         .enumerate()
         .map(|(_i, item)| {
@@ -112,7 +112,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .collect();
 
     // Determine if we need filter bar space
-    let show_filter_bar = state.collections_filter_active;
+    let show_filter_bar = state.collections_view.filter_active;
     let bottom_height = if is_focused { 3 } else { 0 } + if show_filter_bar { 1 } else { 0 };
 
     // Split: list + bottom (hints + optional filter bar)
@@ -121,7 +121,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         .constraints([Constraint::Min(1), Constraint::Length(bottom_height)])
         .split(inner);
 
-    let mut list_state = state.collections_state.clone();
+    let mut list_state = state.collections_view.list_state.clone();
     let list = List::new(items)
         .highlight_style(
             Style::default()
@@ -155,7 +155,7 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             let filter_line = Line::from(vec![
                 Span::styled("/", Style::default().fg(t.accent)),
                 Span::styled(
-                    &state.collections_filter,
+                    &state.collections_view.filter,
                     Style::default().fg(t.text),
                 ),
                 Span::styled(

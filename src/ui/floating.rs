@@ -102,7 +102,7 @@ fn render_header_autocomplete(
 
     // Position near the request panel header being edited
     let right_x = (full.width as u32 * 20 / 100) as u16; // collections panel = 20%
-    let header_row = match state.request_focus {
+    let header_row = match state.request_edit.focus {
         crate::state::RequestFocus::Header(i) => 3 + i as u16, // border + URL + tab bar + header index
         _ => 3,
     };
@@ -222,7 +222,7 @@ fn render_move_request(frame: &mut Frame, state: &AppState, selected: usize) {
         .iter()
         .enumerate()
         .map(|(i, coll)| {
-            let marker = if i == state.active_collection { "  (current)" } else { "" };
+            let marker = if i == state.collections_view.active { "  (current)" } else { "" };
             ListItem::new(Line::from(vec![
                 Span::styled(&coll.name, Style::default().fg(Color::White)),
                 Span::styled(
@@ -535,7 +535,7 @@ fn render_response_history(frame: &mut Frame, state: &AppState, selected: usize)
 
     let key = state.current_request.name.as_ref().map(|name| {
         let coll = state.collections
-            .get(state.active_collection)
+            .get(state.collections_view.active)
             .map(|c| c.name.as_str())
             .unwrap_or("_");
         format!("{}/{}", coll, name)
@@ -616,7 +616,7 @@ fn render_response_diff_select(frame: &mut Frame, state: &AppState, selected: us
     frame.render_widget(block, area);
 
     let key = state.current_request.name.as_ref().map(|name| {
-        let coll = state.collections.get(state.active_collection).map(|c| c.name.as_str()).unwrap_or("_");
+        let coll = state.collections.get(state.collections_view.active).map(|c| c.name.as_str()).unwrap_or("_");
         format!("{}/{}", coll, name)
     });
     let entries = match key.as_ref().and_then(|k| state.response_histories.data.get(k)) {

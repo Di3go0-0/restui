@@ -108,14 +108,14 @@ fn compute_cursor_screen_pos(state: &AppState, request_area: Rect, body_area: Re
             (x.min(body_area.right()), y.min(body_area.bottom()))
         }
         Panel::Request => {
-            let field_row = match state.request_focus {
+            let field_row = match state.request_edit.focus {
                 crate::state::RequestFocus::Url => 1, // URL row after method
                 crate::state::RequestFocus::Header(i) => 3 + i as u16, // tab bar + headers
                 crate::state::RequestFocus::Param(i) => 3 + i as u16,
                 crate::state::RequestFocus::Cookie(i) => 3 + i as u16,
                 crate::state::RequestFocus::PathParam(i) => 3 + i as u16,
             };
-            let cursor = state.url_cursor as u16;
+            let cursor = state.request_edit.url_cursor as u16;
             let x = request_area.x + border + 10 + cursor; // label offset
             let y = request_area.y + field_row;
             (x.min(request_area.right()), y.min(request_area.bottom()))
