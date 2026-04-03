@@ -420,6 +420,8 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "search_prev", &["Shift+n"]);
         bind(m, "next_tab", &["}"]);
         bind(m, "prev_tab", &["{"]);
+        bind(m, "toggle_wrap", &["Shift+w"]);
+        bind(m, "export_response", &["Shift+o"]);
     }
 
     // ── Response Type Preview ──
@@ -449,6 +451,8 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "prev_tab", &["{"]);
         bind(m, "type_lang_next", &["]"]);
         bind(m, "type_lang_prev", &["["]);
+        bind(m, "toggle_wrap", &["Shift+w"]);
+        bind(m, "export_response", &["Shift+o"]);
     }
 
     // ── Response Type Editor ──
@@ -492,6 +496,8 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "prev_tab", &["{"]);
         bind(m, "type_lang_next", &["]"]);
         bind(m, "type_lang_prev", &["["]);
+        bind(m, "toggle_wrap", &["Shift+w"]);
+        bind(m, "export_response", &["Shift+o"]);
     }
 
     // ── Visual mode ──
