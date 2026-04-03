@@ -32,17 +32,6 @@ impl App {
         }
     }
 
-    /// Sync body text from the request into body_vim.lines (without resetting cursor/undo).
-    pub(super) fn sync_body_to_vim(&mut self) {
-        let body = self.state.current_request.get_body(self.state.body_type).to_string();
-        let lines: Vec<String> = if body.is_empty() {
-            vec![String::new()]
-        } else {
-            body.lines().map(String::from).collect()
-        };
-        self.state.body_vim.lines = lines;
-    }
-
     /// Sync body_vim content back to the request body.
     pub(super) fn sync_vim_to_body(&mut self) {
         let new_body = self.state.body_vim.content();

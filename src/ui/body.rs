@@ -164,6 +164,15 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             && !state.search.matches.is_empty()
             && state.active_panel == Panel::Body;
 
+        // Check for yank highlight
+        let yank_hl = &state.body_vim.yank_highlight;
+        let has_yank_hl = yank_hl.as_ref().is_some_and(|h| !h.is_expired());
+        let line_yank = if has_yank_hl {
+            compute_line_yank(line_idx, full_line_text.len(), yank_hl)
+        } else {
+            None
+        };
+
         let content_line = if is_visual {
             let (sr, sc, er, ec) = visual_range(state);
             let adj_sc = sc.saturating_sub(hscroll);
@@ -182,6 +191,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 colorize_json_line(line_text_ref, t)
             }
+        } else if let Some((ys, ye)) = line_yank {
+            render_yank_highlight_line(line_text_ref, ys.saturating_sub(hscroll), ye.saturating_sub(hscroll), t)
         } else if has_body_search {
             highlight_body_search_line(line_text_ref, line_idx, state, &search_query_lower, t,
                 is_normal_focused && line_idx == cursor_row, hscroll)
@@ -197,15 +208,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
         let content_area = Rect::new(text_area_x, y, text_area_width, 1);
         frame.render_widget(Paragraph::new(content_line), content_area);
 
-        // Bracket highlighting (both cursor bracket and matched bracket)
+        // Bracket highlighting — only highlight the MATCHED bracket (not the one at cursor)
         if is_focused {
-            let highlight_positions: [(usize, usize); 2] = [
-                (state.body_vim.cursor_row, state.body_vim.cursor_col),
-                matched_bracket.unwrap_or((usize::MAX, usize::MAX)),
-            ];
-            for &(br, bc) in &highlight_positions {
+            if let Some((br, bc)) = matched_bracket {
                 if br == line_idx && bc >= hscroll {
-                    // Check if the char at (br, bc) is actually a bracket
                     if let Some(ch) = body_lines.get(br).and_then(|l| l.as_bytes().get(bc)) {
                         if matches!(ch, b'{' | b'}' | b'[' | b']' | b'(' | b')') {
                             let bx = text_area_x + (bc - hscroll) as u16;
@@ -538,6 +544,54 @@ pub fn find_matching_bracket(lines: &[&str], row: usize, col: usize) -> Option<(
             }
         }
     }
+}
+
+fn compute_line_yank(
+    line_idx: usize,
+    line_len: usize,
+    yank_highlight: &Option<vimltui::YankHighlight>,
+) -> Option<(usize, usize)> {
+    let h = yank_highlight.as_ref()?;
+    if line_idx < h.start_row || line_idx > h.end_row {
+        return None;
+    }
+    if h.linewise {
+        return Some((0, line_len));
+    }
+    if h.start_row == h.end_row {
+        Some((h.start_col, h.end_col.min(line_len)))
+    } else if line_idx == h.start_row {
+        Some((h.start_col, line_len))
+    } else if line_idx == h.end_row {
+        Some((0, (h.end_col + 1).min(line_len)))
+    } else {
+        Some((0, line_len))
+    }
+}
+
+fn render_yank_highlight_line(line: &str, ys: usize, ye: usize, t: &crate::ui::theme::Theme) -> Line<'static> {
+    let yank_style = Style::default().bg(t.yank_highlight).fg(Color::Black);
+    let len = line.len();
+    let ys = ys.min(len);
+    let ye = ye.min(len);
+
+    let before = &line[..ys];
+    let highlighted = &line[ys..ye];
+    let after = &line[ye..];
+
+    let mut spans = Vec::new();
+    if !before.is_empty() {
+        spans.push(Span::styled(before.to_string(), Style::default().fg(t.text)));
+    }
+    if !highlighted.is_empty() {
+        spans.push(Span::styled(highlighted.to_string(), yank_style));
+    } else if line.is_empty() {
+        spans.push(Span::styled(" ", yank_style));
+    }
+    if !after.is_empty() {
+        spans.push(Span::styled(after.to_string(), Style::default().fg(t.text)));
+    }
+    Line::from(spans)
 }
 
 fn render_scrollbar(frame: &mut Frame, area: Rect, scroll_y: usize, total_lines: usize, visible_height: usize, color: Color) {

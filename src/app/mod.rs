@@ -864,7 +864,6 @@ impl App {
             // === Body Vim Delegation ===
             Action::BodyVimInput(key) => {
                 if self.state.active_panel == Panel::Body {
-                    self.sync_body_to_vim();
                     // Sync app mode into body_vim before handling key
                     self.state.body_vim.mode = match self.state.mode {
                         InputMode::Normal => VimMode::Normal,

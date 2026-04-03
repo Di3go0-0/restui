@@ -109,6 +109,7 @@ pub struct Theme {
     pub json_string: Color,
     pub json_number: Color,
     pub json_bool: Color,
+    pub yank_highlight: Color,
 }
 
 impl Default for Theme {
@@ -183,6 +184,7 @@ impl Theme {
             json_string: parse_hex(&f.json_string),
             json_number: parse_hex(&f.json_number),
             json_bool: parse_hex(&f.json_bool),
+            yank_highlight: Color::Rgb(80, 80, 40),
         }
     }
 
@@ -215,6 +217,7 @@ impl Theme {
             json_string: Color::Green,
             json_number: Color::Magenta,
             json_bool: Color::Yellow,
+            yank_highlight: Color::Rgb(80, 80, 40),
         }
     }
 
@@ -283,6 +286,7 @@ impl Theme {
             json_string: string_color,
             json_number: number_color,
             json_bool: boolean_color,
+            yank_highlight: Color::Rgb(80, 80, 40),
         }
     }
 }

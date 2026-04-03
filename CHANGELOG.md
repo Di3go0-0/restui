@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.6] - 2026-04-03
+
+### Fixed
+- **Body editor: empty line input bug** — typing the first character on an empty line (especially the last line) caused the line number to disappear and blocked further input; root cause was `sync_body_to_vim()` overwriting the buffer before each keystroke using Rust's `.lines()` which strips trailing newlines
+- **Bracket highlight overlap** — `%` bracket matching now only highlights the matched bracket, not the one at cursor (which already has the block cursor), so both are visually distinguishable
+
+### Changed
+- **Upgraded vimltui to 0.1.1** — brings autoindent on Enter, yank highlight flash, D/C/Y/X/S/J shortcuts, `%` bracket matching, `;`/`,` repeat find, `*`/`#` word search, zz/zt/zb scroll, H/M/L screen jumps, Ctrl-f/Ctrl-b page scroll, Ctrl-w/Ctrl-u insert mode, visual `o`/`c`, text objects (aw/a"/a(/a{/a[), `:s`/`:%s` regex substitution, `:noh`, and correct `p`/`P` linewise paste
+
+### Added
+- **Yank highlight** in body editor — 150ms flash on yanked text, using new `yank_highlight` theme color
+- **`yank_highlight` theme color** — `Color::Rgb(80, 80, 40)` default across all theme constructors
+
 ## [0.3.5] - 2026-04-03
 
 ### Changed
