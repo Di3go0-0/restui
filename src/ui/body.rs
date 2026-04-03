@@ -188,6 +188,15 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             None
         };
 
+        // Collect preview highlights (live :s replacement) for this line
+        let line_preview_hl: Vec<(usize, usize)> = state
+            .body_vim
+            .preview_highlights
+            .iter()
+            .filter(|(r, _, _)| *r == line_idx)
+            .map(|(_, s, e)| (s.saturating_sub(hscroll), e.saturating_sub(hscroll)))
+            .collect();
+
         let content_line = if is_visual {
             let (sr, sc, er, ec) = visual_range(state);
             let adj_sc = sc.saturating_sub(hscroll);
@@ -206,6 +215,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             } else {
                 colorize_json_line(line_text_ref, t)
             }
+        } else if !line_preview_hl.is_empty() {
+            render_preview_highlight_line(line_text_ref, &line_preview_hl, t)
         } else if let Some((ys, ye)) = line_yank {
             render_yank_highlight_line(line_text_ref, ys.saturating_sub(hscroll), ye.saturating_sub(hscroll), t)
         } else if has_body_search {
@@ -637,6 +648,31 @@ fn render_yank_highlight_line(line: &str, ys: usize, ye: usize, t: &crate::ui::t
     }
     if !after.is_empty() {
         spans.push(Span::styled(after.to_string(), Style::default().fg(t.text)));
+    }
+    Line::from(spans)
+}
+
+fn render_preview_highlight_line(line: &str, highlights: &[(usize, usize)], t: &crate::ui::theme::Theme) -> Line<'static> {
+    let preview_style = Style::default()
+        .bg(t.accent)
+        .fg(Color::Black)
+        .add_modifier(Modifier::BOLD);
+
+    let mut spans = Vec::new();
+    let mut pos = 0;
+    for &(hs, he) in highlights {
+        let hs = hs.min(line.len());
+        let he = he.min(line.len());
+        if hs > pos {
+            spans.push(Span::styled(line[pos..hs].to_string(), Style::default().fg(t.text)));
+        }
+        if hs < he {
+            spans.push(Span::styled(line[hs..he].to_string(), preview_style));
+        }
+        pos = he;
+    }
+    if pos < line.len() {
+        spans.push(Span::styled(line[pos..].to_string(), Style::default().fg(t.text)));
     }
     Line::from(spans)
 }
