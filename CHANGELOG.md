@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.8] - 2026-04-04
+
+### Fixed
+- **vimltui version alignment** — bumped vimltui to 0.1.5, which pins ratatui 0.30 to prevent type conflicts when installing without a lockfile.
+
 ## [0.3.7] - 2026-04-04
 
 ### Fixed

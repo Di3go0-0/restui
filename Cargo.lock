@@ -2079,7 +2079,7 @@ dependencies = [
 
 [[package]]
 name = "restui"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2994,9 +2994,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vimltui"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "180a4eea86d80edfbfc8b0d6519c41a8c4af483b7bec62b81f2b8f8c602ea430"
+checksum = "3b55f829f4ecdb2dfb6e2b08f35d3635b522a3aa8d2df80665975a51c4cc7081"
 dependencies = [
  "crossterm",
  "ratatui",

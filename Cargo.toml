@@ -1,6 +1,6 @@
 [package]
 name = "restui"
-version = "0.3.7"
+version = "0.3.8"
 edition = "2024"
 description = "A TUI HTTP client with vim keybindings"
 license = "MIT"
@@ -28,7 +28,7 @@ dirs = "6"
 clap = { version = "4", features = ["derive"] }
 arboard = "3"
 unicode-width = "0.2.2"
-vimltui = "0.1.4"
+vimltui = "0.1.5"
 fuzzy-matcher = "0.3.7"
 similar = "2"
 tracing = "0.1"
