@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.7] - 2026-04-04
+
+### Fixed
+- **Ctrl+Delete acting as Ctrl+H** — enabled crossterm keyboard enhancement protocol (`DISAMBIGUATE_ESCAPE_CODES`) so the terminal sends distinct sequences for keys that share legacy escape codes (e.g., Ctrl+Delete vs Ctrl+H). This prevents Ctrl+Delete from triggering panel navigation in insert mode.
+
+### Changed
+- **Upgraded vimltui to 0.1.4** — brings Delete key, Home/End, arrow keys in Insert/Replace, visual mode count prefix (`v10j`), and fixes Ctrl+Char inserting raw characters.
+
 ## [0.3.6] - 2026-04-03
 
 ### Fixed
