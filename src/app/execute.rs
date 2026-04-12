@@ -43,6 +43,17 @@ impl App {
 
         let mut resolved = self.resolve_env_vars(&self.state.current_request);
 
+        // Validate that all environment variables are defined
+        let undefined_vars = self.validate_env_vars(&self.state.current_request);
+        if !undefined_vars.is_empty() {
+            self.state.request_in_flight = false;
+            let var_list = undefined_vars.join(", ");
+            let msg = format!("Undefined variable{}: {}", if undefined_vars.len() > 1 { "s" } else { "" }, var_list);
+            self.state.last_error = Some(msg.clone());
+            self.state.set_status(msg);
+            return;
+        }
+
         // Resolve chain references {{@request_name.json.path}}
         let mut resolving_stack = Vec::new();
         if let Some(ref name) = self.state.current_request.name {
@@ -119,6 +130,51 @@ impl App {
             source_file: req.source_file.clone(),
             source_line: req.source_line,
         }
+    }
+
+    /// Validate that all environment variables used in request are defined
+    pub(super) fn validate_env_vars(&self, req: &Request) -> Vec<String> {
+        let mut undefined_vars = Vec::new();
+
+        // Check all string fields for undefined variables
+        let values = vec![
+            req.url.clone(),
+        ];
+
+        // Add all header values
+        let header_values: Vec<String> = req.headers.iter().map(|h| h.value.clone()).collect();
+        
+        // Add all query param values
+        let query_values: Vec<String> = req.query_params.iter().map(|p| p.value.clone()).collect();
+        
+        // Add all cookie values
+        let cookie_values: Vec<String> = req.cookies.iter().map(|c| c.value.clone()).collect();
+        
+        // Add all path param values
+        let path_values: Vec<String> = req.path_params.iter().map(|p| p.value.clone()).collect();
+
+        let all_values = [
+            values,
+            header_values,
+            query_values,
+            cookie_values,
+            path_values,
+            vec![req.body_json.clone().unwrap_or_default()],
+            vec![req.body_xml.clone().unwrap_or_default()],
+            vec![req.body_form.clone().unwrap_or_default()],
+            vec![req.body_raw.clone().unwrap_or_default()],
+        ].concat();
+
+        for value in all_values {
+            let (_, undefined) = self.state.environments.resolve_with_validation(&value);
+            for var in undefined {
+                if !undefined_vars.contains(&var) {
+                    undefined_vars.push(var);
+                }
+            }
+        }
+
+        undefined_vars
     }
 
     /// Resolve all `{{@...}}` chain references in a request's fields.

@@ -1,6 +1,6 @@
 # One Dark inspired
 border_focused = "#61afef"
-border_unfocused = "#5c6370"
+border_unfocused = "#7a8491"
 status_ok = "#98c379"
 status_client_error = "#e5c07b"
 status_server_error = "#e06c75"

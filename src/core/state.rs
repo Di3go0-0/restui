@@ -22,6 +22,7 @@ pub const STATUS_MESSAGE_TTL: Duration = Duration::from_secs(5);
 pub const PENDING_KEY_TIMEOUT: Duration = Duration::from_millis(500);
 pub const EVENT_TICK_RATE: Duration = Duration::from_millis(250);
 pub const MAX_REDIRECTS: usize = 10;
+pub const SEARCH_DEBOUNCE_MS: u64 = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -386,6 +387,7 @@ pub struct SearchState {
     pub active: bool,
     pub matches: Vec<(usize, usize)>,
     pub match_idx: usize,
+    pub last_search_instant: Option<Instant>,
 }
 
 #[derive(Debug, Default)]
@@ -402,6 +404,57 @@ pub enum RequestFocus {
     Param(usize),
     Cookie(usize),
     PathParam(usize),
+}
+
+/// Unified cursor state for field editing
+#[derive(Debug, Clone, Copy)]
+pub struct CursorState {
+    pub position: usize,
+    pub visual_anchor: usize,
+}
+
+impl Default for CursorState {
+    fn default() -> Self {
+        Self {
+            position: 0,
+            visual_anchor: 0,
+        }
+    }
+}
+
+impl CursorState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Move cursor position to the right
+    pub fn move_right(&mut self, max: usize) {
+        self.position = (self.position + 1).min(max);
+    }
+
+    /// Move cursor position to the left
+    pub fn move_left(&mut self) {
+        self.position = self.position.saturating_sub(1);
+    }
+
+    /// Set cursor position
+    pub fn set(&mut self, pos: usize, max: usize) {
+        self.position = pos.min(max);
+    }
+
+    /// Start visual selection
+    pub fn start_visual(&mut self) {
+        self.visual_anchor = self.position;
+    }
+
+    /// Get selected range (start, end)
+    pub fn selection_range(&self) -> (usize, usize) {
+        if self.visual_anchor <= self.position {
+            (self.visual_anchor, self.position)
+        } else {
+            (self.position, self.visual_anchor)
+        }
+    }
 }
 
 pub struct RequestEditState {
@@ -524,6 +577,7 @@ pub struct AppState {
     // Layout
     pub is_wide_layout: bool,
     pub last_middle_panel: Panel,
+    pub cached_terminal_size: Option<(u16, u16)>,
 
     // Data
     pub collections: Vec<Collection>,
@@ -565,6 +619,9 @@ pub struct AppState {
 
     // Response cache for request chaining: key = "collection/request_name", value = (Response, cached_at)
     pub response_cache: HashMap<String, (Response, Instant)>,
+
+    // JSON type cache for autocomplete: key = response body hash, value = JsonType
+    pub json_type_cache: HashMap<u64, crate::model::response_type::JsonType>,
 
     // Command Palette
     pub command_palette: CommandPaletteState,
@@ -619,6 +676,7 @@ impl AppState {
             active_panel: Panel::Collections,
             mode: InputMode::Normal,
             is_wide_layout: true,
+            cached_terminal_size: None,
             last_middle_panel: Panel::Request,
             collections: Vec::new(),
             environments: EnvironmentStore::default(),
@@ -643,6 +701,7 @@ impl AppState {
             yank_buffer: String::new(),
             yanked_request: None,
             response_cache: HashMap::new(),
+            json_type_cache: HashMap::new(),
             command_palette: CommandPaletteState::default(),
             overlay: None,
             env_selector_state: ListState::default(),

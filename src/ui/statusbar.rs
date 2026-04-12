@@ -151,7 +151,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let hints = match state.mode {
         InputMode::Normal => match state.active_panel {
-            Panel::Request => " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help ",
+            Panel::Request => {
+                if let Some(err) = &state.last_error {
+                    if err.contains("Undefined variable") {
+                        " ERROR: Undefined variables  i:fix  ?:help "
+                    } else {
+                        " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help "
+                    }
+                } else {
+                    " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help "
+                }
+            },
             Panel::Body => " i:insert  v:visual  o:line  t:type  Ctrl+R:run  ?:help ",
             Panel::Collections => " r:rename  dd:del  yy:copy  p:paste  Sp:fold  ?:help ",
             Panel::Response => " j/k:move  v:visual  y:copy  Y:curl  ?:help ",

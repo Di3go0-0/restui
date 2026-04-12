@@ -43,4 +43,37 @@ impl EnvironmentStore {
         }
         result
     }
+
+    /// Resolve variables and return a list of undefined variables found
+    pub fn resolve_with_validation(&self, template: &str) -> (String, Vec<String>) {
+        let Some(env) = self.active_env() else {
+            return (template.to_string(), Vec::new());
+        };
+        let mut result = template.to_string();
+        let mut undefined = Vec::new();
+
+        // Find all {{...}} patterns
+        let mut start = 0;
+        while let Some(pos) = result[start..].find("{{") {
+            let abs_pos = start + pos;
+            if let Some(end_pos) = result[abs_pos + 2..].find("}}") {
+                let abs_end = abs_pos + 2 + end_pos;
+                let var_name = &result[abs_pos + 2..abs_end];
+                
+                if let Some(value) = env.variables.get(var_name) {
+                    result.replace_range(abs_pos..abs_end + 2, value);
+                    start = abs_pos + value.len();
+                } else {
+                    // Variable not found
+                    if !undefined.contains(&var_name.to_string()) {
+                        undefined.push(var_name.to_string());
+                    }
+                    start = abs_end + 2;
+                }
+            } else {
+                break;
+            }
+        }
+        (result, undefined)
+    }
 }
