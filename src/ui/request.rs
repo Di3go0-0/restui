@@ -108,11 +108,11 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
                 .bg(method_color)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" "),
+        Span::raw(" │ "),
     ];
     method_spans.extend(url_spans);
     if url_overflows {
-        method_spans.push(Span::styled("…", Style::default().fg(t.text_dim)));
+        method_spans.push(Span::styled(" …", Style::default().fg(t.text_dim)));
     }
     frame.render_widget(Paragraph::new(Line::from(method_spans)), chunks[0]);
 
@@ -127,8 +127,8 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     // === Separator ===
     let sep = Line::from(Span::styled(
-        "─".repeat(inner.width as usize),
-        Style::default().fg(t.text_dim),
+        "═".repeat(inner.width as usize),
+        Style::default().fg(t.border_focused),
     ));
     frame.render_widget(Paragraph::new(sep), chunks[1]);
 
@@ -153,21 +153,21 @@ fn render_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
 
     for (i, tab) in RequestTab::ALL.iter().enumerate() {
         if i > 0 {
-            spans.push(Span::styled("  ", Style::default().fg(t.text_dim)));
+            spans.push(Span::styled(" │ ", Style::default().fg(t.text_dim)));
         }
 
         let is_active = state.request_edit.tab == *tab;
         if is_active {
             spans.push(Span::styled(
-                format!("[{}]", tab.label()),
+                format!(" ● {} ", tab.label()),
                 Style::default()
-                    .fg(if is_focused { t.accent } else { t.text })
-                    .bg(t.bg_highlight)
+                    .fg(Color::Black)
+                    .bg(if is_focused { t.accent } else { t.text_dim })
                     .add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::styled(
-                tab.label().to_string(),
+                format!(" {} ", tab.label()),
                 Style::default().fg(t.text_dim),
             ));
         }
@@ -175,7 +175,7 @@ fn render_tab_bar(state: &AppState, is_focused: bool) -> Line<'static> {
 
     // Hint for tab switching
     if is_focused {
-        spans.push(Span::styled("  {/}", Style::default().fg(t.text_dim)));
+        spans.push(Span::styled("  │ {/}", Style::default().fg(t.text_dim)));
     }
 
     Line::from(spans)

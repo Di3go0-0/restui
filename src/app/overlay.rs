@@ -226,10 +226,18 @@ impl App {
                                 if target_coll != src_ci {
                                     if let Some(req) = self.state.collections.get(src_ci).and_then(|c| c.requests.get(ri)).cloned() {
                                         let req_name = req.display_name();
-                                        self.state.collections.get_mut(src_ci).unwrap().requests.remove(ri);
+                                        // Remove from source (safe: we just verified src_ci exists)
+                                        if let Some(src) = self.state.collections.get_mut(src_ci) {
+                                            if ri < src.requests.len() {
+                                                src.requests.remove(ri);
+                                            }
+                                        }
                                         self.persist_collection(src_ci);
                                         let target_name = self.state.collections.get(target_coll).map(|c| c.name.clone()).unwrap_or_default();
-                                        self.state.collections.get_mut(target_coll).unwrap().requests.push(req);
+                                        // Add to target (safe: we just verified target_coll exists with map)
+                                        if let Some(target) = self.state.collections.get_mut(target_coll) {
+                                            target.requests.push(req);
+                                        }
                                         self.persist_collection(target_coll);
                                         self.state.collections_view.expanded.insert(target_coll);
                                         self.rebuild_collection_items();

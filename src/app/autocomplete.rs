@@ -1,8 +1,17 @@
 use crate::core::state::{ChainAutocomplete, Panel};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use super::App;
 
 impl App {
+    /// Compute hash of a string
+    fn hash_body(body: &str) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        body.hash(&mut hasher);
+        hasher.finish()
+    }
+
     pub(super) fn try_chain_autocomplete(&mut self) {
         // Get text and cursor position based on active panel
         let (text, cursor_pos) = match self.state.active_panel {
@@ -144,8 +153,15 @@ impl App {
                     if req.name.as_deref() == Some(request_name) {
                         let key = format!("{}/{}", coll.name, request_name);
                         if let Some((resp, _)) = self.state.response_cache.get(&key) {
-                            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
-                                found_type = Some(crate::model::response_type::JsonType::infer(&json_val));
+                            // Check cache first
+                            let body_hash = Self::hash_body(&resp.body);
+                            if let Some(cached_type) = self.state.json_type_cache.get(&body_hash) {
+                                found_type = Some(cached_type.clone());
+                            } else if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&resp.body) {
+                                let json_type = crate::model::response_type::JsonType::infer(&json_val);
+                                // Store in cache
+                                self.state.json_type_cache.insert(body_hash, json_type.clone());
+                                found_type = Some(json_type);
                             }
                         }
                     }

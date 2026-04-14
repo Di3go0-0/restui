@@ -17,6 +17,12 @@ pub struct Response {
     /// Raw bytes for binary responses — skipped in serialization
     #[serde(skip)]
     pub body_bytes: Option<Vec<u8>>,
+    /// Cached formatted body to avoid reformatting every frame
+    #[serde(skip)]
+    pub cached_formatted_body: Option<String>,
+    /// Flag indicating if response was truncated due to size limit
+    #[serde(skip)]
+    pub was_truncated: bool,
 }
 
 mod duration_millis {
@@ -45,6 +51,11 @@ impl Response {
     }
 
     pub fn formatted_body(&self) -> String {
+        // Return cached version if available
+        if let Some(ref cached) = self.cached_formatted_body {
+            return cached.clone();
+        }
+        
         // Try to pretty-print JSON
         if self
             .content_type
@@ -58,6 +69,29 @@ impl Response {
             }
         }
         self.body.clone()
+    }
+
+    /// Mutable version that caches the formatted body
+    /// This is available for future optimizations where Response needs to be mutable during rendering
+    #[allow(dead_code)]
+    pub fn formatted_body_cached(&mut self) -> String {
+        if self.cached_formatted_body.is_none() {
+            // Try to pretty-print JSON
+            if self
+                .content_type
+                .as_deref()
+                .is_some_and(|ct| ct.contains("json"))
+            {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&self.body) {
+                    if let Ok(pretty) = serde_json::to_string_pretty(&val) {
+                        self.cached_formatted_body = Some(pretty.clone());
+                        return pretty;
+                    }
+                }
+            }
+            self.cached_formatted_body = Some(self.body.clone());
+        }
+        self.cached_formatted_body.as_ref().unwrap().clone()
     }
 
     pub fn elapsed_display(&self) -> String {

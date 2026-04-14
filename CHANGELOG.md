@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0] - 2026-04-11
+
+### Added
+- **Edge case tests** — comprehensive test suite (15+ tests) covering cursor bounds, cache safety, JSON parsing, circular chain detection, undefined variable detection, and more in `tests/edge_cases.rs`
+- **Architecture documentation** — new `ARCHITECTURE.md` with module structure, state management patterns, event loop flow, vim integration, performance optimizations, extensibility points, and future roadmap
+- **SyncableVimEditor trait** — new trait for validating vim editor invariants (cursor within bounds, width constraints) to prevent desynchronization during resizes
+- **Response truncation flag** — responses exceeding 10MB are now marked with `was_truncated` flag and display ⚠️ badge in response panel title for visual feedback
+- **Response size caching** — formatted response body is cached in `ResponseViewState` with generation counter to avoid re-prettifying JSON every frame (optimization for large responses)
+- **Terminal resize optimization** — `cached_terminal_size` field detects unchanged terminal dimensions to skip unnecessary layout recalculations
+
+### Fixed
+- **Critical unwrap in chain resolution** — replaced unsafe `.unwrap()` in `execute.rs:319` with `ok_or_else()?` to gracefully handle cache entry loss with descriptive error message
+- **Collection move bounds checking** — refactored collection/request index access in `overlay.rs` to use safe `.get()` pattern instead of panicking unwraps, with proper bounds validation
+- **Copy trait compile error** — removed `Copy` derive from `RequestEditState` which contains `Vec<>` fields (Vecs are not Copy)
+
+### Changed
+- **Response struct** — added `was_truncated: bool` field to track if response was truncated due to size limit
+- **ResponseViewState struct** — added `cached_formatted_body: Option<String>` and `cached_response_id: Option<u64>` for response body formatting cache with invalidation
+
+### Code Quality
+- **Zero compiler warnings** — all v0.4.0 unimplemented optimizations are now integrated (cached_terminal_size, formatted_body_cached integration)
+- **Improved robustness** — edge cases now covered by automated tests to prevent regressions
+- **Better error messages** — chain resolution errors include context about which dependency failed
+
 ## [0.3.8] - 2026-04-04
 
 ### Fixed

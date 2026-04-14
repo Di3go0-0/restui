@@ -20,7 +20,12 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     } else if let Some((idx, total, ref ts)) = state.viewing_history {
         format!(" [4] Response [History {}/{} — {}] ", idx, total, ts)
     } else {
-        " [4] Response ".to_string()
+        let truncated_badge = if state.current_response.as_ref().map_or(false, |r| r.was_truncated) {
+            " ⚠️ TRUNCATED (10MB CAP)"
+        } else {
+            ""
+        };
+        format!(" [4] Response{} ", truncated_badge)
     };
     let block = Block::default()
         .title(title)
@@ -824,12 +829,28 @@ fn render_response_body(
         return;
     }
 
-    let diff_body;
+    // Generate a unique ID for this response (based on status + size + first 100 chars of body)
+    let response_id = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        resp.status.hash(&mut hasher);
+        resp.size_bytes.hash(&mut hasher);
+        resp.body.chars().take(100).collect::<String>().hash(&mut hasher);
+        hasher.finish()
+    };
+
+    // Use cached formatted body if available and response hasn't changed
+    let display_body = if state.response_view.cached_response_id == Some(response_id) {
+        state.response_view.cached_formatted_body.clone().unwrap_or_else(|| resp.formatted_body())
+    } else {
+        resp.formatted_body()
+    };
+
     let body = if let Some((ref diff_text, _)) = state.viewing_diff {
         diff_text.as_str()
     } else {
-        diff_body = resp.formatted_body();
-        diff_body.as_str()
+        display_body.as_str()
     };
 
     let body_lines: Vec<&str> = body.lines().collect();

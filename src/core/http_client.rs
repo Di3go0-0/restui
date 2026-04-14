@@ -6,6 +6,9 @@ use crate::model::request::{PathParam, Request};
 use crate::model::response::Response;
 use crate::core::state::MAX_REDIRECTS;
 
+/// Response size limit: 10 MB
+const RESPONSE_SIZE_LIMIT_BYTES: usize = 10 * 1024 * 1024;
+
 pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Response> {
     let url_lower = request.url.to_lowercase();
     if !url_lower.starts_with("http://") && !url_lower.starts_with("https://") {
@@ -93,8 +96,16 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(String::from);
-    let body_bytes = resp.bytes().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
-    let size_bytes = body_bytes.len();
+    let mut body_bytes = resp.bytes().await.map_err(|e| anyhow::anyhow!(classify_error(&e)))?;
+    let mut size_bytes = body_bytes.len();
+    let mut was_truncated = false;
+
+    // Enforce response size limit
+    if size_bytes > RESPONSE_SIZE_LIMIT_BYTES {
+        body_bytes = body_bytes.slice(0..RESPONSE_SIZE_LIMIT_BYTES);
+        size_bytes = RESPONSE_SIZE_LIMIT_BYTES;
+        was_truncated = true;
+    }
 
     let is_binary = content_type.as_deref().is_some_and(|ct| {
         ct.starts_with("image/")
@@ -114,12 +125,19 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         } else {
             format!("{:.1}MB", size_bytes as f64 / (1024.0 * 1024.0))
         };
+        let truncated_msg = if was_truncated { " [TRUNCATED]" } else { "" };
         (
-            format!("Binary response ({}, {})", ct_display, size_display),
+            format!("Binary response ({}, {}){}", ct_display, size_display, truncated_msg),
             Some(body_bytes.to_vec()),
         )
     } else {
-        (String::from_utf8_lossy(&body_bytes).to_string(), None)
+        let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+        let body_with_warning = if was_truncated {
+            format!("{}\n\n[Response truncated: exceeded 10MB limit]", body_str)
+        } else {
+            body_str
+        };
+        (body_with_warning, None)
     };
 
     Ok(Response {
@@ -131,6 +149,8 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         elapsed,
         size_bytes,
         body_bytes: raw_bytes,
+        cached_formatted_body: None,
+        was_truncated: size_bytes > 10 * 1024 * 1024,
     })
 }
 

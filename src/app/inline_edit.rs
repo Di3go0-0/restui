@@ -6,6 +6,11 @@ use super::App;
 pub(super) fn is_word_char(b: u8) -> bool { b.is_ascii_alphanumeric() || b == b'_' }
 pub(super) fn is_punct_char(b: u8) -> bool { !b.is_ascii_whitespace() && !is_word_char(b) }
 
+/// Get the display width of a character (handles emoji and wide chars)
+pub(super) fn char_width(c: char) -> usize {
+    unicode_width::UnicodeWidthChar::width(c).unwrap_or(0).max(1)
+}
+
 pub(super) fn row_col_to_offset(text: &str, row: usize, col: usize) -> usize {
     let mut offset = 0;
     for (i, line) in text.split('\n').enumerate() {
@@ -22,7 +27,8 @@ impl App {
                 let body = self.state.current_request.get_body_mut(self.state.body_type);
                 let pos = row_col_to_offset(body, self.state.body_vim.cursor_row, self.state.body_vim.cursor_col);
                 body.insert(pos, c);
-                self.state.body_vim.cursor_col += 1;
+                // Move cursor by grapheme width, not just 1
+                self.state.body_vim.cursor_col += char_width(c);
             }
             Panel::Request => match self.state.request_edit.focus {
                 RequestFocus::Url => {

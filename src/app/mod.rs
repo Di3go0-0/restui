@@ -64,43 +64,53 @@ impl App {
 
         loop {
             if let Ok(size) = terminal.size() {
-                let right_width = (size.width as u32 * 80 / 100) as u16;
-                self.state.is_wide_layout = right_width > WIDE_LAYOUT_THRESHOLD;
+                // Check if terminal size changed (optimization: skip redraw if same)
+                let should_recalc_layout = match self.state.cached_terminal_size {
+                    Some((w, h)) if w == size.width && h == size.height => false,
+                    _ => true,
+                };
 
-                // Calculate visible heights for scroll-follow
-                let main_h = size.height.saturating_sub(1); // status bar
-                if right_width > WIDE_LAYOUT_THRESHOLD {
-                    // Wide: center is 50% of right, body is 60% of center
-                    let center_h = main_h;
-                    self.state.body_vim.visible_height = (center_h as u32 * 60 / 100) as usize;
-                    self.state.response_view.resp_vim.visible_height = main_h as usize;
-                } else {
-                    // Narrow: body 35%, response 40%
-                    self.state.body_vim.visible_height = (main_h as u32 * 35 / 100) as usize;
-                    self.state.response_view.resp_vim.visible_height = (main_h as u32 * 40 / 100) as usize;
-                }
-                // Account for borders + tab bar + internal chrome
-                self.state.body_vim.visible_height = self.state.body_vim.visible_height.saturating_sub(4);
-                // Account for borders + status line + tab bar + separator
-                self.state.response_view.resp_vim.visible_height = self.state.response_view.resp_vim.visible_height.saturating_sub(6);
-                // When Type tab is open, response preview only gets ~half minus separators
-                if self.state.response_view.tab == ResponseTab::Type {
-                    self.state.response_view.resp_vim.visible_height = (self.state.response_view.resp_vim.visible_height / 2).saturating_sub(1);
-                }
+                if should_recalc_layout {
+                    self.state.cached_terminal_size = Some((size.width, size.height));
+                    
+                    let right_width = (size.width as u32 * 80 / 100) as u16;
+                    self.state.is_wide_layout = right_width > WIDE_LAYOUT_THRESHOLD;
 
-                // Calculate visible widths for horizontal scroll-follow
-                // Body and response panels share the right side; subtract gutter (4) + border (2)
-                if right_width > WIDE_LAYOUT_THRESHOLD {
-                    // Wide: center panel is ~40% of right
-                    self.state.body_visible_width = (right_width as u32 * 40 / 100) as usize;
-                    self.state.response_view.resp_visible_width = (right_width as u32 * 50 / 100) as usize;
-                } else {
-                    // Narrow: body/response take full right width
-                    self.state.body_visible_width = right_width as usize;
-                    self.state.response_view.resp_visible_width = right_width as usize;
+                    // Calculate visible heights for scroll-follow
+                    let main_h = size.height.saturating_sub(1); // status bar
+                    if right_width > WIDE_LAYOUT_THRESHOLD {
+                        // Wide: center is 50% of right, body is 60% of center
+                        let center_h = main_h;
+                        self.state.body_vim.visible_height = (center_h as u32 * 60 / 100) as usize;
+                        self.state.response_view.resp_vim.visible_height = main_h as usize;
+                    } else {
+                        // Narrow: body 35%, response 40%
+                        self.state.body_vim.visible_height = (main_h as u32 * 35 / 100) as usize;
+                        self.state.response_view.resp_vim.visible_height = (main_h as u32 * 40 / 100) as usize;
+                    }
+                    // Account for borders + tab bar + internal chrome
+                    self.state.body_vim.visible_height = self.state.body_vim.visible_height.saturating_sub(4);
+                    // Account for borders + status line + tab bar + separator
+                    self.state.response_view.resp_vim.visible_height = self.state.response_view.resp_vim.visible_height.saturating_sub(6);
+                    // When Type tab is open, response preview only gets ~half minus separators
+                    if self.state.response_view.tab == ResponseTab::Type {
+                        self.state.response_view.resp_vim.visible_height = (self.state.response_view.resp_vim.visible_height / 2).saturating_sub(1);
+                    }
+
+                    // Calculate visible widths for horizontal scroll-follow
+                    // Body and response panels share the right side; subtract gutter (4) + border (2)
+                    if right_width > WIDE_LAYOUT_THRESHOLD {
+                        // Wide: center panel is ~40% of right
+                        self.state.body_visible_width = (right_width as u32 * 40 / 100) as usize;
+                        self.state.response_view.resp_visible_width = (right_width as u32 * 50 / 100) as usize;
+                    } else {
+                        // Narrow: body/response take full right width
+                        self.state.body_visible_width = right_width as usize;
+                        self.state.response_view.resp_visible_width = right_width as usize;
+                    }
+                    self.state.body_visible_width = self.state.body_visible_width.saturating_sub(6); // gutter(4) + borders(2)
+                    self.state.response_view.resp_visible_width = self.state.response_view.resp_visible_width.saturating_sub(6);
                 }
-                self.state.body_visible_width = self.state.body_visible_width.saturating_sub(6); // gutter(4) + borders(2)
-                self.state.response_view.resp_visible_width = self.state.response_view.resp_visible_width.saturating_sub(6);
             }
 
             terminal.draw(|frame| {
@@ -168,7 +178,10 @@ impl App {
         };
 
         match action {
-            Action::Quit => self.state.should_quit = true,
+            Action::Quit => {
+                eprintln!("[DEBUG] Action::Quit triggered — panel={:?} mode={:?}", self.state.active_panel, self.state.mode);
+                self.state.should_quit = true;
+            }
             Action::Tick => {
                 // Update spinner + elapsed time for in-flight requests
                 if let Some(started) = self.state.request_started_at {
@@ -1036,6 +1049,9 @@ impl App {
                 self.state.current_response = Some(*response);
                 self.state.viewing_history = None;
                 self.state.response_view.resp_vim.scroll_offset = 0; self.state.response_view.resp_hscroll = 0;
+                // Invalidate cached formatted body when response changes
+                self.state.response_view.cached_formatted_body = None;
+                self.state.response_view.cached_response_id = None;
 
                 // Infer type from response
                 if let Some(ref resp) = self.state.current_response {
@@ -1363,7 +1379,86 @@ impl App {
                 self.state.pending_key = None;
                 self.find_char_backward(c, true);
             }
+
+            // Leader system
+            Action::TriggerLeaderMenu => {
+                self.state.leader_context.activate();
+            }
+
+            Action::LeaderMenuInput(key) => {
+                self.state.leader_context.key_sequence.push(key);
+                
+                // Look up the leader action from keybindings config
+                let keybind = crate::keybindings::config::KeyBind::char(key);
+                if let Some(action_name) = self.state.keybindings.leader.get(&keybind) {
+                    // Close menu before executing action
+                    self.state.leader_context.deactivate();
+                    
+                    // Convert action name to Action and execute
+                    if let Some(action) = crate::keybindings::leader_action_from_name(action_name) {
+                        self.execute_leader_action(action).await;
+                    }
+                } else {
+                    // Invalid key, close menu
+                    self.state.leader_context.deactivate();
+                }
+            }
+
+            Action::LeaderMenuClose => {
+                self.state.leader_context.deactivate();
+            }
         }
         Ok(())
+    }
+
+    /// Execute actions triggered from the leader menu
+    async fn execute_leader_action(&mut self, action: Action) {
+        match action {
+            Action::Quit => self.state.should_quit = true,
+            Action::CycleTheme => {
+                let next = crate::ui::theme::next_theme_name(&self.state.theme.name);
+                self.state.theme = crate::ui::theme::load_theme(next);
+                self.state.set_status(format!("Theme: {}", self.state.theme.name));
+            }
+            Action::FocusPanel(panel) => self.state.active_panel = panel,
+            Action::OpenOverlay(overlay) => self.state.overlay = Some(overlay),
+            Action::OpenCommandPalette => {
+                self.state.command_palette.open = true;
+                self.state.command_palette.input.clear();
+                self.state.command_palette.selected = 0;
+            }
+            Action::ExecuteRequest => {
+                self.execute_request().await;
+            }
+            Action::NextMethod => {
+                self.state.current_request.method = self.state.current_request.method.next();
+            }
+            Action::CycleBodyType => {
+                self.state.body_type = self.state.body_type.next();
+                self.state.validate_body();
+            }
+            Action::ToggleResponseHeaders => {
+                self.state.response_view.headers_expanded = !self.state.response_view.headers_expanded;
+            }
+            Action::CopyResponseBody => {
+                if let Some(response) = &self.state.current_response {
+                    let _ = crate::app::clipboard::copy_to_clipboard(&response.body);
+                    self.state.set_status("Response body copied");
+                }
+            }
+            Action::ToggleWrap => {
+                self.state.wrap_enabled = !self.state.wrap_enabled;
+            }
+            Action::ResponseNextTab => {
+                self.state.response_view.tab = self.state.response_view.tab.next();
+            }
+            Action::StartSearch => {
+                self.state.search.active = true;
+                self.state.search.query.clear();
+            }
+            _ => {
+                // Other actions are not executed from leader menu yet
+            }
+        }
     }
 }

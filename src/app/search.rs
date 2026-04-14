@@ -1,9 +1,18 @@
-use crate::core::state::Panel;
+use crate::core::state::{Panel, SEARCH_DEBOUNCE_MS};
+use std::time::Instant;
 
 use super::App;
 
 impl App {
     pub(super) fn recalculate_search_matches(&mut self) {
+        // Debounce search recalculation: skip if last search was < 300ms ago
+        if let Some(last_instant) = self.state.search.last_search_instant {
+            if last_instant.elapsed().as_millis() < SEARCH_DEBOUNCE_MS as u128 {
+                return;
+            }
+        }
+        
+        self.state.search.last_search_instant = Some(Instant::now());
         self.state.search.matches.clear();
         self.state.search.match_idx = 0;
         if self.state.search.query.is_empty() {

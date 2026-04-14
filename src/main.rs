@@ -122,5 +122,10 @@ async fn main() -> Result<()> {
     let result = app.run(&mut terminal).await;
     core::tui::restore()?;
 
+    match &result {
+        Ok(()) => eprintln!("[DEBUG] Clean exit via should_quit"),
+        Err(e) => eprintln!("[DEBUG] Exit with error: {e:?}"),
+    }
+
     result
 }

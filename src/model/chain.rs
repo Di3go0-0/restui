@@ -69,24 +69,24 @@ pub fn parse_chain_ref(raw: &str) -> Option<ChainRef> {
         (None, raw)
     };
 
-    // Split request_name from json_path
-    // Support: auth.token, auth[0].token, auth.[0].token
-    let (request_name, json_path) = if let Some(bracket_pos) = remainder.find('[') {
-        // auth[0].token → name="auth", path="[0].token"
-        let name = &remainder[..bracket_pos];
-        let path = &remainder[bracket_pos..];
+    // Split request_name from json_path at the first dot.
+    // The request name is always the segment before the first dot.
+    // Examples:
+    //   login.token          → name="login", path="token"
+    //   login.data[0].token  → name="login", path="data[0].token"
+    //   auth[0].token        → name="auth", path="[0].token"
+    let (request_name, json_path) = if let Some(dot_pos) = remainder.find('.') {
+        let name = &remainder[..dot_pos];
+        let path = &remainder[dot_pos + 1..];
         if name.is_empty() || path.is_empty() {
             return None;
         }
         (name.to_string(), path.to_string())
-    } else if let Some(dot_pos) = remainder.find('.') {
-        let name = &remainder[..dot_pos];
-        let path = &remainder[dot_pos + 1..];
-        if name.is_empty() {
-            return None;
-        }
-        // Allow path starting with '[' after dot: auth.[0].token
-        if path.is_empty() {
+    } else if let Some(bracket_pos) = remainder.find('[') {
+        // No dot but has bracket: auth[0] → name="auth", path="[0]"
+        let name = &remainder[..bracket_pos];
+        let path = &remainder[bracket_pos..];
+        if name.is_empty() || path.is_empty() {
             return None;
         }
         (name.to_string(), path.to_string())

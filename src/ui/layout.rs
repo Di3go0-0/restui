@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem};
 
 use crate::core::state::{AppState, Panel};
-use crate::ui::{body, collections, command_palette, floating, help, request, response, statusbar};
+use crate::ui::{body, collections, command_palette, floating, help, leader_menu, request, response, statusbar};
 
 pub fn render(frame: &mut Frame, state: &AppState) {
     let area = frame.area();
@@ -83,6 +83,9 @@ pub fn render(frame: &mut Frame, state: &AppState) {
             _ => floating::render(frame, state, overlay),
         }
     }
+
+    // Leader menu renders as topmost overlay
+    leader_menu::render_leader_menu(frame, state, frame.area());
 }
 
 fn render_center_panels(frame: &mut Frame, state: &AppState, area: Rect) {

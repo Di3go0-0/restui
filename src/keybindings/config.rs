@@ -200,6 +200,8 @@ pub struct KeybindingsToml {
     pub collections_filter: HashMap<String, TomlKeyValue>,
     #[serde(default)]
     pub overlay: HashMap<String, TomlKeyValue>,
+    #[serde(default)]
+    pub leader: HashMap<String, TomlKeyValue>,
 }
 
 // ── Resolved runtime config ────────────────────────────────────────────────
@@ -220,6 +222,7 @@ pub struct KeybindingsConfig {
     pub search: HashMap<KeyBind, String>,
     pub collections_filter: HashMap<KeyBind, String>,
     pub overlay: HashMap<KeyBind, String>,
+    pub leader: HashMap<KeyBind, String>,
 }
 
 impl KeybindingsConfig {
@@ -541,6 +544,49 @@ pub fn default_bindings() -> KeybindingsToml {
         bind(m, "confirm", &["Enter"]);
     }
 
+    // ── Leader ──
+    {
+        let m = &mut t.leader;
+        // Global leader commands (just the character, Space is the trigger key)
+        bind(m, "leader_quit", &["q"]);
+        bind(m, "leader_cycle_theme", &["t"]);
+        bind(m, "leader_open_env", &["e"]);
+        bind(m, "leader_open_command_palette", &[":"]);
+        bind(m, "leader_help", &["?"]);
+        bind(m, "leader_focus_panel_1", &["1"]);
+        bind(m, "leader_focus_panel_2", &["2"]);
+        bind(m, "leader_focus_panel_3", &["3"]);
+        bind(m, "leader_focus_panel_4", &["4"]);
+
+        // Panel 1 (Collections) commands
+        bind(m, "leader_new_collection", &["n"]);
+        bind(m, "leader_delete_item", &["d"]);
+        bind(m, "leader_rename_item", &["r"]);
+        bind(m, "leader_save_request", &["s"]);
+        bind(m, "leader_save_request_as", &["S"]);
+        bind(m, "leader_move_request", &["m"]);
+        bind(m, "leader_add_request", &["a"]);
+
+        // Panel 2 (Request) commands
+        bind(m, "leader_add_header", &["h"]);
+        bind(m, "leader_add_cookie", &["c"]);
+        bind(m, "leader_add_query_param", &["q"]);
+        bind(m, "leader_add_path_param", &["p"]);
+        bind(m, "leader_next_method", &["M"]);
+        bind(m, "leader_cycle_body_type", &["b"]);
+
+        // Panel 3 (Body) commands
+        // (placeholder for future body-specific commands)
+
+        // Panel 4 (Response) commands
+        bind(m, "leader_toggle_headers", &["h"]);
+        bind(m, "leader_copy_response", &["c"]);
+        bind(m, "leader_export_response", &["e"]);
+        bind(m, "leader_toggle_wrap", &["w"]);
+        bind(m, "leader_response_next_tab", &["t"]);
+        bind(m, "leader_search_response", &["s"]);
+    }
+
     t
 }
 
@@ -595,6 +641,7 @@ pub fn build_config(user: Option<KeybindingsToml>) -> KeybindingsConfig {
         search: merge_and_resolve(&defaults.search, &user.search),
         collections_filter: merge_and_resolve(&defaults.collections_filter, &user.collections_filter),
         overlay: merge_and_resolve(&defaults.overlay, &user.overlay),
+        leader: merge_and_resolve(&defaults.leader, &user.leader),
     }
 }
 

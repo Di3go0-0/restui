@@ -44,20 +44,20 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let mut spans = vec![
         mode_span,
-        Span::raw(" "),
+        Span::raw(" │ "),
         Span::styled(
-            format!(" ENV: {} ", env_name),
+            format!("ENV: {}", env_name),
             Style::default()
                 .fg(Color::Black)
                 .bg(t.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(" "),
+        Span::raw(" │ "),
         Span::styled(
-            format!(" {} ", state.active_panel.title()),
+            format!("{}", state.active_panel.title()),
             Style::default().fg(t.text).bg(t.bg_highlight),
         ),
-        Span::raw(" "),
+        Span::raw(" │ "),
         Span::styled(
             format!(" {} ", state.current_request.method),
             Style::default()
@@ -71,25 +71,25 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
     // Wrap indicator
     if state.wrap_enabled {
         spans.push(Span::styled(
-            " WRAP ",
+            "WRAP",
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::raw(" "));
+        spans.push(Span::raw(" │ "));
     }
 
     // SSL indicator
     if !state.config.general.verify_ssl {
         spans.push(Span::styled(
-            " INSECURE ",
+            "INSECURE",
             Style::default()
                 .fg(Color::Black)
                 .bg(Color::Red)
                 .add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::raw(" "));
+        spans.push(Span::raw(" │ "));
     }
 
     // Last response badge (status code + elapsed time)
@@ -114,13 +114,14 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             format!("{:.1}s", elapsed_ms as f64 / 1000.0)
         };
         spans.push(Span::styled(
-            format!(" {} ", status_code),
+            format!("│ {} ", status_code),
             Style::default().fg(Color::Black).bg(status_bg).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
-            format!(" {} ", time_str),
+            format!(" {} │", time_str),
             Style::default().fg(time_color),
         ));
+        spans.push(Span::raw(" "));
     }
 
     // Cursor position for body/response panels
@@ -135,12 +136,10 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
             _ => (state.body_vim.cursor_row, state.body_vim.cursor_col),
         };
         spans.push(Span::styled(
-            format!(" {}:{} ", row + 1, col + 1),
+            format!(" │ {}:{} ", row + 1, col + 1),
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::DarkGray),
+                .fg(t.text_dim),
         ));
-        spans.push(Span::raw(" "));
     }
 
     if let Some((ref msg, ref instant)) = state.status_message {
@@ -151,7 +150,17 @@ pub fn render(frame: &mut Frame, state: &AppState, area: Rect) {
 
     let hints = match state.mode {
         InputMode::Normal => match state.active_panel {
-            Panel::Request => " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help ",
+            Panel::Request => {
+                if let Some(err) = &state.last_error {
+                    if err.contains("Undefined variable") {
+                        " ERROR: Undefined variables  i:fix  ?:help "
+                    } else {
+                        " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help "
+                    }
+                } else {
+                    " i:edit  a:add  {/}:tab  [/]:method  Ctrl+R:run  ?:help "
+                }
+            },
             Panel::Body => " i:insert  v:visual  o:line  t:type  Ctrl+R:run  ?:help ",
             Panel::Collections => " r:rename  dd:del  yy:copy  p:paste  Sp:fold  ?:help ",
             Panel::Response => " j/k:move  v:visual  y:copy  Y:curl  ?:help ",
