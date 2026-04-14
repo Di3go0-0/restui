@@ -20,6 +20,9 @@ pub struct Response {
     /// Cached formatted body to avoid reformatting every frame
     #[serde(skip)]
     pub cached_formatted_body: Option<String>,
+    /// Flag indicating if response was truncated due to size limit
+    #[serde(skip)]
+    pub was_truncated: bool,
 }
 
 mod duration_millis {
@@ -69,6 +72,8 @@ impl Response {
     }
 
     /// Mutable version that caches the formatted body
+    /// This is available for future optimizations where Response needs to be mutable during rendering
+    #[allow(dead_code)]
     pub fn formatted_body_cached(&mut self) -> String {
         if self.cached_formatted_body.is_none() {
             // Try to pretty-print JSON

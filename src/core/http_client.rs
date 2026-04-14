@@ -150,6 +150,7 @@ pub async fn execute(request: &Request, config: &GeneralConfig) -> Result<Respon
         size_bytes,
         body_bytes: raw_bytes,
         cached_formatted_body: None,
+        was_truncated: size_bytes > 10 * 1024 * 1024,
     })
 }
 
