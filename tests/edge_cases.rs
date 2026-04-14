@@ -1,4 +1,4 @@
-/// Edge case tests for restui v0.5.0
+/// Edge case tests for restui v0.4.0
 /// Tests for robustness, boundary conditions, and error handling
 
 #[cfg(test)]
