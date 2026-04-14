@@ -14,6 +14,35 @@ use crate::model::response::Response;
 use vimltui::VimEditor;
 use vimltui::VimModeConfig;
 
+// ── Trait for synchronized Vim Editor instances ─────────────────────────────
+/// Ensures VimEditor state remains valid even during resizes and mutations
+#[allow(dead_code)]
+pub trait SyncableVimEditor {
+    /// Validate editor invariants (e.g., cursor within bounds)
+    fn validate_invariants(&self, parent_width: usize) -> Result<(), String>;
+    
+    /// Handle resize event (clamp cursor to new bounds)
+    fn on_resize(&mut self, new_width: usize);
+}
+
+impl SyncableVimEditor for VimEditor {
+    fn validate_invariants(&self, parent_width: usize) -> Result<(), String> {
+        if self.cursor_col > parent_width.saturating_sub(1) {
+            Err(format!(
+                "Cursor col {} exceeds width {}",
+                self.cursor_col,
+                parent_width.saturating_sub(1)
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn on_resize(&mut self, new_width: usize) {
+        self.cursor_col = self.cursor_col.min(new_width.saturating_sub(1));
+    }
+}
+
 // ── Application-wide constants ──────────────────────────────────────────────
 pub const RESPONSE_CACHE_MAX: usize = 50;
 pub const UNDO_STACK_MAX: usize = 100;
@@ -24,7 +53,7 @@ pub const EVENT_TICK_RATE: Duration = Duration::from_millis(250);
 pub const MAX_REDIRECTS: usize = 10;
 pub const SEARCH_DEBOUNCE_MS: u64 = 300;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Panel {
     Collections,
     Request,
@@ -407,56 +436,7 @@ pub enum RequestFocus {
 }
 
 /// Unified cursor state for field editing
-#[derive(Debug, Clone, Copy)]
-pub struct CursorState {
-    pub position: usize,
-    pub visual_anchor: usize,
-}
-
-impl Default for CursorState {
-    fn default() -> Self {
-        Self {
-            position: 0,
-            visual_anchor: 0,
-        }
-    }
-}
-
-impl CursorState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Move cursor position to the right
-    pub fn move_right(&mut self, max: usize) {
-        self.position = (self.position + 1).min(max);
-    }
-
-    /// Move cursor position to the left
-    pub fn move_left(&mut self) {
-        self.position = self.position.saturating_sub(1);
-    }
-
-    /// Set cursor position
-    pub fn set(&mut self, pos: usize, max: usize) {
-        self.position = pos.min(max);
-    }
-
-    /// Start visual selection
-    pub fn start_visual(&mut self) {
-        self.visual_anchor = self.position;
-    }
-
-    /// Get selected range (start, end)
-    pub fn selection_range(&self) -> (usize, usize) {
-        if self.visual_anchor <= self.position {
-            (self.visual_anchor, self.position)
-        } else {
-            (self.position, self.visual_anchor)
-        }
-    }
-}
-
+#[derive(Debug, Clone)]
 pub struct RequestEditState {
     pub tab: RequestTab,
     pub focus: RequestFocus,
@@ -515,6 +495,10 @@ pub struct ResponseViewState {
     pub resp_vim: VimEditor,
     pub resp_hscroll: usize,
     pub resp_visible_width: usize,
+    /// Cached formatted response body to avoid re-prettifying JSON every frame
+    pub cached_formatted_body: Option<String>,
+    /// Generation counter to invalidate cache when response changes
+    pub cached_response_id: Option<u64>,
 }
 
 impl ResponseViewState {
@@ -537,6 +521,8 @@ impl ResponseViewState {
             resp_vim: VimEditor::new("", VimModeConfig::read_only()),
             resp_hscroll: 0,
             resp_visible_width: 80,
+            cached_formatted_body: None,
+            cached_response_id: None,
         }
     }
 }
@@ -668,6 +654,10 @@ pub struct AppState {
 
     // Help scroll
     pub help_scroll: u16,
+
+    // Leader menu system
+    pub leader_context: crate::core::leader_menu::LeaderContext,
+    pub leader_menu: crate::core::leader_menu::LeaderMenu,
 }
 
 impl AppState {
@@ -719,6 +709,8 @@ impl AppState {
             viewing_diff: None,
             keybindings,
             help_scroll: 0,
+            leader_context: crate::core::leader_menu::LeaderContext::new(),
+            leader_menu: crate::core::leader_menu::LeaderMenu::new(),
         }
     }
 

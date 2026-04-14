@@ -6,6 +6,45 @@ pub mod config;
 use self::config::{KeyBind, KeybindingsConfig};
 use crate::core::state::{AppState, Direction, InputMode, Overlay, Panel, RequestFocus, RequestTab, ResponseTab, TypeSubFocus, PENDING_KEY_TIMEOUT};
 
+/// Convert leader action name to Action enum
+pub fn leader_action_from_name(action_name: &str) -> Option<Action> {
+    match action_name {
+        // Global
+        "leader_quit" => Some(Action::Quit),
+        "leader_cycle_theme" => Some(Action::CycleTheme),
+        "leader_open_env" => Some(Action::OpenOverlay(Overlay::EnvironmentSelector)),
+        "leader_open_command_palette" => Some(Action::OpenCommandPalette),
+        "leader_help" => Some(Action::OpenOverlay(Overlay::Help)),
+        "leader_focus_panel_1" => Some(Action::FocusPanel(Panel::Collections)),
+        "leader_focus_panel_2" => Some(Action::FocusPanel(Panel::Request)),
+        "leader_focus_panel_3" => Some(Action::FocusPanel(Panel::Body)),
+        "leader_focus_panel_4" => Some(Action::FocusPanel(Panel::Response)),
+        // Collections
+        "leader_new_collection" => None, // TODO
+        "leader_delete_item" => None, // TODO
+        "leader_rename_item" => None, // TODO
+        "leader_save_request" => None, // TODO
+        "leader_save_request_as" => None, // TODO
+        "leader_move_request" => None, // TODO
+        "leader_add_request" => None, // TODO
+        // Request
+        "leader_add_header" => None, // TODO
+        "leader_add_cookie" => None, // TODO
+        "leader_add_query_param" => None, // TODO
+        "leader_add_path_param" => None, // TODO
+        "leader_next_method" => Some(Action::NextMethod),
+        "leader_cycle_body_type" => Some(Action::CycleBodyType),
+        // Response
+        "leader_toggle_headers" => Some(Action::ToggleResponseHeaders),
+        "leader_copy_response" => Some(Action::CopyResponseBody),
+        "leader_export_response" => Some(Action::ExportResponse),
+        "leader_toggle_wrap" => Some(Action::ToggleWrap),
+        "leader_response_next_tab" => Some(Action::ResponseNextTab),
+        "leader_search_response" => Some(Action::StartSearch),
+        _ => None,
+    }
+}
+
 pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     let kb = &state.keybindings;
     let k = KeyBind::from_event(key);
@@ -28,6 +67,25 @@ pub fn map_key(key: KeyEvent, state: &AppState) -> Option<Action> {
     // 1. Overlays consume input first
     if state.overlay.is_some() {
         return map_overlay_key(&k, key, state, kb);
+    }
+
+    // 1.5. Leader menu system (only in normal mode)
+    if state.mode == InputMode::Normal {
+        if state.leader_context.active {
+            // Leader menu is active, handle input
+            if key.code == KeyCode::Esc {
+                return Some(Action::LeaderMenuClose);
+            }
+            // Check for character input
+            if let KeyCode::Char(c) = key.code {
+                if !key.modifiers.contains(KeyModifiers::CONTROL) && !key.modifiers.contains(KeyModifiers::ALT) {
+                    return Some(Action::LeaderMenuInput(c));
+                }
+            }
+        } else if key.code == KeyCode::Char(' ') && !key.modifiers.contains(KeyModifiers::SHIFT | KeyModifiers::CONTROL | KeyModifiers::ALT) {
+            // Trigger leader menu when space is pressed
+            return Some(Action::TriggerLeaderMenu);
+        }
     }
 
     // 2. Global ctrl shortcuts (work in all modes)

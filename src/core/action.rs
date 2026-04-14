@@ -222,6 +222,11 @@ pub enum Action {
     RespVimInput(KeyEvent),
     TypeVimInput(KeyEvent),
 
+    // Leader system
+    TriggerLeaderMenu,
+    LeaderMenuInput(char),
+    LeaderMenuClose,
+
     // App
     Quit,
     Tick,

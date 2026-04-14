@@ -4,6 +4,7 @@ pub mod command_palette;
 pub mod floating;
 pub mod help;
 pub mod layout;
+pub mod leader_menu;
 pub mod request;
 pub mod response;
 pub mod statusbar;
