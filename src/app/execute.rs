@@ -316,7 +316,11 @@ impl App {
                 }
             }
 
-            let (resp, _) = self.state.response_cache.get(&cache_key).unwrap();
+            let (resp, _) = self.state.response_cache.get(&cache_key)
+                .ok_or_else(|| format!(
+                    "Chain error: response cache entry lost for '{}' (request may have been cleared)",
+                    chain_ref.request_name
+                ))?;
             let extracted = extract_json_value(&resp.body, &chain_ref.json_path)
                 .map_err(|e| match e {
                     ChainError::JsonPathNotFound { .. } => {
