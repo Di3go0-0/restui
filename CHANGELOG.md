@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.5.0] - 2026-04-11
+## [0.4.0] - 2026-04-11
 
 ### Added
 - **Edge case tests** — comprehensive test suite (15+ tests) covering cursor bounds, cache safety, JSON parsing, circular chain detection, undefined variable detection, and more in `tests/edge_cases.rs`
